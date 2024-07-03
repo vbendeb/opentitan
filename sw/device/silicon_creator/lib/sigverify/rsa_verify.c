@@ -4,6 +4,7 @@
 
 #include "sw/device/silicon_creator/lib/sigverify/rsa_verify.h"
 
+#include "sw/device/silicon_creator/lib/dbg_print.h"
 #include "sw/device/silicon_creator/lib/drivers/otp.h"
 #include "sw/device/silicon_creator/lib/sigverify/mod_exp_ibex.h"
 
@@ -121,6 +122,7 @@ static rom_error_t sigverify_encoded_message_check(
   // Last word.
   enc_msg_ptr[i] ^= 0x0001ffff ^ kSigverifyShares[i];
   HARDENED_CHECK_EQ(i, kSigVerifyRsaNumWords - 1);
+  dbg_printf("%s:%d\r\n", __func__, __LINE__);
 
   // Step 2: Reduce `enc_msg` to produce the value to write to flash_ctrl EXEC
   // register (`flash_exec`) and the return value (`result`).
@@ -138,6 +140,7 @@ static rom_error_t sigverify_encoded_message_check(
     flash_exec_rsa |= diff;
   }
   HARDENED_CHECK_EQ(i, kSigVerifyRsaNumWords);
+  dbg_printf("%s:%d\r\n", __func__, __LINE__);
 
   // Note: `kSigverifyRsaSuccess` is defined such that the following operation
   // produces `kErrorOk`.
@@ -145,9 +148,11 @@ static rom_error_t sigverify_encoded_message_check(
   *flash_exec ^= flash_exec_rsa;
   if (launder32(result) == kErrorOk) {
     HARDENED_CHECK_EQ(result, kErrorOk);
+    dbg_printf("%s:%d\r\n", __func__, __LINE__);
     return result;
   }
 
+  dbg_printf("%s:%d hehe\r\n", __func__, __LINE__);
   return kErrorSigverifyBadRsaSignature;
 }
 

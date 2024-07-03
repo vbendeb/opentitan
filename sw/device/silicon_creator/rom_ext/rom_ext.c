@@ -237,9 +237,12 @@ static rom_error_t rom_ext_verify(const manifest_t *manifest,
                                   const boot_data_t *boot_data) {
   RETURN_IF_ERROR(rom_ext_boot_policy_manifest_check(manifest, boot_data));
   const sigverify_rsa_key_t *key;
+  dbg_printf("%s:%d\r\n", __func__, __LINE__);
   RETURN_IF_ERROR(sigverify_rsa_key_get(
       sigverify_rsa_key_id_get(&manifest->rsa_modulus), &key));
 
+  dbg_printf("%s:%d key ID: %x\r\n", __func__, __LINE__,
+             sigverify_rsa_key_id_get(&manifest->rsa_modulus));
   memset(boot_measurements.bl0.data, (int)rnd_uint32(),
          sizeof(boot_measurements.bl0.data));
 
@@ -775,6 +778,7 @@ static rom_error_t rom_ext_try_next_stage(boot_data_t *boot_data) {
       rom_ext_boot_policy_manifests_get(boot_data);
   rom_error_t error = kErrorRomExtBootFailed;
   rom_error_t slot[2] = {0, 0};
+  dbg_printf("%s:%d\r\n", __func__, __LINE__);
   for (size_t i = 0; i < ARRAYSIZE(manifests.ordered); ++i) {
     error = rom_ext_verify(manifests.ordered[i], boot_data);
     slot[i] = error;
@@ -791,7 +795,7 @@ static rom_error_t rom_ext_try_next_stage(boot_data_t *boot_data) {
       return kErrorRomExtBootFailed;
     }
     boot_log_digest_update(boot_log);
-
+    dbg_printf("%s:%d try manifest %d\n\r", __func__, __LINE__, i);
     // Boot fails if a verified ROM_EXT cannot be booted.
     RETURN_IF_ERROR(rom_ext_boot(manifests.ordered[i]));
     // `rom_ext_boot()` should never return `kErrorOk`, but if it does
@@ -837,7 +841,7 @@ static rom_error_t rom_ext_start(boot_data_t *boot_data, boot_log_t *boot_log) {
   boot_log->rom_ext_min_sec_ver = boot_data->min_security_version_rom_ext;
   boot_log->bl0_min_sec_ver = boot_data->min_security_version_bl0;
   boot_log->primary_bl0_slot = boot_data->primary_bl0_slot;
-
+  dbg_printf("%s:%d\r\n", __func__, __LINE__);
   // Initialize the chip ownership state.
   HARDENED_RETURN_IF_ERROR(ownership_init());
 
@@ -851,17 +855,20 @@ static rom_error_t rom_ext_start(boot_data_t *boot_data, boot_log_t *boot_log) {
     // for a reboot.
     return error;
   }
+  dbg_printf("%s:%d\r\n", __func__, __LINE__);
 
   // Re-sync the boot_log entries that could be changed by boot services.
   boot_log->rom_ext_nonce = boot_data->nonce;
   boot_log->ownership_state = boot_data->ownership_state;
   boot_log_digest_update(boot_log);
+  dbg_printf("%s:%d\r\n", __func__, __LINE__);
 
   if (uart_break_detect(kRescueDetectTime) == kHardenedBoolTrue) {
     dbg_printf("rescue: remember to clear break\r\n");
     uart_enable_receiver();
     error = rescue_protocol();
   } else {
+    dbg_printf("%s:%d\r\n", __func__, __LINE__);
     error = rom_ext_try_next_stage(boot_data);
   }
   return error;
