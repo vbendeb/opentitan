@@ -33,12 +33,13 @@ pub const CHIP_MANIFEST_SIZE: u32 = 1024;
 pub const CHIP_MANIFEST_VERSION_MAJOR2: u16 = 0x0002;
 pub const CHIP_MANIFEST_VERSION_MINOR1: u16 = 0x6c47;
 pub const CHIP_MANIFEST_VERSION_MAJOR1: u16 = 0x71c3;
-pub const CHIP_MANIFEST_EXT_TABLE_COUNT: usize = 15;
+pub const CHIP_MANIFEST_EXT_TABLE_COUNT: usize = 14;
 pub const MANIFEST_USAGE_CONSTRAINT_UNSELECTED_WORD_VAL: u32 = 0xa5a5a5a5;
 pub const MANIFEST_EXT_ID_SPX_KEY: u32 = 0x94ac01ec;
 pub const MANIFEST_EXT_ID_SPX_SIGNATURE: u32 = 0xad77f84a;
 pub const MANIFEST_EXT_NAME_SPX_KEY: u32 = 0x30545845;
 pub const MANIFEST_EXT_NAME_SPX_SIGNATURE: u32 = 0x31545845;
+pub const MANIFEST_SW_VERSION_SIZE: usize = 8;
 pub const CHIP_ROM_EXT_IDENTIFIER: u32 = 0x4552544f;
 pub const CHIP_BL0_IDENTIFIER: u32 = 0x3042544f;
 pub const CHIP_ROM_EXT_SIZE_MIN: u32 = 8788;
@@ -75,6 +76,7 @@ pub struct Manifest {
     pub code_end: u32,
     pub entry_point: u32,
     pub extensions: ManifestExtTable,
+    pub sw_version: ManifestSwVersion,
 }
 
 /// A type that holds 2 16-bit values for manifest major and minor format versions.
@@ -83,6 +85,14 @@ pub struct Manifest {
 pub struct ManifestVersion {
     pub minor: u16,
     pub major: u16,
+}
+
+/// A type that holds the SW version of the image, up to 8 ASCII characters, for
+/// instance a GIT sha trailed by the '+' sign if the git tree is  not clean.
+#[repr(C)]
+#[derive(AsBytes, FromBytes, FromZeroes, Debug, Default, Copy, Clone)]
+pub struct ManifestSwVersion {
+    pub sw_version: [u8; MANIFEST_SW_VERSION_SIZE],
 }
 
 /// A type that holds 1964 32-bit words for SPHINCS+ signatures.

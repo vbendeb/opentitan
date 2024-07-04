@@ -2,7 +2,7 @@
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 
-use anyhow::{ensure, Result};
+use anyhow::{bail, ensure, Result};
 use memoffset::offset_of;
 use std::collections::HashSet;
 use std::convert::TryInto;
@@ -18,8 +18,9 @@ use crate::crypto::rsa::RsaPublicKey;
 use crate::crypto::rsa::Signature as RsaSignature;
 use crate::crypto::sha256;
 use crate::image::manifest::{
-    Manifest, ManifestKind, CHIP_MANIFEST_VERSION_MAJOR1, CHIP_MANIFEST_VERSION_MAJOR2,
-    CHIP_MANIFEST_VERSION_MINOR1, CHIP_ROM_EXT_IDENTIFIER, CHIP_ROM_EXT_SIZE_MAX,
+    Manifest, ManifestKind, ManifestSwVersion, CHIP_MANIFEST_VERSION_MAJOR1,
+    CHIP_MANIFEST_VERSION_MAJOR2, CHIP_MANIFEST_VERSION_MINOR1, CHIP_ROM_EXT_IDENTIFIER,
+    CHIP_ROM_EXT_SIZE_MAX,
 };
 use crate::image::manifest_def::{ManifestSigverifyBuffer, ManifestSpec};
 use crate::image::manifest_ext::{ManifestExtEntry, ManifestExtSpec};
@@ -507,11 +508,21 @@ impl Image {
         self.map_signed_region(|v| sha256::sha256(v))
     }
 
-    pub fn update_timestamp(&mut self, timestamp:u64)->Result<()> {
+    pub fn update_timestamp(&mut self, timestamp: u64) -> Result<()> {
         let manifest = self.borrow_manifest_mut()?;
 
         manifest.timestamp.timestamp_high = (timestamp >> 32) as u32;
         manifest.timestamp.timestamp_low = timestamp as u32;
+        Ok(())
+    }
+
+    pub fn update_sw_version(&mut self, sw_version: &str) -> Result<()> {
+        let manifest = self.borrow_manifest_mut()?;
+        let len = sw_version.len();
+        if len > std::mem::size_of::<ManifestSwVersion>() {
+            bail!("sw_version string is too long");
+        }
+        manifest.sw_version.sw_version[0..len].copy_from_slice(&sw_version.as_bytes());
         Ok(())
     }
 }

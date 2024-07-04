@@ -28,7 +28,7 @@
 /**
  * Number of entries in the manifest extensions table.
  */
-#define CHIP_MANIFEST_EXT_TABLE_ENTRY_COUNT 15
+#define CHIP_MANIFEST_EXT_TABLE_ENTRY_COUNT 14
 
 /**
  * Size of the header of a boot services message.

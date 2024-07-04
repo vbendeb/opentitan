@@ -331,6 +331,7 @@ typedef struct manifest {
    * Extensions.
    */
   manifest_ext_table_t extensions;
+  char sw_version[8];
 } manifest_t;
 
 OT_ASSERT_MEMBER_OFFSET(manifest_t, rsa_signature, 0);

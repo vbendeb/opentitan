@@ -240,6 +240,7 @@ manifest_def! {
         code_end: ManifestSmallInt<u32>,
         entry_point: ManifestSmallInt<u32>,
         extensions: [ManifestExtTableEntryDef; CHIP_MANIFEST_EXT_TABLE_COUNT],
+        sw_version: [ManifestSmallInt<u8>; MANIFEST_SW_VERSION_SIZE],
     }, Manifest
 }
 
@@ -410,6 +411,26 @@ impl From<[ManifestExtTableEntry; CHIP_MANIFEST_EXT_TABLE_COUNT]> for ManifestEx
     }
 }
 
+impl From<[u8; MANIFEST_SW_VERSION_SIZE]> for ManifestSwVersion {
+    fn from(o: [u8; MANIFEST_SW_VERSION_SIZE]) -> ManifestSwVersion {
+        ManifestSwVersion { sw_version: o }
+    }
+}
+
+impl From<&ManifestSwVersion> for [ManifestSmallInt<u8>; MANIFEST_SW_VERSION_SIZE] {
+    fn from(o: &ManifestSwVersion) -> [ManifestSmallInt<u8>; MANIFEST_SW_VERSION_SIZE] {
+        [
+            ManifestSmallInt(Some(HexEncoded(o.sw_version[0]))),
+            ManifestSmallInt(Some(HexEncoded(o.sw_version[1]))),
+            ManifestSmallInt(Some(HexEncoded(o.sw_version[2]))),
+            ManifestSmallInt(Some(HexEncoded(o.sw_version[3]))),
+            ManifestSmallInt(Some(HexEncoded(o.sw_version[4]))),
+            ManifestSmallInt(Some(HexEncoded(o.sw_version[5]))),
+            ManifestSmallInt(Some(HexEncoded(o.sw_version[6]))),
+            ManifestSmallInt(Some(HexEncoded(o.sw_version[7]))),
+        ]
+    }
+}
 impl From<&ManifestExtTable> for [ManifestExtTableEntryDef; CHIP_MANIFEST_EXT_TABLE_COUNT] {
     fn from(o: &ManifestExtTable) -> [ManifestExtTableEntryDef; CHIP_MANIFEST_EXT_TABLE_COUNT] {
         o.entries.map(|v| (&v).into())

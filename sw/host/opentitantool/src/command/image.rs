@@ -153,6 +153,9 @@ pub struct ManifestUpdateCommand {
     /// Set manifest timestamp field to this u64 value.
     #[arg(long)]
     timestamp: Option<u64>,
+    /// Set the 8 byte version field to the passed in string.
+    #[arg(long)]
+    sw_version: Option<String>,
 }
 
 fn load_rsa_key(key_file: &Path) -> Result<(RsaPublicKey, Option<RsaPrivateKey>)> {
@@ -219,11 +222,15 @@ impl CommandDispatch for ManifestUpdateCommand {
             }
         }
 
-        // If requested, set the timestamp field first, before any signing.
+        // If requested, set the timestamp and version fields first, before any
+        // signing.
         if let Some(timestamp) = &self.timestamp {
             image.update_timestamp(*timestamp)?;
         }
 
+        if let Some(sw_version) = &self.sw_version {
+            image.update_sw_version(sw_version)?;
+        }
         // Load / write ECDSA public key.
         let mut ecdsa_private_key: Option<EcdsaPrivateKey> = None;
         if let Some(key) = &self.ecdsa_key {
@@ -432,6 +439,7 @@ pub enum ManifestCommand {
 }
 
 #[derive(Debug, Subcommand, CommandDispatch)]
+#[allow(clippy::large_enum_variant)]
 /// Image manipulation commands.
 pub enum Image {
     Assemble(AssembleCommand),
