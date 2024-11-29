@@ -406,7 +406,7 @@ filegroup(
                     config["ca_config"]: "ca_config",
                     ":ft_fw_bundle_{}".format(sku): "bundle",
                 },
-            changes_otp = True,
+            changes_otp = False,
             data = config["ca_data"],
             needs_jtag = True,
             otp = "//hw/ip/otp_ctrl/data/earlgrey_skus/emulation:otp_img_test_locked0_manuf_initialized",
