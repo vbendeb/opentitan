@@ -85,46 +85,26 @@
         Policy vector distributed to the subscribing RACL IPs.
       '''
     }
-    { struct:  "logic",
-      type:    "uni",
-      name:    "racl_error",
-      act:     "rcv",
-      width  : "NumSubscribingIps",
-      desc:    '''
-        Error notification vector collecting errors from all subscribing IPs.
-        A 1 indicates the corresponding IP raised a RACL error and the error log needs to be collected.
-        Only one IP can raise an error at a time.
-      '''
-    }
     { struct:  "racl_error_log",
       type:    "uni",
-      name:    "racl_error_log",
+      name:    "racl_error",
       act:     "rcv",
       width:   "NumSubscribingIps"
       package: "top_racl_pkg",
       desc:    '''
         Error log information from all IPs.
-      '''
-    }
-    { struct:  "logic",
-      type:    "uni",
-      name:    "racl_error_external",
-      act:     "rcv",
-      width  : "NumExternalSubscribingIps",
-      desc:    '''
-        Error notification vector collecting errors from all external subscribing IPs.
-        A 1 indicates the corresponding IP raised a RACL error and the error log needs to be collected.
         Only one IP can raise an error at a time.
       '''
     }
     { struct:  "racl_error_log",
       type:    "uni",
-      name:    "racl_error_log_external",
+      name:    "racl_error_external",
       act:     "rcv",
       width:   "NumExternalSubscribingIps"
       package: "top_racl_pkg",
       desc:    '''
         Error log information from all external IPs.
+        Only one IP can raise an error at a time.
       '''
     }
   ],
@@ -180,7 +160,7 @@
     % for policy in policies:
     { name: "POLICY_${policy['name'].upper()}${"_SHADOWED" if enable_shadow_reg else ""}"
       desc: '''
-            Read and write policy for ${policy}
+            Read and write policy for ${policy['name']}
             '''
       swaccess: "rw"
       hwaccess: "hro"
@@ -194,14 +174,14 @@
           name: "write_perm"
           resval: ${policy['wr_default']}
           desc: '''
-                Write permission for policy ${policy}
+                Write permission for policy ${policy['name']}
                 '''
         }
         { bits: "15:0"
           name: "read_perm"
           resval: ${policy['rd_default']}
           desc: '''
-                Read permission for policy ${policy}
+                Read permission for policy ${policy['name']}
                 '''
         }
       ]

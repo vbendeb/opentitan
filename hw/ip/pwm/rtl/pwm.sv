@@ -7,12 +7,12 @@
 module pwm
   import pwm_reg_pkg::*;
 #(
-  parameter logic [NumAlerts-1:0] AlertAsyncOn         = {NumAlerts{1'b1}},
-  parameter bit                   EnableRacl           = 1'b0,
-  parameter bit                   RaclErrorRsp         = EnableRacl,
-  parameter int unsigned          RaclPolicySelVec[23] = '{23{0}},
-  parameter int                   PhaseCntDw           = 16,
-  parameter int                   BeatCntDw            = 27
+  parameter logic [NumAlerts-1:0]           AlertAsyncOn              = {NumAlerts{1'b1}},
+  parameter bit                             EnableRacl                = 1'b0,
+  parameter bit                             RaclErrorRsp              = EnableRacl,
+  parameter top_racl_pkg::racl_policy_sel_t RaclPolicySelVec[NumRegs] = '{NumRegs{0}},
+  parameter int                             PhaseCntDw                = 16,
+  parameter int                             BeatCntDw                 = 27
 ) (
   input                       clk_i,
   input                       rst_ni,
@@ -28,8 +28,7 @@ module pwm
 
   // RACL interface
   input  top_racl_pkg::racl_policy_vec_t  racl_policies_i,
-  output logic                            racl_error_o,
-  output top_racl_pkg::racl_error_log_t   racl_error_log_o,
+  output top_racl_pkg::racl_error_log_t   racl_error_o,
 
   output logic [NOutputs-1:0] cio_pwm_o,
   output logic [NOutputs-1:0] cio_pwm_en_o
@@ -52,7 +51,6 @@ module pwm
     .reg2hw           (reg2hw),
     .racl_policies_i  (racl_policies_i),
     .racl_error_o     (racl_error_o),
-    .racl_error_log_o (racl_error_log_o),
     // SEC_CM: BUS.INTEGRITY
     .intg_err_o       (alerts[0])
   );
@@ -99,8 +97,7 @@ module pwm
   `ASSERT_KNOWN(CioPWMKnownO_A, cio_pwm_o)
   `ASSERT(CioPWMEnIsOneO_A, (&cio_pwm_en_o) === 1'b1)
 
-  `ASSERT_KNOWN(RaclErrorKnown_A, racl_error_o)
-  `ASSERT_KNOWN(RaclErrorLogKnown_A, racl_error_log_o)
+  `ASSERT_KNOWN(RaclErrorValidKnown_A, racl_error_o.valid)
 
   // Alert assertions for reg_we onehot check
   `ASSERT_PRIM_REG_WE_ONEHOT_ERROR_TRIGGER_ALERT(RegWeOnehotCheck_A, u_reg, alert_tx_o[0])

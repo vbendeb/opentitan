@@ -9,11 +9,12 @@
     nr_role_bits: 4
     nr_ctn_uid_bits: 5
     nr_policies: 3
-    nr_subscribing_ips: 8
+    nr_subscribing_ips: 9
     policies:
     [
       {
         name: ALL_RD_WR
+        desc: Standard policies allowing all roles to access a register
         allowed_rd:
         [
           ROT
@@ -32,6 +33,7 @@
       {
         name: ROT_PRIVATE
         rot_private: true
+        desc: Standard policies allowing only the ROT role to access a register
         allowed_rd:
         [
           ROT
@@ -45,6 +47,7 @@
       }
       {
         name: SOC_ROT
+        desc: Custom policy
         allowed_rd:
         [
           ROT

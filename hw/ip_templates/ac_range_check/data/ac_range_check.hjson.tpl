@@ -7,7 +7,7 @@ import math
 %>\
 # AC Range Check register template
 {
-  name:               "ac_range_check"
+  name:               "${module_instance_name}"
   human_name:         "Access Control Range Check"
   one_line_desc:      "Access Control Range Check."
   one_paragraph_desc: '''
@@ -28,7 +28,7 @@ import math
       default: "${num_ranges}",
     },
     { name:    "DenyCountWidth",
-      desc:    "Witdth of the deny counter",
+      desc:    "Width of the deny counter",
       type:    "int",
       default: "8",
       local:   "true"
@@ -37,7 +37,7 @@ import math
   inter_signal_list: [
     { name:    "range_check_overwrite"
       type:    "uni",
-      act:     "req",
+      act:     "rcv",
       package: "prim_mubi_pkg",
       struct:  "mubi8",
       width:   "1"
@@ -70,6 +70,26 @@ import math
       name:    "ctn_filtered_tl_d2h"
       act:     "rcv"
       desc:    "Filtered TL-UL output port (response part), synchronous"
+    }
+    { struct:  "racl_policy_vec",
+      type:    "uni",
+      name:    "racl_policies",
+      act:     "rcv",
+      package: "top_racl_pkg",
+      desc:    '''
+        Incoming RACL policy vector from a racl_ctrl instance.
+        The policy selection vector (parameter) selects the policy for each register.
+      '''
+    }
+    { struct:  "racl_error_log",
+      type:    "uni",
+      name:    "racl_error",
+      act:     "req",
+      width:   "1"
+      package: "top_racl_pkg",
+      desc:    '''
+        RACL error log information of this module.
+      '''
     }
   ]
   interrupt_list: [
@@ -105,7 +125,8 @@ import math
         { bits: "1"
           name: "log_clear"
           resval: 0x0
-          desc: '''Clears all log information for the first denied access including: 
+          hwqe: "true"
+          desc: '''Clears all log information for the first denied access including:
                     - LOG_STATUS
                     - LOG_ADDRESS.
           '''
@@ -119,7 +140,7 @@ import math
     }
     { name: "LOG_STATUS"
       desc: '''
-            The LOG_STATUS register stores the number of denied accesses and gives more detailed diagnostics to the first denied request. 
+            The LOG_STATUS register stores the number of denied accesses and gives more detailed diagnostics to the first denied request.
             All fields of LOG_STATUS (other than deny_cnt) are only valid if deny_cnt > 0.
             '''
       swaccess: "ro"
@@ -202,7 +223,7 @@ import math
     { multireg: {
         name: "RANGE_REGWEN"
         desc: '''
-              This register exists per range and provides a regwen signal for the RANGE_BASE_x, RANGE_LIMIT_x, RANGE_PERM_x, and RANGE_RACL_POLICY_SHADOWED_x register. 
+              This register exists per range and provides a regwen signal for the RANGE_BASE_x, RANGE_LIMIT_x, RANGE_PERM_x, and RANGE_RACL_POLICY_SHADOWED_x register.
               When cleared to Mubi4::False, the corresponding range configuration registers are locked and cannot be changed until the next reset.
               '''
         count: "NumRanges"
@@ -215,7 +236,7 @@ import math
             resval: true
             mubi: true
             name: "regwen"
-            desc: "Clearing this register, locks the confgiguration registers of that range until the next reset."
+            desc: "Clearing this register locks the configuration registers of that range until the next reset."
           }
         ]
       }
@@ -246,7 +267,7 @@ import math
     { multireg: {
         name: "RANGE_LIMIT"
         desc: '''
-              The (exclusive) limit address register used for the address matching. 
+              The (exclusive) limit address register used for the address matching.
               '''
         count: "NumRanges"
         cname: "BASE"
@@ -313,9 +334,9 @@ import math
     { multireg: {
         name: "RANGE_RACL_POLICY_SHADOWED"
         desc: '''
-              The RACL policy register exists and allows the system to further restrict the access to specific source roles.
-              The default value for both the read and write permission bitmap is set to a value to allow the access from all roles.
-              This register is protected against fault attacks by using a shadow register implementation. 
+              The RACL policy register allows the system to further restrict the access to specific source roles.
+              The default value for both the read and write permission bitmaps is to deny access for all roles.
+              This register is protected against fault attacks by using a shadow register implementation.
               '''
         count: "NumRanges"
         cname: "RACL"
@@ -324,6 +345,8 @@ import math
         regwen: "RANGE_REGWEN"
         regwen_multi: true
         shadowed: "true",
+        update_err_alert: "recov_ctrl_update_err",
+        storage_err_alert: "fatal_fault",
         fields: [
           { name: "write_perm"
             desc: "Write permission policy bitmap."

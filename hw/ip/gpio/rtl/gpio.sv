@@ -10,13 +10,13 @@ module gpio
   import gpio_pkg::*;
   import gpio_reg_pkg::*;
 #(
-  parameter logic [NumAlerts-1:0] AlertAsyncOn          = {NumAlerts{1'b1}},
-  parameter bit                   GpioAsHwStrapsEn      = 1,
+  parameter logic [NumAlerts-1:0]           AlertAsyncOn              = {NumAlerts{1'b1}},
+  parameter bit                             GpioAsHwStrapsEn          = 1,
   // This parameter instantiates 2-stage synchronizers on all GPIO inputs.
-  parameter bit                   GpioAsyncOn          = 1,
-  parameter bit                   EnableRacl           = 1'b0,
-  parameter bit                   RaclErrorRsp         = 1'b1,
-  parameter int unsigned          RaclPolicySelVec[18] = '{18{0}}
+  parameter bit                             GpioAsyncOn               = 1,
+  parameter bit                             EnableRacl                = 1'b0,
+  parameter bit                             RaclErrorRsp              = 1'b1,
+  parameter top_racl_pkg::racl_policy_sel_t RaclPolicySelVec[NumRegs] = '{NumRegs{0}}
 ) (
   input clk_i,
   input rst_ni,
@@ -38,8 +38,7 @@ module gpio
 
   // RACL interface
   input  top_racl_pkg::racl_policy_vec_t  racl_policies_i,
-  output logic                            racl_error_o,
-  output top_racl_pkg::racl_error_log_t   racl_error_log_o,
+  output top_racl_pkg::racl_error_log_t   racl_error_o,
 
   // GPIOs
   input        [31:0] cio_gpio_i,
@@ -234,7 +233,6 @@ module gpio
 
     .racl_policies_i,
     .racl_error_o,
-    .racl_error_log_o,
 
     // SEC_CM: BUS.INTEGRITY
     .intg_err_o (alerts[0])
@@ -245,8 +243,7 @@ module gpio
   `ASSERT_KNOWN(CioGpioEnOKnown, cio_gpio_en_o)
   `ASSERT_KNOWN(CioGpioOKnown, cio_gpio_o)
   `ASSERT_KNOWN(AlertsKnown_A, alert_tx_o)
-  `ASSERT_KNOWN(RaclErrorKnown_A, racl_error_o)
-  `ASSERT_KNOWN(RaclErrorLogKnown_A, racl_error_log_o)
+  `ASSERT_KNOWN(RaclErrorValidKnown_A, racl_error_o.valid)
 
   // Alert assertions for reg_we onehot check
   `ASSERT_PRIM_REG_WE_ONEHOT_ERROR_TRIGGER_ALERT(RegWeOnehotCheck_A, u_reg, alert_tx_o[0])

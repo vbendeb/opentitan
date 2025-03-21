@@ -28,14 +28,9 @@ enum {
 // Message
 static const char kMessage[] = "test message";
 
-static const otcrypto_ecc_curve_t kCurveP384 = {
-    .curve_type = kOtcryptoEccCurveTypeNistP384,
-    .domain_parameter = NULL,
-};
-
 static const otcrypto_key_config_t kPrivateKeyConfig = {
     .version = kOtcryptoLibVersion1,
-    .key_mode = kOtcryptoKeyModeEcdsa,
+    .key_mode = kOtcryptoKeyModeEcdsaP384,
     .key_length = kP384PrivateKeyBytes,
     .hw_backed = kHardenedBoolTrue,
     .security_level = kOtcryptoKeySecurityLevelLow,
@@ -63,15 +58,14 @@ status_t sign_then_verify_test(void) {
   // Allocate space for a public key.
   uint32_t pk[kP384PublicKeyWords] = {0};
   otcrypto_unblinded_key_t public_key = {
-      .key_mode = kOtcryptoKeyModeEcdsa,
+      .key_mode = kOtcryptoKeyModeEcdsaP384,
       .key_length = sizeof(pk),
       .key = pk,
   };
 
   // Generate a keypair.
   LOG_INFO("Generating keypair...");
-  CHECK_STATUS_OK(
-      otcrypto_ecdsa_keygen(&kCurveP384, &private_key, &public_key));
+  CHECK_STATUS_OK(otcrypto_ecdsa_p384_keygen(&private_key, &public_key));
 
   // Hash the message.
   otcrypto_const_byte_buf_t msg = {
@@ -91,17 +85,17 @@ status_t sign_then_verify_test(void) {
 
   // Generate a signature for the message.
   LOG_INFO("Signing...");
-  CHECK_STATUS_OK(otcrypto_ecdsa_sign(
-      &private_key, msg_digest, &kCurveP384,
+  CHECK_STATUS_OK(otcrypto_ecdsa_p384_sign(
+      &private_key, msg_digest,
       (otcrypto_word32_buf_t){.data = sig, .len = ARRAYSIZE(sig)}));
 
   // Verify the signature.
   LOG_INFO("Verifying...");
   hardened_bool_t verification_result;
-  CHECK_STATUS_OK(otcrypto_ecdsa_verify(
+  CHECK_STATUS_OK(otcrypto_ecdsa_p384_verify(
       &public_key, msg_digest,
       (otcrypto_const_word32_buf_t){.data = sig, .len = ARRAYSIZE(sig)},
-      &kCurveP384, &verification_result));
+      &verification_result));
 
   // The signature should pass verification.
   TRY_CHECK(verification_result == kHardenedBoolTrue);

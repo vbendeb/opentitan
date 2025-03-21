@@ -15,6 +15,12 @@ package top_racl_pkg;
   // Number of RACL policies used
   parameter int unsigned NrRaclPolicies = 1;
 
+  // RACL Policy selector bits
+  parameter int unsigned RaclPolicySelLen = prim_util_pkg::vbits(NrRaclPolicies);
+
+  // RACL Policy selector type
+  typedef logic [RaclPolicySelLen-1:0] racl_policy_sel_t;
+
   // Number of RACL bits transferred
   parameter int unsigned NrRaclBits = 1;
 
@@ -50,11 +56,19 @@ package top_racl_pkg;
 
   // RACL information logged in case of a denial
   typedef struct packed {
+    logic       valid;        // Error information is valid
+    logic       overflow;     // Error overflow, More than 1 RACL error at a time
     racl_role_t racl_role;
     ctn_uid_t   ctn_uid;
-    // 0: Write access, 1: Read access
-    logic       read_access;
+    logic       read_access;  // 0: Write access, 1: Read access
   } racl_error_log_t;
+
+  // Range definition for RACL protected SRAM adapter
+  typedef struct packed {
+    logic [top_pkg::TL_AW-1:0] base;
+    logic [top_pkg::TL_AW-1:0] mask;
+    racl_policy_sel_t          policy_sel;
+  } racl_range_t;
 
   // Extract RACL role bits from the TLUL reserved user bits
   function automatic racl_role_t tlul_extract_racl_role_bits(logic [tlul_pkg::RsvdWidth-1:0] rsvd);

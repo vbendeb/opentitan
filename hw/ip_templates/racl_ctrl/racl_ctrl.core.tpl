@@ -11,6 +11,7 @@ filesets:
       - lowrisc:ip:tlul
       - lowrisc:prim:mubi
       - lowrisc:prim:all
+      - lowrisc:prim:racl_error_arb
       - lowrisc:systems:top_racl_pkg
     files:
       - rtl/${module_instance_name}_reg_pkg.sv
@@ -30,7 +31,7 @@ filesets:
       - lowrisc:lint:common
       - lowrisc:lint:comportable
     files:
-      - lint/racl_ctrl.waiver
+      - lint/${module_instance_name}.waiver
     file_type: waiver
 
   files_veriblelint_waiver:

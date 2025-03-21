@@ -111,19 +111,9 @@
         The policy selection vector (parameter) selects the policy for each register.
       '''
     }
-    { struct:  "logic",
-      type:    "uni",
-      name:    "racl_error",
-      act:     "req",
-      width  : "1",
-      desc:    '''
-        RACL error indication signal.
-        If 1, the error log contains valid information.
-      '''
-    }
     { struct:  "racl_error_log",
       type:    "uni",
-      name:    "racl_error_log",
+      name:    "racl_error",
       act:     "req",
       width:   "1"
       package: "top_racl_pkg",
@@ -153,16 +143,19 @@
 
   regwidth: "32",
   registers: [
-% for i in range(src):
-    { name: "PRIO${i}",
-      desc: "Interrupt Source ${i} Priority",
-      swaccess: "rw",
-      hwaccess: "hro",
-      fields: [
-        { bits: "${(prio).bit_length()-1}:0" }
-      ],
+    { multireg:
+      { name: "PRIO",
+        desc: "Interrupt Source Priority",
+        count: "NumSrc",
+        cname: "${(module_instance_name).upper()}",
+        swaccess: "rw",
+        hwaccess: "hro",
+        compact: false,
+        fields: [
+          { bits: "${(prio).bit_length()-1}:0" }
+        ],
+      }
     }
-% endfor
     { skipto: "0x00001000" }
     { multireg: {
         name: "IP",

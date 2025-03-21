@@ -41,6 +41,7 @@ filesets:
       - lowrisc:top_darjeeling:xbar_main
       - lowrisc:top_darjeeling:xbar_mbx
       - lowrisc:top_darjeeling:xbar_peri
+      - lowrisc:opentitan:top_darjeeling_ac_range_check
       - lowrisc:opentitan:top_darjeeling_alert_handler
       - lowrisc:opentitan:top_darjeeling_clkmgr
       - lowrisc:opentitan:top_darjeeling_otp_ctrl
@@ -63,6 +64,7 @@ filesets:
       - "!fileset_partner ? (lowrisc:systems:top_darjeeling_ast_pkg)"
     files:
       - rtl/autogen/top_darjeeling_rnd_cnst_pkg.sv
+      - rtl/autogen/top_darjeeling_racl_pkg.sv
       - rtl/autogen/top_darjeeling.sv
     file_type: systemVerilogSource
 

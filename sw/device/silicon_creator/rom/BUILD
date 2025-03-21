@@ -98,7 +98,6 @@ cc_library(
     srcs = ["rom_start.S"],
     target_compatible_with = [OPENTITAN_CPU],
     deps = [
-        ":linker_script",
         ":rom_common",
         ":rom_epmp",
         "//hw/top:aon_timer_c_regs",
@@ -200,10 +199,16 @@ opentitan_binary(
         "//hw/top_earlgrey:fpga_cw340",
         "//hw/top_earlgrey:sim_dv_base",
         "//hw/top_earlgrey:sim_verilator_base",
+        "//hw/top_earlgrey:sim_qemu_base",
         "//hw/top_earlgrey:silicon_creator",
     ],
     kind = "rom",
     linker_script = ":linker_script",
+    transitive_features = [
+        "use_lld",
+        "lto",
+        "minsize",
+    ],
     deps = [
         ":mask_rom_lib",
         # We depend on rom_isrs here rather than in mask_rom_lib so that the

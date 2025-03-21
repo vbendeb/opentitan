@@ -12,9 +12,10 @@ class sram_bkdr_util extends mem_bkdr_util;
   function new(string name = "", string path, int unsigned depth,
                longint unsigned n_bits, err_detection_e err_detection_scheme,
                int num_prince_rounds_half = 3,
-               int extra_bits_per_subword = 0, int unsigned system_base_addr = 0);
+               int extra_bits_per_subword = 0, int unsigned system_base_addr = 0,
+               string tiling_path = "", uint32_t tile_depth = depth);
     super.new(name, path, depth, n_bits, err_detection_scheme, num_prince_rounds_half,
-              extra_bits_per_subword, system_base_addr);
+              extra_bits_per_subword, system_base_addr, tiling_path, tile_depth);
   endfunction
 
   // Returns the address after scrambling it using the given nonce.
@@ -87,7 +88,7 @@ class sram_bkdr_util extends mem_bkdr_util;
 
   // Returns the data at the given address after descrambling the address and decrypting the data.
   // It simply ignores the integrity bits.
-  virtual function logic [38:0] sram_encrypt_read32_integ(logic [bus_params_pkg::BUS_AW-1:0] addr,
+  virtual function logic [31:0] sram_encrypt_read32_integ(logic [bus_params_pkg::BUS_AW-1:0] addr,
                                                           logic [SRAM_KEY_WIDTH-1:0]         key,
                                                           logic [SRAM_BLOCK_WIDTH-1:0]       nonce,
                                                           int extra_addr_bits);

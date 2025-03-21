@@ -8,17 +8,17 @@ module mbx
   import tlul_pkg::*;
   import mbx_reg_pkg::*;
 #(
-  parameter logic [NumAlerts-1:0] AlertAsyncOn    = {NumAlerts{1'b1}},
-  parameter int unsigned CfgSramAddrWidth         = 32,
-  parameter int unsigned CfgSramDataWidth         = 32,
-  parameter int unsigned CfgObjectSizeWidth       = 11,
-  parameter bit          DoeIrqSupport            = 1'b1,
-  parameter bit          DoeAsyncMsgSupport       = 1'b1,
-  parameter bit          EnableRacl               = 1'b0,
-  parameter bit          RaclErrorRsp             = EnableRacl,
-  parameter int unsigned RaclPolicySelVecSoc[4]   = '{4{0}},
-  parameter int unsigned RaclPolicySelWinSocWdata = 0,
-  parameter int unsigned RaclPolicySelWinSocRdata = 0
+  parameter logic [NumAlerts-1:0]           AlertAsyncOn                    = {NumAlerts{1'b1}},
+  parameter int unsigned                    CfgSramAddrWidth                = 32,
+  parameter int unsigned                    CfgSramDataWidth                = 32,
+  parameter int unsigned                    CfgObjectSizeWidth              = 11,
+  parameter bit                             DoeIrqSupport                   = 1'b1,
+  parameter bit                             DoeAsyncMsgSupport              = 1'b1,
+  parameter bit                             EnableRacl                      = 1'b0,
+  parameter bit                             RaclErrorRsp                    = EnableRacl,
+  parameter top_racl_pkg::racl_policy_sel_t RaclPolicySelVecSoc[NumRegsSoc] = '{NumRegsSoc{0}},
+  parameter top_racl_pkg::racl_policy_sel_t RaclPolicySelWinSocWdata        = 0,
+  parameter top_racl_pkg::racl_policy_sel_t RaclPolicySelWinSocRdata        = 0
 ) (
   input  logic                                      clk_i,
   input  logic                                      rst_ni,
@@ -36,8 +36,7 @@ module mbx
   output prim_alert_pkg::alert_tx_t [NumAlerts-1:0] alert_tx_o,
   // RACL interface
   input  top_racl_pkg::racl_policy_vec_t            racl_policies_i,
-  output logic                                      racl_error_o,
-  output top_racl_pkg::racl_error_log_t             racl_error_log_o,
+  output top_racl_pkg::racl_error_log_t             racl_error_o,
   // Device port facing OpenTitan
   input   tlul_pkg::tl_h2d_t                        core_tl_d_i,
   output  tlul_pkg::tl_d2h_t                        core_tl_d_o,
@@ -246,8 +245,7 @@ module mbx
     .read_data_i                         ( sysif_read_data                    ),
     // RACL interface
     .racl_policies_i                     ( racl_policies_i                    ),
-    .racl_error_o                        ( racl_error_o                       ),
-    .racl_error_log_o                    ( racl_error_log_o                   )
+    .racl_error_o                        ( racl_error_o                       )
   );
 
 
@@ -373,6 +371,7 @@ module mbx
   `ASSERT_KNOWN(CoreTlAReadyKnownO_A, core_tl_d_o.a_ready)
   `ASSERT_KNOWN(SocTlDValidKnownO_A, soc_tl_d_o.d_valid)
   `ASSERT_KNOWN(SocTlAReadyKnownO_A, soc_tl_d_o.a_ready)
-  `ASSERT_KNOWN(RaclErrorKnown_A, racl_error_o)
-  `ASSERT_KNOWN(RaclErrorLogKnown_A, racl_error_log_o)
+  `ASSERT_KNOWN(SramTlAValidKnownO_A, sram_tl_h_o.a_valid)
+  `ASSERT_KNOWN(SramTlDReadyKnownO_A, sram_tl_h_o.d_ready)
+  `ASSERT_KNOWN(RaclErrorValidKnown_A, racl_error_o.valid)
 endmodule

@@ -8,7 +8,6 @@ load(
 )
 load(
     "//rules/opentitan:defs.bzl",
-    "CLEAR_KEY_SET",
     "DEFAULT_TEST_FAILURE_MSG",
     "DEFAULT_TEST_SUCCESS_MSG",
     "fpga_cw305",
@@ -16,8 +15,10 @@ load(
     "fpga_cw340",
     "silicon",
     "sim_dv",
+    "sim_qemu",
     "sim_verilator",
 )
+load("//rules/opentitan:qemu.bzl", "qemu_cfg", "qemu_flash", "qemu_otp")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -98,6 +99,30 @@ fpga_cw310(
     rom = "//sw/device/silicon_creator/rom:mask_rom",
 )
 
+sim_qemu(
+    name = "sim_qemu_base",
+    design = "earlgrey",
+    exec_env = "sim_qemu_base",
+    libs = [
+        "//sw/device/lib/arch:boot_stage_rom_ext",
+        "//sw/device/lib/arch:sim_qemu",
+        "//hw/top_earlgrey/sw/dt:sim_qemu",
+    ],
+    linker_script = "//sw/device/lib/testing/test_framework:ottf_ld_silicon_creator_slot_a",
+    otp = "//hw/top_earlgrey/data/otp:img_rma",
+    rom_scramble_config = "//hw/top_earlgrey/data/autogen:top_earlgrey.gen.hjson",
+)
+
+sim_qemu(
+    name = "sim_qemu_rom_with_fake_keys",
+    testonly = True,
+    base = ":sim_qemu_base",
+    ecdsa_key = {"//sw/device/silicon_creator/rom/keys/fake/ecdsa:test_key_0_ecdsa_p256": "test_key_0"},
+    exec_env = "sim_qemu_rom_with_fake_keys",
+    manifest = "//sw/device/silicon_creator/rom_ext:manifest",
+    rom = "//sw/device/silicon_creator/rom:mask_rom",
+)
+
 fpga_cw310(
     name = "fpga_cw310_rom_ext",
     testonly = True,
@@ -107,6 +132,7 @@ fpga_cw310(
     libs = [
         "//sw/device/lib/arch:boot_stage_owner",
         "//sw/device/lib/arch:fpga_cw310",
+        "//hw/top_earlgrey/sw/dt:fpga_cw310",
     ],
     linker_script = "//sw/device/lib/testing/test_framework:ottf_ld_silicon_owner_slot_a",
     manifest = "//sw/device/silicon_owner:manifest",
@@ -160,6 +186,7 @@ fpga_cw310(
     libs = [
         "//sw/device/lib/arch:boot_stage_owner",
         "//sw/device/lib/arch:fpga_cw310",
+        "//hw/top_earlgrey/sw/dt:fpga_cw310",
     ],
     linker_script = "//sw/device/lib/testing/test_framework:ottf_ld_silicon_owner_slot_a",
     manifest = "//sw/device/silicon_owner:manifest",
@@ -206,6 +233,7 @@ fpga_cw310(
     libs = [
         "//sw/device/lib/arch:boot_stage_owner",
         "//sw/device/lib/arch:fpga_cw310",
+        "//hw/top_earlgrey/sw/dt:fpga_cw310",
     ],
     otp = "//hw/top_earlgrey/data/otp/sival_skus:otp_img_prod_manuf_personalized",
     rom_ext = "//sw/device/silicon_creator/rom_ext:rom_ext_slot_a",
@@ -313,6 +341,7 @@ fpga_cw340(
     libs = [
         "//sw/device/lib/arch:boot_stage_owner",
         "//sw/device/lib/arch:fpga_cw340",
+        "//hw/top_earlgrey/sw/dt:fpga_cw340",
     ],
     linker_script = "//sw/device/lib/testing/test_framework:ottf_ld_silicon_owner_slot_a",
     manifest = "//sw/device/silicon_owner:manifest",
@@ -359,6 +388,7 @@ fpga_cw340(
     libs = [
         "//sw/device/lib/arch:boot_stage_owner",
         "//sw/device/lib/arch:fpga_cw340",
+        "//hw/top_earlgrey/sw/dt:fpga_cw340",
     ],
     otp = "//hw/top_earlgrey/data/otp/sival_skus:otp_img_prod_manuf_personalized",
     rom_ext = "//sw/device/silicon_creator/rom_ext:rom_ext_slot_a",
@@ -420,6 +450,7 @@ silicon(
     libs = [
         "//sw/device/lib/arch:boot_stage_owner",
         "//sw/device/lib/arch:silicon",
+        "//hw/top_earlgrey/sw/dt:silicon",
     ],
     linker_script = "//sw/device/lib/testing/test_framework:ottf_ld_silicon_owner_slot_a",
     manifest = "//sw/device/silicon_owner:manifest",
@@ -518,7 +549,7 @@ sim_dv(
     libs = [
         "//sw/device/lib/arch:boot_stage_rom_ext",
         "//sw/device/lib/arch:sim_dv",
-        "//hw/top_earlgrey/sw/dt:sim_verilator",
+        "//hw/top_earlgrey/sw/dt:sim_dv",
     ],
     linker_script = "//sw/device/lib/testing/test_framework:ottf_ld_silicon_creator_slot_a",
     otp = "//hw/top_earlgrey/data/otp:img_rma",

@@ -15,6 +15,7 @@ load("@lowrisc_opentitan//rules/opentitan:util.bzl", "get_fallback", "get_overri
 load("@rules_cc//cc:find_cc_toolchain.bzl", "find_cc_toolchain")
 load("//rules/opentitan:toolchain.bzl", "LOCALTOOLS_TOOLCHAIN")
 load("//rules/opentitan:util.bzl", "assemble_for_test")
+load("//rules/opentitan:providers.bzl", "OpenTitanBinaryInfo")
 
 def _expand(ctx, name, items):
     """Perform location and make_variable expansion on a list of items.
@@ -49,11 +50,13 @@ def ot_binary(ctx, **kwargs):
       (elf_file, map_file) File objects.
     """
     cc_toolchain = find_cc_toolchain(ctx)
+    transitive_features = [f for f in ctx.attr.transitive_features if not f.startswith("-")]
+    transitive_disabled_features = [f.removeprefix("-") for f in ctx.attr.transitive_features if f.startswith("-")]
     features = cc_common.configure_features(
         ctx = ctx,
         cc_toolchain = cc_toolchain,
-        requested_features = get_override(ctx, "features", kwargs),
-        unsupported_features = get_override(ctx, "disabled_features", kwargs),
+        requested_features = get_override(ctx, "features", kwargs) + transitive_features,
+        unsupported_features = get_override(ctx, "disabled_features", kwargs) + transitive_disabled_features,
     )
 
     compilation_contexts = [
@@ -229,6 +232,7 @@ def _opentitan_binary(ctx):
     providers = []
     default_info = []
     groups = {}
+    ot_bin_env_info = {}
     for exec_env_target in ctx.attr.exec_env:
         exec_env = exec_env_target[ExecEnvInfo]
         name = _binary_name(ctx, exec_env)
@@ -248,6 +252,8 @@ def _opentitan_binary(ctx):
         providers.append(exec_env.provider(kind = kind, **provides))
         default_info.append(provides["default"])
         default_info.append(provides["elf"])
+        default_info.append(provides["disassembly"])
+        default_info.append(provides["mapfile"])
 
         # FIXME(cfrantz): logs are a special case and get added into
         # the DefaultInfo provider.
@@ -266,10 +272,28 @@ def _opentitan_binary(ctx):
 
         groups.update(_as_group_info(exec_env.exec_env, signed))
         groups.update(_as_group_info(exec_env.exec_env, provides))
+        ot_bin_env_info[exec_env.provider] = exec_env
 
     providers.append(DefaultInfo(files = depset(default_info)))
     providers.append(OutputGroupInfo(**groups))
+    providers.append(OpenTitanBinaryInfo(exec_env = ot_bin_env_info))
     return providers
+
+def _transitive_feature_transition_impl(settings, attr):
+    features = settings["//command_line_option:features"] + attr.transitive_features
+    return {
+        "//command_line_option:features": features,
+    }
+
+_transitive_feature_transition = transition(
+    implementation = _transitive_feature_transition_impl,
+    inputs = [
+        "//command_line_option:features",
+    ],
+    outputs = [
+        "//command_line_option:features",
+    ],
+)
 
 common_binary_attrs = {
     "srcs": attr.label_list(
@@ -278,6 +302,7 @@ common_binary_attrs = {
     ),
     "deps": attr.label_list(
         providers = [CcInfo],
+        cfg = _transitive_feature_transition,
         doc = "The list of other libraries to be linked in to the binary target.",
     ),
     "linker_script": attr.label(
@@ -338,6 +363,10 @@ common_binary_attrs = {
         executable = True,
         cfg = "exec",
     ),
+    "rom_scramble_mode": attr.string(
+        doc = "ROM scrambling mode.",
+        default = "base-rom",
+    ),
     "immutable_rom_ext_enabled": attr.bool(
         doc = "Indicates whether the binary is intended for a chip with the immutable ROM_EXT feature enabled.",
         default = False,
@@ -345,6 +374,10 @@ common_binary_attrs = {
     "immutable_rom_ext_sections": attr.label_list(
         providers = [CcInfo],
         doc = "The list of immutable ROM_EXT sections to be linked in to the binary target.  Only the deps matched with the specific exec_env will be kept.",
+    ),
+    "transitive_features": attr.string_list(
+        default = [],
+        doc = "List of features that will apply to this binary, and transitively to all `deps`.",
     ),
 }
 
@@ -393,9 +426,13 @@ def _opentitan_test(ctx):
         p = None
 
     executable, runfiles = exec_env.test_dispatch(ctx, exec_env, p)
+    if ctx.attr.test_harness != None:
+        harness_runfiles = ctx.attr.test_harness[DefaultInfo].default_runfiles
+    else:
+        harness_runfiles = ctx.runfiles()
     return DefaultInfo(
         executable = executable,
-        runfiles = ctx.runfiles(files = runfiles),
+        runfiles = ctx.runfiles(files = runfiles).merge_all([harness_runfiles]),
     )
 
 opentitan_test = rv_rule(
@@ -408,6 +445,7 @@ opentitan_test = rv_rule(
         "test_harness": attr.label(
             executable = True,
             cfg = "exec",
+            allow_files = True,
         ),
         "binaries": attr.label_keyed_string_dict(
             allow_files = True,

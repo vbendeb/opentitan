@@ -207,14 +207,14 @@ rom_error_t owner_block_info_apply(const owner_flash_info_config_t *info) {
       flash_ctrl_info_page_t page = {
           .base_addr = config->bank * FLASH_CTRL_PARAM_BYTES_PER_BANK +
                        config->page * FLASH_CTRL_PARAM_BYTES_PER_PAGE,
-          .cfg_wen_addr =
+          .cfg_wen_offset =
               config->page * sizeof(uint32_t) +
               (config->bank == 0 ? FLASH_CTRL_BANK0_INFO0_REGWEN_0_REG_OFFSET
                                  : FLASH_CTRL_BANK1_INFO0_REGWEN_0_REG_OFFSET),
-          .cfg_addr = config->page * sizeof(uint32_t) +
-                      (config->bank == 0
-                           ? FLASH_CTRL_BANK0_INFO0_PAGE_CFG_0_REG_OFFSET
-                           : FLASH_CTRL_BANK1_INFO0_PAGE_CFG_0_REG_OFFSET),
+          .cfg_offset = config->page * sizeof(uint32_t) +
+                        (config->bank == 0
+                             ? FLASH_CTRL_BANK0_INFO0_PAGE_CFG_0_REG_OFFSET
+                             : FLASH_CTRL_BANK1_INFO0_PAGE_CFG_0_REG_OFFSET),
       };
 
       uint32_t val = config->properties ^ crypt;
@@ -250,6 +250,15 @@ rom_error_t owner_keyring_find_key(const owner_application_keyring_t *keyring,
   return kErrorOwnershipKeyNotFound;
 }
 
+size_t owner_block_key_page(const owner_application_key_t *key) {
+  // The key pointer must point to a memory address on one of the two owner
+  // pages.
+  HARDENED_CHECK_GT((uintptr_t)key, (uintptr_t)&owner_page[0]);
+  HARDENED_CHECK_LT((uintptr_t)key,
+                    (uintptr_t)&owner_page[ARRAYSIZE(owner_page)]);
+  return (uintptr_t)key < (uintptr_t)&owner_page[1] ? 0 : 1;
+}
+
 hardened_bool_t owner_rescue_command_allowed(
     const owner_rescue_config_t *rescue, uint32_t command) {
   // If no rescue configuration is supplied in the owner config, then all rescue
@@ -265,4 +274,12 @@ hardened_bool_t owner_rescue_command_allowed(
     }
   }
   return allowed;
+}
+
+void owner_block_measurement(size_t page, hmac_digest_t *measurement) {
+  HARDENED_CHECK_LT(page, ARRAYSIZE(owner_page));
+  // Digest of the contents of the owner page, not including the signature or
+  // the seal.
+  size_t len = offsetof(owner_block_t, signature);
+  hmac_sha256(&owner_page[page], len, measurement);
 }

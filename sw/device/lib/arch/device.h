@@ -66,6 +66,11 @@ typedef enum device_type {
    * Silicon.
    */
   kDeviceSilicon = 5,
+  /**
+   * Represents the "QEMU" device, i.e. an emulation of OpenTitan written
+   * independently of the RTL.
+   */
+  kDeviceSimQemu = 6,
 } device_type_t;
 
 /**
@@ -189,7 +194,7 @@ extern const uint32_t kAstCheckPollCpuCycles;
  *
  * @see #test_status_set
  */
-extern const uintptr_t kDeviceTestStatusAddress;
+uintptr_t device_test_status_address(void);
 
 /**
  * An address to write use for UART logging bypass
@@ -198,7 +203,7 @@ extern const uintptr_t kDeviceTestStatusAddress;
  *
  * @see #LOG
  */
-extern const uintptr_t kDeviceLogBypassUartAddress;
+uintptr_t device_log_bypass_uart_address(void);
 
 /**
  * A platform-specific function to convert microseconds to cpu cycles.
