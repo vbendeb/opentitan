@@ -35,6 +35,7 @@ cc_library(
     hdrs = ["alert_handler_testutils.h"],
     target_compatible_with = [OPENTITAN_CPU],
     deps = [
+        "//hw/top:dt",
         "//sw/device/lib/dif:alert_handler",
         "//sw/device/lib/dif:base",
         "//sw/device/lib/dif:rstmgr",
@@ -48,6 +49,7 @@ cc_library(
     hdrs = ["aon_timer_testutils.h"],
     target_compatible_with = [OPENTITAN_CPU],
     deps = [
+        "//hw/top:dt",
         "//sw/device/lib/arch:device",
         "//sw/device/lib/base:math",
         "//sw/device/lib/dif:aon_timer",
@@ -431,7 +433,7 @@ cc_library(
     hdrs = ["ret_sram_testutils.h"],
     target_compatible_with = [OPENTITAN_CPU],
     deps = [
-        "//hw/top_earlgrey/sw/autogen:top_earlgrey",
+        "//hw/top:top_lib",
         "//sw/device/lib/base:status",
         "//sw/device/lib/testing/test_framework:check",
         "//sw/device/silicon_creator/lib/base:chip",
@@ -571,5 +573,43 @@ cc_library(
         ":pinmux_testutils",
         ":usb_testutils",
         "//sw/device/lib/testing/test_framework:check",
+    ],
+)
+
+cc_library(
+    name = "dma_testutils",
+    srcs = ["dma_testutils.c"],
+    hdrs = ["dma_testutils.h"],
+    target_compatible_with = [OPENTITAN_CPU],
+    deps = [
+        "//hw/top_darjeeling/sw/autogen:top_darjeeling",
+        "//sw/device/lib/dif:dma",
+        "//sw/device/lib/dif:pinmux",
+        "//sw/device/lib/dif:spi_host",
+        "//sw/device/lib/runtime:ibex",
+        "//sw/device/lib/testing/test_framework:check",
+    ],
+)
+
+cc_library(
+    name = "keymgr_dpe_testutils",
+    srcs = ["keymgr_dpe_testutils.c"],
+    hdrs = ["keymgr_dpe_testutils.h"],
+    target_compatible_with = [OPENTITAN_CPU],
+    deps = [
+        ":entropy_testutils",
+        ":kmac_testutils",
+        ":otp_ctrl_testutils",
+        ":rstmgr_testutils",
+        "//hw/top:dt",
+        "//hw/top:keymgr_dpe_c_regs",
+        "//sw/device/lib/arch:boot_stage",
+        "//sw/device/lib/base:mmio",
+        "//sw/device/lib/dif:keymgr_dpe",
+        "//sw/device/lib/dif:otp_ctrl",
+        "//sw/device/lib/dif:rstmgr",
+        "//sw/device/lib/runtime:ibex",
+        "//sw/device/lib/testing/test_framework:check",
+        "//sw/device/silicon_creator/lib/base:chip",
     ],
 )

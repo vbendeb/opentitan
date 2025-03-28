@@ -29,7 +29,9 @@ module lc_ctrl
   parameter lc_keymgr_div_t RndCnstLcKeymgrDivProduction   = LcKeymgrDivWidth'(3),
   parameter lc_keymgr_div_t RndCnstLcKeymgrDivRma          = LcKeymgrDivWidth'(4),
   parameter lc_token_mux_t  RndCnstInvalidTokens           = {TokenMuxBits{1'b1}},
-  parameter bit             SecVolatileRawUnlockEn         = 0
+  parameter bit             SecVolatileRawUnlockEn         = 0,
+  parameter int             EscNumSeverities               = 4,
+  parameter int             EscPingCountWidth              = 16
 ) (
   // Life cycle controller clock
   input                                              clk_i,
@@ -60,8 +62,8 @@ module lc_ctrl
   input  prim_esc_pkg::esc_rx_t                      esc_scrap_state1_tx_i,
   output prim_esc_pkg::esc_tx_t                      esc_scrap_state1_rx_o,
   // Power manager interface (inputs are synced to lifecycle clock domain).
-  input  pwrmgr_pkg::pwr_lc_req_t                    pwr_lc_i,
-  output pwrmgr_pkg::pwr_lc_rsp_t                    pwr_lc_o,
+  input  pwr_lc_req_t                                pwr_lc_i,
+  output pwr_lc_rsp_t                                pwr_lc_o,
   // Strap sampling override that is only used when SecVolatileRawUnlockEn = 1,
   // Otherwise this output is tied off to 0.
   output logic                                       strap_en_override_o,
@@ -668,8 +670,8 @@ module lc_ctrl
   // and asserts the lc_escalate_en life cycle control signal.
   logic esc_scrap_state0;
   prim_esc_receiver #(
-    .N_ESC_SEV   (alert_handler_reg_pkg::N_ESC_SEV),
-    .PING_CNT_DW (alert_handler_reg_pkg::PING_CNT_DW)
+    .N_ESC_SEV   (EscNumSeverities),
+    .PING_CNT_DW (EscPingCountWidth)
   ) u_prim_esc_receiver0 (
     .clk_i,
     .rst_ni,
@@ -682,8 +684,8 @@ module lc_ctrl
   // state into a temporary "SCRAP" state named "ESCALATE".
   logic esc_scrap_state1;
   prim_esc_receiver #(
-    .N_ESC_SEV   (alert_handler_reg_pkg::N_ESC_SEV),
-    .PING_CNT_DW (alert_handler_reg_pkg::PING_CNT_DW)
+    .N_ESC_SEV   (EscNumSeverities),
+    .PING_CNT_DW (EscPingCountWidth)
   ) u_prim_esc_receiver1 (
     .clk_i,
     .rst_ni,

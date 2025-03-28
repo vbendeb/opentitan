@@ -49,7 +49,7 @@
           name: aon_timer_rst_req
           width: "1"
           module: aon_timer_aon
-          desc: watchdog reset requestt
+          desc: watchdog reset request
         }
       ]
     }
@@ -690,10 +690,10 @@
     ]
     rst_ni: lc_io_div4
     export_rsts: {}
-    alert_handler_vlnv_prefix: top_earlgrey_
+    alert_handler_vlnv: lowrisc:earlgrey_ip:alert_handler_pkg
     with_alert_handler: true
-    pwrmgr_vlnv_prefix: top_earlgrey_
     top_pkg_vlnv: lowrisc:constants:top_earlgrey_top_pkg
     topname: earlgrey
+    uniquified_modules: {}
   }
 }

@@ -75,7 +75,7 @@
           name: aon_timer_rst_req
           width: "1"
           module: aon_timer_aon
-          desc: watchdog reset requestt
+          desc: watchdog reset request
         }
       ]
     }
@@ -83,5 +83,6 @@
     NumRomInputs: 1
     top_pkg_vlnv: lowrisc:constants:top_earlgrey_top_pkg
     topname: earlgrey
+    uniquified_modules: {}
   }
 }

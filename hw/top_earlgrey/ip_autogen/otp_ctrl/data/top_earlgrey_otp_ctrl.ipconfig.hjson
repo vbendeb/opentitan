@@ -1986,5 +1986,6 @@
       ]
     }
     topname: earlgrey
+    uniquified_modules: {}
   }
 }

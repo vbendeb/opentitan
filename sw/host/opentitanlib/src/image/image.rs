@@ -586,6 +586,22 @@ impl Image {
     }
 }
 
+impl SubImage<'_> {
+    /// Operates on the signed region of the image.
+    pub fn map_signed_region<F, R>(&self, f: F) -> Result<R>
+    where
+        F: FnOnce(&[u8]) -> R,
+    {
+        Ok(f(&self.data[offset_of!(Manifest, usage_constraints)
+            ..self.manifest.signed_region_end as usize]))
+    }
+
+    /// Compute the SHA256 digest for the signed portion of the `Image`.
+    pub fn compute_digest(&self) -> Result<sha256::Sha256Digest> {
+        self.map_signed_region(|v| sha256::sha256(v))
+    }
+}
+
 impl ImageAssembler {
     /// Creates an `ImageAssembler` with a given `size` and mirroring parameters.
     pub fn with_params(size: usize, mirrored: bool) -> Self {
@@ -659,15 +675,15 @@ impl ImageAssembler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testdata;
+    use crate::util::testdata;
 
     #[test]
     fn test_assemble_concat() -> Result<()> {
         // Test image assembly by concatenation.
         let mut image = ImageAssembler::with_params(16, false);
         image.parse(&[
-            testdata!("hello.txt").to_str().unwrap(),
-            testdata!("world.txt").to_str().unwrap(),
+            testdata("image/hello.txt").to_str().unwrap(),
+            testdata("image/world.txt").to_str().unwrap(),
         ])?;
         let data = image.assemble()?;
         assert_eq!(data, b"HelloWorld\xff\xff\xff\xff\xff\xff");
@@ -679,8 +695,8 @@ mod tests {
         // Test image assembly by explicit offsets.
         let mut image = ImageAssembler::with_params(16, false);
         image.parse(&[
-            testdata!("hello.txt@0").to_str().unwrap(),
-            testdata!("world.txt@0x8").to_str().unwrap(),
+            testdata("image/hello.txt@0").to_str().unwrap(),
+            testdata("image/world.txt@0x8").to_str().unwrap(),
         ])?;
         let data = image.assemble()?;
         assert_eq!(data, b"Hello\xff\xff\xffWorld\xff\xff\xff");
@@ -692,8 +708,8 @@ mod tests {
         // Test image assembly with mirroring.
         let mut image = ImageAssembler::with_params(20, true);
         image.parse(&[
-            testdata!("hello.txt").to_str().unwrap(),
-            testdata!("world.txt").to_str().unwrap(),
+            testdata("image/hello.txt").to_str().unwrap(),
+            testdata("image/world.txt").to_str().unwrap(),
         ])?;
         let data = image.assemble()?;
         assert_eq!(data, b"HelloWorldHelloWorld");
@@ -705,8 +721,8 @@ mod tests {
         // Test image assembly where one of the source files isn't read completely.
         let mut image = ImageAssembler::with_params(16, true);
         image.parse(&[
-            testdata!("hello.txt@0").to_str().unwrap(),
-            testdata!("world.txt@0x5").to_str().unwrap(),
+            testdata("image/hello.txt@0").to_str().unwrap(),
+            testdata("image/world.txt@0x5").to_str().unwrap(),
         ])?;
         let err = image.assemble().unwrap_err();
         assert_eq!(
@@ -719,18 +735,18 @@ mod tests {
     #[test]
     fn test_load_image() {
         // Read and write back image.
-        let image = Image::read_from_file(&testdata!("test_image.bin")).unwrap();
+        let image = Image::read_from_file(&testdata("image/test_image.bin")).unwrap();
         image
-            .write_to_file(&testdata!("test_image_out.bin"))
+            .write_to_file(&testdata("image/test_image_out.bin"))
             .unwrap();
 
         // Ensure the result is identical to the original.
         let (mut orig_bytes, mut res_bytes) = (Vec::<u8>::new(), Vec::<u8>::new());
-        File::open(testdata!("test_image.bin"))
+        File::open(testdata("image/test_image.bin"))
             .unwrap()
             .read_to_end(&mut orig_bytes)
             .unwrap();
-        File::open(testdata!("test_image_out.bin"))
+        File::open(testdata("image/test_image_out.bin"))
             .unwrap()
             .read_to_end(&mut res_bytes)
             .unwrap();

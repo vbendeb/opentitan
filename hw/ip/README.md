@@ -12,7 +12,6 @@
 | [`dma`]          | DMA Controller for the integrated OpenTitan.                                                                                      |
 | [`edn`]          | Distributes random numbers produced by CSRNG to hardware blocks                                                                   |
 | [`entropy_src`]  | Filters and checks raw entropy bits from a random noise source and forwards them to CSRNG                                         |
-| [`gpio`]         | General-purpose I/O pin control interface for software                                                                            |
 | [`hmac`]         | Accelerator for SHA-2 256/384/512-based keyed HMAC and the hash function                                                          |
 | [`i2c`]          | I2C interface for host and device mode, supporting up to 1 Mbaud data rates                                                       |
 | [`keymgr`]       | Managing identities and root keys; shielding confidential assets from software; providing a key derivation interface for software |
@@ -22,9 +21,7 @@
 | [`mbx`]          | DOE mailbox for use as an integrated OpenTitan communication channel.                                                             |
 | [`otbn`]         | Programmable coprocessor for asymmetric cryptography with SCA and FI countermeasures                                              |
 | [`pattgen`]      | Transmission of short time-dependent data patterns on two clock-parallel output channels                                          |
-| [`pwm`]          | Transmission of pulse-width modulated output signals with adjustable duty cycle                                                   |
 | [`rom_ctrl`]     | Interfaces scrambled boot ROM with system bus and KMAC for initial health check after reset                                       |
-| [`rv_core_ibex`] | Dual-core lockstep 32-bit RISC-V processor running application and control software                                               |
 | [`rv_dm`]        | Enables debug support for Ibex, access protected by life cycle                                                                    |
 | [`rv_timer`]     | Memory-mapped timer unit implementing RISC-V mtime and mtimecmp registers                                                         |
 | [`soc_dbg_ctrl`] | Control module to enable or disable debug access                                                                                  |
@@ -46,7 +43,6 @@
 [`dma`]: ./dma/README.md
 [`edn`]: ./edn/README.md
 [`entropy_src`]: ./entropy_src/README.md
-[`gpio`]: ./gpio/README.md
 [`hmac`]: ./hmac/README.md
 [`i2c`]: ./i2c/README.md
 [`keymgr`]: ./keymgr/README.md
@@ -56,9 +52,7 @@
 [`mbx`]: ./mbx/README.md
 [`otbn`]: ./otbn/README.md
 [`pattgen`]: ./pattgen/README.md
-[`pwm`]: ./pwm/README.md
 [`rom_ctrl`]: ./rom_ctrl/README.md
-[`rv_core_ibex`]: ./rv_core_ibex/README.md
 [`rv_dm`]: ./rv_dm/README.md
 [`rv_timer`]: ./rv_timer/README.md
 [`soc_dbg_ctrl`]: ./soc_dbg_ctrl/README.md

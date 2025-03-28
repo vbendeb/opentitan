@@ -123,8 +123,16 @@ module ${module_instance_name} import ${module_instance_name}_reg_pkg::*; #(
   assign policy_${policy['name'].lower()}.write_perm = reg2hw.policy_${policy['name'].lower()}${"_shadowed" if enable_shadow_reg else ""}.write_perm.q;
 
 % endfor
+<% assert nr_policies >= len(policies) %>\
+% if nr_policies > len(policies):
+  localparam racl_policy_t UnusedPolicy = '0;
+
+% endif
   // Broadcast all policies via policy vector
   assign racl_policies_o = {
+% for _ in range(max(nr_policies - len(policies), 0)):
+    UnusedPolicy,
+% endfor
 % for policy in list(reversed(policies)):
     policy_${policy['name'].lower()}${',' if not loop.last else ''}
 % endfor
@@ -171,7 +179,7 @@ module ${module_instance_name} import ${module_instance_name}_reg_pkg::*; #(
   logic first_error;
   assign first_error = ~reg2hw.error_log.valid.q & racl_error_arb.valid;
 
-  // Writing 1 to the error valid bit clears the log again
+  // Writing 1 to the error valid bit clears the log and log address again
   logic clear_log;
   assign clear_log = reg2hw.error_log.valid.q & reg2hw.error_log.valid.qe;
 
@@ -193,6 +201,9 @@ module ${module_instance_name} import ${module_instance_name}_reg_pkg::*; #(
 
   assign hw2reg.error_log.ctn_uid.d  = clear_log ? '0 : racl_error_arb.ctn_uid;
   assign hw2reg.error_log.ctn_uid.de = first_error | clear_log;
+
+  assign hw2reg.error_log_address.d  = clear_log ? '0 : racl_error_arb.request_address;
+  assign hw2reg.error_log_address.de = first_error | clear_log;
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
   // Assertions

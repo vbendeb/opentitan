@@ -78,6 +78,8 @@
       1'b1
     ]
     n_classes: 4
+    n_esc_sev: 4
+    ping_cnt_dw: 16
     n_lpg: 24
     lpg_map:
     [
@@ -149,5 +151,6 @@
     ]
     top_pkg_vlnv: lowrisc:constants:top_earlgrey_top_pkg
     topname: earlgrey
+    uniquified_modules: {}
   }
 }

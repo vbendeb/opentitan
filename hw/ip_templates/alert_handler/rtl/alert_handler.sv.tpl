@@ -14,8 +14,11 @@ module ${module_instance_name}
 % if racl_support:
   parameter bit          EnableRacl                                   = 1'b0,
   parameter bit          RaclErrorRsp                                 = EnableRacl,
-  parameter top_racl_pkg::racl_policy_sel_t RaclPolicySelVec[NumRegs] = '{NumRegs{0}},
+  parameter top_racl_pkg::racl_policy_sel_t RaclPolicySelVec[${module_instance_name}_reg_pkg::NumRegs] = 
+    '{${module_instance_name}_reg_pkg::NumRegs{0}},
 % endif
+  parameter int EscNumSeverities = ${n_esc_sev},
+  parameter int EscPingCountWidth = ${ping_cnt_dw},
   // Compile time random constants, to be overriden by topgen.
   parameter lfsr_seed_t RndCnstLfsrSeed = RndCnstLfsrSeedDefault,
   parameter lfsr_perm_t RndCnstLfsrPerm = RndCnstLfsrPermDefault
@@ -49,8 +52,7 @@ module ${module_instance_name}
 % if racl_support:
   // RACL interface
   input  top_racl_pkg::racl_policy_vec_t          racl_policies_i,
-  output logic                                    racl_error_o,
-  output top_racl_pkg::racl_error_log_t           racl_error_log_o,
+  output top_racl_pkg::racl_error_log_t           racl_error_o,
 % endif
   // Escalation outputs
   // SEC_CM: ESC.INTERSIG.DIFF
@@ -100,7 +102,6 @@ module ${module_instance_name}
   % if racl_support:
     .racl_policies_i,
     .racl_error_o,
-    .racl_error_log_o,
   % endif
     // SEC_CM: BUS.INTEGRITY
     .fatal_integ_alert_o(loc_alert_trig[4])
@@ -329,6 +330,9 @@ module ${module_instance_name}
 
   assign loc_alert_trig[3] = |esc_integfail;
 
+  logic unused_params;
+  assign unused_params = ^{EscNumSeverities, EscPingCountWidth};
+
   ////////////////
   // Assertions //
   ////////////////
@@ -337,8 +341,7 @@ module ${module_instance_name}
   `ASSERT_KNOWN(TlDValidKnownO_A,  tl_o.d_valid)
   `ASSERT_KNOWN(TlAReadyKnownO_A,  tl_o.a_ready)
 % if racl_support:
-  `ASSERT_KNOWN(RaclErrorKnown_A, racl_error_o)
-  `ASSERT_KNOWN(RaclErrorLogKnown_A, racl_error_log_o)
+  `ASSERT_KNOWN(RaclErrorValidKnown_A, racl_error_o.valid)
 % endif
   `ASSERT_KNOWN(IrqAKnownO_A,      intr_classa_o)
   `ASSERT_KNOWN(IrqBKnownO_A,      intr_classb_o)

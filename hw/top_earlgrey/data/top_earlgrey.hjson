@@ -349,6 +349,7 @@
     },
     { name: "gpio",
       type: "gpio",
+      template_type: "gpio",
       clock_srcs: {clk_i: "io_div4"},
       clock_group: "peri",
       reset_connections: {rst_ni: "lc_io_div4"},
@@ -358,7 +359,8 @@
       param_decl: {
         GpioAsHwStrapsEn: "0",
         GpioAsyncOn: "1"
-      }
+      },
+      attr: "ipgen"
     },
     { name: "spi_device",
       type: "spi_device",
@@ -446,6 +448,8 @@
         ProductId: "16'h 0002", // Earlgrey PROD
         RevisionId: "8'h 01",   // First tapeout
         IdcodeValue: "jtag_id_pkg::LC_CTRL_JTAG_IDCODE",
+        EscNumSeverities: "AlertHandlerEscNumSeverities",
+        EscPingCountWidth: "AlertHandlerEscPingCountWidth",
       },
     },
     { name: "alert_handler",
@@ -456,6 +460,10 @@
       reset_connections: {rst_ni: "lc_io_div4", rst_edn_ni: "lc"},
       base_addr: {
         hart: "0x40150000",
+      },
+      param_decl: {
+        EscNumSeverities: "4",
+        EscPingCountWidth: "16"
       },
       attr: "ipgen",
     },
@@ -527,6 +535,10 @@
       domain: ["Aon", "0"],
       base_addr: {
         hart: "0x40400000",
+      },
+      param_decl: {
+        EscNumSeverities: "AlertHandlerEscNumSeverities",
+        EscPingCountWidth: "AlertHandlerEscPingCountWidth",
       },
       attr: "ipgen",
     },
@@ -623,6 +635,7 @@
     },
     { name: "pwm_aon",
       type: "pwm",
+      template_type: "pwm",
       clock_srcs: {clk_i: "io_div4", clk_core_i: "aon"},
       clock_group: "peri",
       reset_connections: {rst_ni: "lc_io_div4", rst_core_ni: "lc_aon"},
@@ -630,6 +643,7 @@
       base_addr: {
         hart: "0x40450000",
       },
+      attr: "ipgen",
     },
     { name: "pinmux_aon",
       type: "pinmux",
@@ -973,6 +987,11 @@
     },
     { name: "rv_core_ibex",
       type: "rv_core_ibex",
+      template_type: "rv_core_ibex",
+      attr: "ipgen",
+      ipgen_param: {
+        NumRegions: 2
+      }
       param_decl: {PMPEnable: "1",
                    PMPGranularity: "0",
                    PMPNumRegions: "16",
@@ -999,8 +1018,8 @@
                    DmHaltAddr: "tl_main_pkg::ADDR_SPACE_RV_DM__MEM + dm::HaltAddress[31:0]",
                    DmExceptionAddr: "tl_main_pkg::ADDR_SPACE_RV_DM__MEM + dm::ExceptionAddress[31:0]",
                    PipeLine: "0",
-                   NEscalationSeverities: "alert_handler_reg_pkg::N_ESC_SEV",
-                   WidthPingCounter: "alert_handler_reg_pkg::PING_CNT_DW"
+                   NEscalationSeverities: "AlertHandlerEscNumSeverities",
+                   WidthPingCounter: "AlertHandlerEscPingCountWidth",
                   },
       clock_srcs: {
         clk_i: "main",

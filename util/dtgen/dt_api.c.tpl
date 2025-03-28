@@ -29,6 +29,26 @@ dt_instance_id_t dt_plic_id_to_instance_id(dt_plic_irq_id_t irq) {
   return kDtInstanceIdUnknown;
 }
 
+% if helper.has_alert_handler():
+<%
+  top_alert_id_name = Name.from_snake_case("top_" + helper.top["name"] + "_alert_id")
+  top_alert_id_last = top_alert_id_name + Name(["last"])
+  top_alert_id_count = top_alert_id_name + Name(["count"])
+%>
+enum {
+  ${top_alert_id_count.as_c_enum()} = ${top_alert_id_last.as_c_enum()} + 1,
+};
+
+static const ${helper.inst_from_alert_map.render_var_def(Name.from_snake_case("instance_from_alert"), helper.inst_from_alert_values)}
+
+dt_instance_id_t dt_alert_id_to_instance_id(dt_alert_id_t alert) {
+  if (alert <= ${top_alert_id_last.as_c_enum()}) {
+    return instance_from_alert[alert];
+  }
+  return kDtInstanceIdUnknown;
+}
+
+%endif
 static const ${helper.dev_type_map.render_var_def(Name.from_snake_case("device_type"), helper.dev_type_values)}
 
 dt_device_type_t dt_device_type(dt_instance_id_t dev) {
@@ -55,40 +75,32 @@ static const ${helper.pad_dt_map.render_var_def(dt_pad_array_name, helper.pad_dt
   invalid_pad_check = "pad < (dt_pad_t)0 || pad >= kDtPadCount"
 %>
 
+#define TRY_GET_PAD(pad, default) \
+  ({ \
+    if ((pad) < (dt_pad_t)0 || (pad) >= kDtPadCount) \
+      return (default); \
+    &dt_pad[pad]; \
+  })
+
 dt_pad_type_t dt_pad_type(dt_pad_t pad) {
-  if(${invalid_pad_check}) {
-    return kDtPadTypeUnspecified;
-  }
-  return dt_pad[pad].type;
+  return TRY_GET_PAD(pad, kDtPadTypeUnspecified)->type;
 }
 
 dt_pinmux_mio_out_t dt_pad_mio_out(dt_pad_t pad) {
-  if(${invalid_pad_check}) {
-    return (dt_pinmux_mio_out_t)0;
-  }
-  return (dt_pinmux_mio_out_t)dt_pad[pad].mio_out_or_direct_pad;
+  return (dt_pinmux_mio_out_t)TRY_GET_PAD(pad, 0)->mio_out_or_direct_pad;
 }
 
 dt_pinmux_muxed_pad_t dt_pad_mio_pad_index(dt_pad_t pad) {
-  if(${invalid_pad_check}) {
-    return (dt_pinmux_muxed_pad_t)0;
-  }
   // Same index as MIO_OUT.
   return (dt_pinmux_muxed_pad_t)dt_pad_mio_out(pad);
 }
 
 dt_pinmux_insel_t dt_pad_mio_insel(dt_pad_t pad) {
-  if(${invalid_pad_check}) {
-    return (dt_pinmux_insel_t)0;
-  }
-  return (dt_pinmux_insel_t)dt_pad[pad].insel;
+  return (dt_pinmux_insel_t)TRY_GET_PAD(pad, 0)->insel;
 }
 
 dt_pinmux_direct_pad_t dt_pad_dio_pad_index(dt_pad_t pad) {
-  if(${invalid_pad_check}) {
-    return (dt_pinmux_direct_pad_t)0;
-  }
-  return (dt_pinmux_direct_pad_t)dt_pad[pad].mio_out_or_direct_pad;
+  return (dt_pinmux_direct_pad_t)TRY_GET_PAD(pad, 0)->mio_out_or_direct_pad;
 }
 
 /* Pin that is constantly tied to high-Z (input only) */

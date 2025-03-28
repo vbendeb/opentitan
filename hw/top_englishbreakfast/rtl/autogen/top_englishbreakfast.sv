@@ -51,6 +51,8 @@ module top_englishbreakfast #(
   parameter int SramCtrlMainNumRamInst = 1,
   parameter bit SramCtrlMainInstrExec = 1,
   parameter int SramCtrlMainNumPrinceRoundsHalf = 3,
+  parameter bit SramCtrlMainEccCorrection = 0,
+  parameter int SramCtrlMainRaclPolicySelRangesRamNum = 1,
   // parameters for rom_ctrl
   parameter RomCtrlBootRomInitFile = "",
   parameter bit SecRomCtrlDisableScrambling = 1'b1,
@@ -163,9 +165,8 @@ module top_englishbreakfast #(
   // Local Parameters
   // local parameters for spi_host0
   localparam int SpiHost0NumCS = 1;
-  // local parameters for rv_core_ibex
-  localparam int unsigned RvCoreIbexNEscalationSeverities = 4;
-  localparam int unsigned RvCoreIbexWidthPingCounter = 16;
+  // local parameters for sram_ctrl_main
+  localparam int SramCtrlMainOutstanding = 2;
 
   // Signals
   logic [37:0] mio_p2d;
@@ -840,7 +841,7 @@ module top_englishbreakfast #(
       .pwr_otp_o(),
       .pwr_otp_i(pwrmgr_pkg::PWR_OTP_RSP_DEFAULT),
       .pwr_lc_o(),
-      .pwr_lc_i(pwrmgr_pkg::PWR_LC_RSP_DEFAULT),
+      .pwr_lc_i(lc_ctrl_pkg::PWR_LC_RSP_DEFAULT),
       .pwr_flash_i(pwrmgr_aon_pwr_flash),
       .esc_rst_tx_i(prim_esc_pkg::ESC_TX_DEFAULT),
       .esc_rst_rx_o(),
@@ -1040,6 +1041,8 @@ module top_englishbreakfast #(
       .aon_timer_rst_req_o(pwrmgr_aon_rstreqs),
       .lc_escalate_en_i(lc_ctrl_pkg::Off),
       .sleep_mode_i(pwrmgr_aon_low_power),
+      .racl_policies_i(top_racl_pkg::RACL_POLICY_VEC_DEFAULT),
+      .racl_error_o(),
       .tl_i(tlul_pkg::TL_H2D_DEFAULT),
       .tl_o(),
 
@@ -1188,7 +1191,10 @@ module top_englishbreakfast #(
     .InstSize(SramCtrlMainInstSize),
     .NumRamInst(SramCtrlMainNumRamInst),
     .InstrExec(SramCtrlMainInstrExec),
-    .NumPrinceRoundsHalf(SramCtrlMainNumPrinceRoundsHalf)
+    .NumPrinceRoundsHalf(SramCtrlMainNumPrinceRoundsHalf),
+    .Outstanding(SramCtrlMainOutstanding),
+    .EccCorrection(SramCtrlMainEccCorrection),
+    .RaclPolicySelRangesRamNum(SramCtrlMainRaclPolicySelRangesRamNum)
   ) u_sram_ctrl_main (
       // [22]: fatal_error
       .alert_tx_o  ( alert_tx[22:22] ),
@@ -1204,6 +1210,8 @@ module top_englishbreakfast #(
       .otp_en_sram_ifetch_i(sram_ctrl_main_otp_en_sram_ifetch),
       .racl_policies_i(top_racl_pkg::RACL_POLICY_VEC_DEFAULT),
       .racl_error_o(),
+      .racl_policy_sel_ranges_ram_i({SramCtrlMainRaclPolicySelRangesRamNum{top_racl_pkg::RACL_RANGE_T_DEFAULT}}),
+      .sram_rerror_o(),
       .regs_tl_i(sram_ctrl_main_regs_tl_req),
       .regs_tl_o(sram_ctrl_main_regs_tl_rsp),
       .ram_tl_i(sram_ctrl_main_ram_tl_req),
@@ -1248,8 +1256,8 @@ module top_englishbreakfast #(
     .RndCnstLfsrPerm(RndCnstRvCoreIbexLfsrPerm),
     .RndCnstIbexKeyDefault(RndCnstRvCoreIbexIbexKeyDefault),
     .RndCnstIbexNonceDefault(RndCnstRvCoreIbexIbexNonceDefault),
-    .NEscalationSeverities(RvCoreIbexNEscalationSeverities),
-    .WidthPingCounter(RvCoreIbexWidthPingCounter),
+    .NEscalationSeverities(4),
+    .WidthPingCounter(16),
     .PMPEnable(RvCoreIbexPMPEnable),
     .PMPGranularity(RvCoreIbexPMPGranularity),
     .PMPNumRegions(RvCoreIbexPMPNumRegions),

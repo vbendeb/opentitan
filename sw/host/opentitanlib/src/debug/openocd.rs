@@ -100,7 +100,7 @@ impl OpenOcd {
                 // Since we use OpenOCD as a library, make sure it's killed when
                 // the parent process dies. This setting is preserved across execve.
                 rustix::process::set_parent_process_death_signal(Some(
-                    rustix::process::Signal::Hup,
+                    rustix::process::Signal::HUP,
                 ))?;
                 Ok(())
             });
@@ -360,10 +360,9 @@ impl OpenOcdJtagTap {
         );
         let response = self.send_tcl_cmd(cmd.as_str())?;
         // the expected output format is 'reg_name 0xabcdef', e.g 'pc 0x10009858'
-        let (out_reg_name, value) = response
-            .trim()
-            .split_once(' ')
-            .context("expected response of the form 'reg value', got '{response}'")?;
+        let (out_reg_name, value) = response.trim().split_once(' ').with_context(|| {
+            format!("expected response of the form 'reg value', got '{response}'")
+        })?;
         ensure!(
             out_reg_name == reg_name,
             "OpenOCD returned the value for register '{out_reg_name}' instead of '{reg_name}"

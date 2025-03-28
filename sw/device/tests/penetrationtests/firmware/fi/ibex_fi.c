@@ -151,6 +151,7 @@ OT_SECTION(".data")
 static volatile uint32_t sram_main_buffer[256];
 
 // Make sure that this function does not get optimized by the compiler.
+OT_USED
 void increment_counter(void) __attribute__((optnone)) {
   asm volatile("addi x5, x5, 1");
 }
@@ -334,6 +335,7 @@ static inline void read_temp_regs(uint32_t buffer[]) {
 }
 
 // Make sure that this function does not get optimized by the compiler.
+OT_USED
 void not_increment_counter(void) __attribute__((optnone)) {
   asm volatile("ret");
   asm volatile(ADDI10);
@@ -2369,6 +2371,9 @@ status_t handle_ibex_fi_char_unrolled_reg_op_loop_chain(ujson_t *uj) {
 }
 
 status_t handle_ibex_fi_init(ujson_t *uj) {
+  penetrationtest_cpuctrl_t uj_data;
+  TRY(ujson_deserialize_penetrationtest_cpuctrl_t(uj, &uj_data));
+
   pentest_select_trigger_type(kPentestTriggerTypeSw);
   // As we are using the software defined trigger, the first argument of
   // pentest_init is not needed. kPentestTriggerSourceAes is selected as a
@@ -2384,7 +2389,7 @@ status_t handle_ibex_fi_init(ujson_t *uj) {
   pentest_configure_alert_handler();
 
   // Disable the instruction cache and dummy instructions for FI attacks.
-  pentest_configure_cpu();
+  pentest_configure_cpu(uj_data.icache_disable, uj_data.dummy_instr_disable);
 
   // Enable the flash.
   flash_info = dif_flash_ctrl_get_device_info();

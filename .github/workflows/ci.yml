@@ -91,10 +91,8 @@ jobs:
           service_account_json: '${{ secrets.BAZEL_CACHE_CREDS }}'
       - name: Countermeasures implemented (earlgrey)
         run: ./ci/scripts/check-countermeasures.sh earlgrey
-        continue-on-error: true
       - name: Countermeasures implemented (englishbreakfast)
         run: ./ci/scripts/check-countermeasures.sh englishbreakfast
-        continue-on-error: true
       - name: Bazel test suite tags
         run: ./ci/scripts/check_bazel_test_suites.py
         continue-on-error: true
@@ -758,7 +756,8 @@ jobs:
           # Compile some selected targets
           ./bazelisk.sh build                                \
             --build_tests_only=false                         \
-            //sw/device/tests:uart_smoketest_sim_dv
+            --//hw/top=darjeeling                            \
+            //sw/device/tests/...
 
   qemu_smoketest:
     name: QEMU smoketest

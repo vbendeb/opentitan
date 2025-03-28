@@ -10,6 +10,12 @@
       default: ""
     }
     {
+      name: "uniquified_modules"
+      desc: "A dictionary mapping template_names to uniquified_names"
+      type: "object"
+      default: {"clkmgr": "clkmgr1"}
+    }
+    {
       name: "n_alerts"
       desc: "Number of alert sources"
       type: "int"
@@ -36,6 +42,18 @@
     {
       name: "n_classes"
       desc: "Number of supported classes (leave this at 4 at the moment)"
+      type: "int"
+      default: "4"
+    }
+    {
+      name: "n_esc_sev"
+      desc: "Number of escalation severities"
+      type: "int"
+      default: "4"
+    }
+    {
+      name: "ping_cnt_dw"
+      desc: "Width of ping timeout counter"
       type: "int"
       default: "4"
     }

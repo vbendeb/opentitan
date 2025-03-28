@@ -42,7 +42,6 @@ module tlul_adapter_sram_racl
   parameter bit EnableRacl        = 0,          // 1: Enable RACL checks on access
   parameter bit RaclErrorRsp      = EnableRacl, // 1: Return TLUL error on RACL errors
   parameter int RaclPolicySelNumRanges = 1,     // Number of ranges with a RACL policy
-  parameter top_racl_pkg::racl_range_t RaclPolicySelRanges [RaclPolicySelNumRanges] = '{'0},
   localparam int WidthMult        = SramDw / top_pkg::TL_DW,
   localparam int IntgWidth        = tlul_pkg::DataIntgWidth * WidthMult,
   localparam int DataOutW         = EnableDataIntgPt ? SramDw + IntgWidth : SramDw
@@ -77,7 +76,8 @@ module tlul_adapter_sram_racl
   input  logic                 write_pending_i,
   // RACL interface
   input  top_racl_pkg::racl_policy_vec_t racl_policies_i,
-  output top_racl_pkg::racl_error_log_t  racl_error_o
+  output top_racl_pkg::racl_error_log_t  racl_error_o,
+  input  top_racl_pkg::racl_range_t [RaclPolicySelNumRanges-1:0] racl_policy_sel_ranges
 );
   tl_h2d_t tl_h2d_filtered;
   tl_d2h_t tl_d2h_filtered;
@@ -96,7 +96,7 @@ module tlul_adapter_sram_racl
       .out_o( racl_role_vec )
     );
 
-    logic req, rd_req, wr_req, racl_read_allowed, racl_write_allowed;
+    logic rd_req, wr_req, racl_read_allowed, racl_write_allowed, racl_error;
     logic [RaclPolicySelNumRanges-1:0] range_read_allowed;
     logic [RaclPolicySelNumRanges-1:0] range_write_allowed;
 
@@ -104,12 +104,12 @@ module tlul_adapter_sram_racl
       top_racl_pkg::racl_range_t range;
       top_racl_pkg::racl_policy_t policy;
       logic range_match;
-      assign range = RaclPolicySelRanges[r];
+      assign range = racl_policy_sel_ranges[r];
       assign policy = racl_policies_i[range.policy_sel];
-      // Asserts that a valid range is defined
-      `ASSERT(RaclAdapterSramValidRange, range.mask > 0)
       // Check if the address is within range
-      assign range_match = (tl_i.a_address & ~range.mask) == range.base;
+      assign range_match = range.enable
+                           & tl_i.a_address >= range.base
+                           & tl_i.a_address <= range.limit;
       // If address matches, lookup permissions for policy defined for this range
       assign range_read_allowed[r]  = range_match & |(policy.read_perm  & racl_role_vec);
       assign range_write_allowed[r] = range_match & |(policy.write_perm & racl_role_vec);
@@ -118,34 +118,39 @@ module tlul_adapter_sram_racl
     assign racl_read_allowed  = |range_read_allowed;
     assign racl_write_allowed = |range_write_allowed;
 
-    assign req                = tl_i.a_valid & tl_o.a_ready;
-    assign rd_req             = req & (tl_i.a_opcode == tlul_pkg::Get);
-    assign wr_req             = req & (tl_i.a_opcode == tlul_pkg::PutFullData |
-                                       tl_i.a_opcode == tlul_pkg::PutPartialData);
-    assign racl_error_o.valid = (rd_req & ~racl_read_allowed) | (wr_req & ~racl_write_allowed);
+    assign rd_req             = tl_i.a_valid & (tl_i.a_opcode == tlul_pkg::Get);
+    assign wr_req             = tl_i.a_valid & (tl_i.a_opcode == tlul_pkg::PutFullData |
+                                                tl_i.a_opcode == tlul_pkg::PutPartialData);
+    assign racl_error         = (rd_req & ~racl_read_allowed) | (wr_req & ~racl_write_allowed);
+    assign racl_error_o.valid = racl_error & tl_o.a_ready;
 
     tlul_request_loopback #(
-      .ErrorRsp(RaclErrorRsp)
+      .ErrorRsp ( RaclErrorRsp )
     ) u_loopback (
       .clk_i,
       .rst_ni,
-      .squash_req_i ( racl_error_o.valid ),
-      .tl_h2d_i     ( tl_i               ),
-      .tl_d2h_o     ( tl_o               ),
-      .tl_h2d_o     ( tl_h2d_filtered    ),
-      .tl_d2h_i     ( tl_d2h_filtered    )
+      .squash_req_i ( racl_error      ),
+      .tl_h2d_i     ( tl_i            ),
+      .tl_d2h_o     ( tl_o            ),
+      .tl_h2d_o     ( tl_h2d_filtered ),
+      .tl_d2h_i     ( tl_d2h_filtered )
     );
 
     // Collect RACL error information
-    assign racl_error_o.overflow    = 1'b0;
-    assign racl_error_o.read_access = tl_i.a_opcode == tlul_pkg::Get;
-    assign racl_error_o.racl_role   = racl_role;
-    assign racl_error_o.ctn_uid     = top_racl_pkg::tlul_extract_ctn_uid_bits(tl_i.a_user.rsvd);
+    assign racl_error_o.overflow        = 1'b0;
+    assign racl_error_o.read_access     = tl_i.a_opcode == tlul_pkg::Get;
+    assign racl_error_o.racl_role       = racl_role;
+    assign racl_error_o.ctn_uid         = top_racl_pkg::tlul_extract_ctn_uid_bits(tl_i.a_user.rsvd);
+    assign racl_error_o.request_address = tl_i.a_address;
   end else begin : gen_no_racl_role_logic
     // Pass through and default assignments
     assign tl_h2d_filtered  = tl_i;
     assign tl_o             = tl_d2h_filtered;
     assign racl_error_o     = '0;
+
+    // racl_policy_sel_ranges is not read when RACL is disabled
+    logic unused_racl_policy_sel_ranges;
+    assign unused_racl_policy_sel_ranges = ^racl_policy_sel_ranges;
   end
 
   tlul_adapter_sram #(

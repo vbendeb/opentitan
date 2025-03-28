@@ -17,11 +17,9 @@ filesets:
       - lowrisc:prim:sparse_fsm
       - lowrisc:ip:lc_ctrl_pkg
       - lowrisc:ip:tlul
-      - lowrisc:ip_interfaces:pwrmgr_pkg
       - lowrisc:ip:otp_ctrl_pkg
       - lowrisc:ip:kmac_pkg
       - lowrisc:ip:rv_dm
-      - lowrisc:ip_interfaces:alert_handler_pkg
     files:
       - rtl/lc_ctrl_regs_reg_top.sv
       - rtl/lc_ctrl_dmi_reg_top.sv

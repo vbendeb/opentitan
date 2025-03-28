@@ -742,8 +742,9 @@ ${finst_gen(sr, field, finst_name, fsig_name, fidx)}
   // A valid address hit, access, but failed the RACL check
   assign racl_error_o.valid = |addr_hit & ((reg_re & ~|racl_addr_hit_read) |
                                            (reg_we & ~|racl_addr_hit_write));
-  assign racl_error_o.racl_role = racl_role;
-  assign racl_error_o.overflow  = 1'b0;
+  assign racl_error_o.request_address = top_pkg::TL_AW'(reg_addr);
+  assign racl_error_o.racl_role       = racl_role;
+  assign racl_error_o.overflow        = 1'b0;
 
   if (EnableRacl) begin : gen_racl_log
     assign racl_error_o.ctn_uid     = top_racl_pkg::tlul_extract_ctn_uid_bits(tl_i.a_user.rsvd);
@@ -1180,8 +1181,9 @@ ${bits.msb}\
 </%def>\
 <%def name="reg_enable_gen(reg, idx)">\
 <% wr_addr_hit = 'racl_addr_hit_write' if racl_support else 'addr_hit'%>\
+<% re_addr_hit = 'racl_addr_hit_read'  if racl_support else 'addr_hit'%>\
   % if reg.needs_re():
-  assign ${reg.name.lower()}_re = ${wr_addr_hit}[${idx}] & reg_re & !reg_error;
+  assign ${reg.name.lower()}_re = ${re_addr_hit}[${idx}] & reg_re & !reg_error;
   % endif
   % if reg.needs_we():
   assign ${reg.name.lower()}_we = ${wr_addr_hit}[${idx}] & reg_we & !reg_error;

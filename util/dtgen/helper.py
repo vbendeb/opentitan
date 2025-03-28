@@ -7,6 +7,8 @@ files.
 from abc import ABC, abstractmethod
 from typing import Optional
 from collections import OrderedDict
+from collections.abc import Mapping
+from enum import Enum
 
 from topgen.lib import CEnum, CArrayMapping, Name
 from reggen.ip_block import IpBlock
@@ -37,7 +39,7 @@ class BaseType(ABC):
         """
 
     @abstractmethod
-    def render_value(self, value: object):
+    def render_value(self, value: object) -> str:
         """
         Render a value of this type.
         """
@@ -48,7 +50,7 @@ class BaseType(ABC):
 
         Example (name="my_var"): "int my_var = 42"
         """
-        return "{} = {};\n".format(self.render_var_decl(name), self.render_value(value))
+        return "{} = {};".format(self.render_var_decl(name), self.render_value(value))
 
 
 class ScalarType(BaseType):
@@ -107,7 +109,8 @@ class ArrayMapType(BaseType):
         return "{}[{}]".format(self.elem_type.render_var_decl(name),
                                self.index_type.render_value(self.length))
 
-    def render_value(self, value: dict[object, object]):
+    def render_value(self, value: object):
+        assert isinstance(value, Mapping), "ArrayMapType can only render value which are mappings"
         text = ""
         for (entry, value) in value.items():
             text += "[{}] = {},\n".format(self.index_type.render_value(entry),
@@ -132,6 +135,8 @@ class StructType(BaseType):
         return "StructType{{name={}, {}}}".format(self.name, self.fields.keys())
 
     def add_field(self, name: Name, field_type: BaseType, docstring: str = ""):
+        assert name not in self.fields, \
+            f"cannot add field {name} to struct since it already exists"
         self.fields[name] = (field_type, docstring)
 
     def has_field(self, name: Name) -> bool:
@@ -141,6 +146,7 @@ class StructType(BaseType):
         return self.fields[name][0]
 
     def as_c_type(self) -> str:
+        assert self.name is not None, "cannot get the name of an anonymous StructType"
         return self.name.as_c_type()
 
     def _render_type_def(self) -> str:
@@ -178,22 +184,91 @@ class StructType(BaseType):
             typename = self.name.as_c_type()
         return "{} {}".format(typename, name.as_snake_case())
 
-    def render_value(self, value: dict[Name, object]) -> str:
+    def render_value(self, value: Mapping) -> str:
         """
         Render a value which is a dictionary mapping fields to value.
         """
+        assert isinstance(value, Mapping), "StructType can only render values which are mappings"
         text = ""
+        unused_keys = set(value.keys())
         for (name, (field_type, _)) in self.fields.items():
-            # TODO warn about missing fields?
+            assert isinstance(name, Name), "StructType can only render mappings with `Name` keys"
             if name not in value:
                 logging.warn("field {} not found in {}".format(name, value))
                 continue
             text += ".{} = {},\n".format(name.as_snake_case(), field_type.render_value(value[name]))
-            value.pop(name)
-        assert not value, \
-            "Extra keys when rendering {} of type {}: {}".format(value, self, value.keys())
+            unused_keys.remove(name)
+        assert not unused_keys, \
+            "Extra keys when rendering {} of type {}: {}".format(value, self, list(unused_keys))
 
         return "{\n" + indent_text(text, "  ") + "}"
+
+
+class DefinesBlock:
+    """
+    A block of C `#define`s.
+    """
+    def __init__(self):
+        self.defines = {}
+
+    def add_define(self, name: Name, value: object):
+        self.defines[name] = value
+
+    def render(self) -> str:
+        text = ""
+        for (name, value) in self.defines.items():
+            if value is None:
+                text += "#define {}\n".format(name.as_c_define())
+            else:
+                text += "#define {} {}\n".format(name.as_c_define(), str(value))
+        return text
+
+
+class Extension(ABC):
+    """
+    Base class for extensions.
+    """
+    @staticmethod
+    @abstractmethod
+    def create_ext(ip_helper: "IpHelper") -> Optional["Extension"]:
+        """
+        This function must return an extension if it wants to modify
+        the DT of the IP passed to the constructor. Otherwise it must
+        return `None`.
+        """
+
+    def extend_dt_ip(self) -> Optional[StructType]:
+        """
+        Override this function to add some fields to the structure storing
+        fields for a given IP. This method MUST not modify `ip_helper` but
+        it can access its public fields. Return `None` if you don't want to
+        add more fields.
+        """
+
+    def fill_dt_ip(self, m) -> Optional[dict]:
+        """
+        Override this function to return the content of the fields added in
+        `extend_dt_ip` for a given module instance `m`. All fields MUST
+        be filled. This method MUST not modify `ip_helper` but
+        it can access its public fields.
+        """
+
+    class DtIpPos(Enum):
+        """Represent a position in `dt_ip.{c,h}` where a template can be inserted"""
+        HeaderEnd = 0  # At the end of `dt_<ip>.h`
+        SourceEnd = 1  # At the end of `dt_<ip>.c`
+        SourceIncludes = 2  # At the include stage of `dt_<ip>.c`
+
+    def render_dt_ip(self, pos: DtIpPos) -> str:
+        """
+        Return a string that will be inserted in the dt_<ip>.{c,h} file at a given position.
+        """
+        return ""
+
+
+class EmptyExtension(Extension):
+    def create_ext(ip_helper: "IpHelper") -> Optional[Extension]:
+        return None
 
 
 class TopHelper:
@@ -203,6 +278,7 @@ class TopHelper:
     DT_INSTANCE_ID_NAME = Name(["dt", "instance", "id"])
     DT_DEVICE_TYPE_NAME = Name(["dt", "device", "type"])
     DT_CLOCK_ENUM_NAME = Name(["dt", "clock"])
+    DT_RESET_ENUM_NAME = Name(["dt", "reset"])
     DT_PAD_NAME = Name(["dt", "pad"])
     DT_PAD_DESC_NAME = Name(["dt", "pad", "desc"])
 
@@ -240,6 +316,8 @@ class TopHelper:
         self._init_api()
         self._init_pads()
         self._init_irq_map()
+        if self.has_alert_handler():
+            self._init_alert_map()
         self._init_dev_type_map()
 
     def _init_api(self):
@@ -297,6 +375,14 @@ class TopHelper:
             clock_name = Name.from_snake_case(clock["name"])
             self.clock_enum.add_constant(clock_name)
         self.clock_enum.add_constant(Name(["count"]), "Number of clocks")
+
+        # List of all reset nodes and put them in an enum.
+        self.reset_enum = self._enum_type(Name([]), self.DT_RESET_ENUM_NAME)
+        self.reset_enum.add_constant(Name(["unknown"]), "Unknown reset")
+        for reset_node in self.top["resets"]["nodes"]:
+            reset_name = Name.from_snake_case(reset_node["name"])
+            self.reset_enum.add_constant(reset_name)
+        self.reset_enum.add_constant(Name(["count"]), "Number of resets")
 
         # Create structure to describe a peripheral I/O and a pad.
         self._create_periph_io_struct()
@@ -392,17 +478,13 @@ registers to connect a peripheral to this pad.""",  # noqa:E501
                 if pad["port_type"] in ["output", "inout", "`INOUT_AO"]:
                     pad_insel = \
                         Name.from_snake_case(f"top_{topname}_pinmux_insel_{padname}").as_c_enum()
-            elif pad["connection"] == "direct":
+            # Follow the same logic as in toplevel_pkg.sv.tpl and topgen/lib.py: the pads
+            # non-muxed enumerated from pinmux.ios are all direct pads for the pinmux.
+            else:
                 pad_type = Name.from_snake_case("dio")
                 pad_mio_out_or_direct_pad = \
                     Name.from_snake_case(f"top_{topname}_direct_pads_{padname}").as_c_enum()
                 pad_insel = "0"
-            else:
-                assert pad["connection"] == "manual", \
-                    "unexpected connection type '{}'".format(pad["connection"])
-                pad_mio_out_or_direct_pad = "0"
-                pad_insel = "0"
-                pad_type = Name.from_snake_case("unspecified")
             self.pad_dt_values[Name.from_snake_case(padname)] = {
                 self.DT_PAD_TYPE_FIELD_NAME: pad_type,
                 self.DT_PAD_MIO_OUT_DIO_FIELD_NAME: pad_mio_out_or_direct_pad,
@@ -420,8 +502,9 @@ registers to connect a peripheral to this pad.""",  # noqa:E501
                                     Name(["plic", "irq", "id"])),
             length = Name(["count"])
         )
-        self.inst_from_irq_values = OrderedDict()
-        self.inst_from_irq_values = {Name(["none"]): Name(["unknown"])}
+        self.inst_from_irq_values = OrderedDict(
+            {Name(["none"]): Name(["unknown"])},
+        )
         for intr in self.top["interrupt"]:
             width = int(intr["width"])
             for i in range(width):
@@ -433,6 +516,31 @@ registers to connect a peripheral to this pad.""",  # noqa:E501
                 else:
                     module_name = Name.from_snake_case(intr["module_name"])
                 self.inst_from_irq_values[name] = module_name
+
+    def has_alert_handler(self):
+        # FIXME find a better way then just harcoding this module name
+        return any(module["name"] == "alert_handler" for module in self.top["module"])
+
+    def _init_alert_map(self):
+        """
+        Create the array mappings to dispatch alerts.
+        """
+        self.inst_from_alert_map = ArrayMapType(
+            elem_type = ScalarType(self.instance_id_enum.name),
+            index_type = ScalarType(Name(["top"]) +
+                                    Name.from_snake_case(self.top["name"]) +
+                                    Name(["alert", "id"])),
+            length = Name(["count"])
+        )
+        self.inst_from_alert_values = OrderedDict()
+        for alert in self.top["alert"]:
+            width = int(alert["width"])
+            for i in range(width):
+                name = Name.from_snake_case(alert["name"])
+                if width > 1:
+                    name += Name([str(i)])
+                self.inst_from_alert_values[name] = Name.from_snake_case(
+                    alert["module_name"])
 
     def _init_dev_type_map(self):
         """
@@ -451,21 +559,34 @@ registers to connect a peripheral to this pad.""",  # noqa:E501
                 self.dev_type_values[Name.from_snake_case(m["name"])] = \
                     Name.from_snake_case(module_name)
 
+    def get_module_type(self, module_name: str) -> str:
+        """
+        Return the module type from a module name.
+        """
+        for m in self.top["module"]:
+            if m["name"] == module_name:
+                return m["type"]
+        raise RuntimeError("module '{}' not found in top '{}'".format(module_name, self._top_name))
+
 
 class IpHelper:
     UNNAMED_REG_BLOCK_NAME = "core"
     INST_ID_FIELD_NAME = Name(["inst", "id"])
     BASE_ADDR_FIELD_NAME = Name(["base", "addr"])
     CLOCK_FIELD_NAME = Name(["clock"])
+    RESET_FIELD_NAME = Name(["reset"])
     PERIPH_IO_FIELD_NAME = Name(["periph", "io"])
     DT_STRUCT_NAME_PREFIX = Name(["dt", "desc"])
     FIRST_IRQ_FIELD_NAME = Name(["first", "irq"])
+    FIRST_ALERT_FIELD_NAME = Name(["first", "alert"])
+    EXTENSION_FIELD_NAME = Name(["ext"])
 
-    def __init__(self, top_helper: TopHelper, ip: IpBlock, default_node: str,
-                 enum_type, array_mapping_type):
+    def __init__(self, top_helper: TopHelper, ip: IpBlock, ipconfig: object, default_node: str,
+                 enum_type: object, array_mapping_type: object, extension_cls = None):
         self.top_helper = top_helper
         self.top = top_helper.top
         self.ip = ip
+        self.ipconfig = ipconfig
         self.default_node = default_node
         self.ip_name = Name.from_snake_case(self.ip.name)
 
@@ -483,8 +604,15 @@ class IpHelper:
 
         self._init_reg_blocks()
         self._init_irqs()
+        self._init_alerts()
         self._init_clocks()
+        self._init_wakeups()
+        self._init_reset_requests()
+        self._init_resets()
         self._init_periph_io()
+        self._init_features()
+        self.extension = (extension_cls or EmptyExtension).create_ext(self)
+
         self._init_instances()
 
     def _init_reg_blocks(self):
@@ -497,7 +625,7 @@ class IpHelper:
                 reg_blocks.append(rb)
 
         assert self.default_node in reg_blocks, \
-            "default node ({}) is invalid".format(self._default_node)
+            "default node ({}) is invalid".format(self.default_node)
 
         self.reg_block_enum = self._enum_type(
             Name([]), Name(["dt"]) + self.ip_name + Name(["reg", "block"]))
@@ -523,6 +651,28 @@ class IpHelper:
             self.irq_enum.add_constant(Name.from_snake_case(irq), sig.desc)
         if isinstance(self.reg_block_enum, CEnum):
             self.irq_enum.add_constant(Name(["count"]), "Number of IRQs")
+
+    def has_alerts(self):
+        return len(self.ip.alerts) > 0
+
+    def has_alert_handler(self):
+        # FIXME find a better way then just harcoding this module name
+        return any(module["name"] == "alert_handler" for module in self.top["module"])
+
+    def _init_alerts(self):
+        device_alerts = OrderedDict()
+        for sig in self.ip.alerts:
+            if sig.bits.width() > 1:
+                for bit in range(sig.bits.width()):
+                    device_alerts[sig.name + str(bit)] = sig
+            else:
+                device_alerts[sig.name] = sig
+
+        self.alert_enum = self._enum_type(Name([]), Name(["dt"]) + self.ip_name + Name(["alert"]))
+        for (alert, sig) in device_alerts.items():
+            self.alert_enum.add_constant(Name.from_snake_case(alert), sig.desc)
+        if isinstance(self.reg_block_enum, CEnum):
+            self.alert_enum.add_constant(Name(["count"]), "Number of Alerts")
 
     def has_clocks(self):
         return len(self._device_clocks) > 0
@@ -551,6 +701,54 @@ class IpHelper:
         if isinstance(self.reg_block_enum, CEnum):
             self.clock_enum.add_constant(Name(["count"]), "Number of clock ports")
 
+    def has_reset_requests(self):
+        return len(self.reset_req_map) > 0
+
+    def simplify_reset_request_name(self, req: str) -> str:
+        # Remove the rst_req prefix or suffix
+        if req.startswith("rst_req_"):
+            req = req.removeprefix("rst_req_")
+        if req.endswith("_rst_req"):
+            req = req.removesuffix("_rst_req")
+        return req
+
+    def _init_reset_requests(self):
+        self.reset_req_enum = self._enum_type(Name([]), Name(["dt"]) + self.ip_name +
+                                              Name(["reset", "req"]))
+        self.reset_req_map = OrderedDict()
+        # Resets are listed alongside clocks.
+        for req in self.ip.reset_requests:
+            req = req.name
+            req_orig = req
+            req = self.simplify_reset_request_name(req)
+
+            self.reset_req_map[req_orig] = req
+            self.reset_req_enum.add_constant(Name.from_snake_case(req))
+        if isinstance(self.reset_req_enum, CEnum):
+            self.reset_req_enum.add_constant(Name(["count"]), "Number of reset requests")
+
+    def has_resets(self):
+        return len(self.reset_map) > 0
+
+    def _init_resets(self):
+        self.reset_enum = self._enum_type(Name([]), Name(["dt"]) + self.ip_name + Name(["reset"]))
+        self.reset_map = OrderedDict()
+        # Resets are listed alongside clocks.
+        for rst in self.ip.clocking.reset_signals():
+            rst_orig = rst
+            # Remove the rst_ prefix and _ni suffix.
+            assert rst.startswith("rst_") and rst.endswith("_ni"), \
+                f"reset '{rst}' does not start with rst_ and end with _ni"
+            # There is a special case: if the reset name is "rst_ni" then we would get a weird name.
+            if rst == "rst_ni":
+                rst = "rst"
+            else:
+                rst = rst.removeprefix("rst_").removesuffix("_ni")
+            self.reset_map[rst_orig] = rst
+            self.reset_enum.add_constant(Name.from_snake_case(rst))
+        if isinstance(self.reset_enum, CEnum):
+            self.reset_enum.add_constant(Name(["count"]), "Number of reset ports")
+
     def has_periph_io(self):
         return len(self._device_signals) > 0
 
@@ -572,6 +770,19 @@ class IpHelper:
             self.periph_io_enum.add_constant(Name.from_snake_case(sig))
         if isinstance(self.reg_block_enum, CEnum):
             self.periph_io_enum.add_constant(Name(["count"]), "Number of peripheral I/O")
+
+    def has_wakeups(self):
+        return len(self.ip.wakeups) > 0
+
+    def _init_wakeups(self):
+        self.wakeup_enum = self._enum_type(
+            Name([]),
+            Name(["dt"]) + self.ip_name + Name(["wakeup"])
+        )
+        for sig in self.ip.wakeups:
+            self.wakeup_enum.add_constant(Name.from_snake_case(sig.name), sig.desc)
+        if isinstance(self.wakeup_enum, CEnum):
+            self.wakeup_enum.add_constant(Name(["count"]), "Number of wakeups")
 
     def _init_instances(self):
         self.inst_enum = self._enum_type(Name([]), Name(["dt"]) + self.ip_name)
@@ -606,6 +817,15 @@ class IpHelper:
         if isinstance(self.inst_enum, CEnum):
             self.inst_enum.add_constant(Name(["count"]), "Number of instances")
 
+    def has_features(self):
+        return len(self.ip.features) > 0
+
+    def _init_features(self):
+        self.feature_defines = DefinesBlock()
+        for feature in self.ip.features:
+            define = Name(["opentitan"]) + self.ip_name + Name(["has"]) + Name([feature.name])
+            self.feature_defines.add_define(define, 1)
+
     def _create_dt_struct(self):
         self.inst_struct = StructType(self.DT_STRUCT_NAME_PREFIX + self.ip_name)
         self.inst_struct.add_field(
@@ -633,6 +853,18 @@ class IpHelper:
 
 This can be `kDtPlicIrqIdNone` if the block is not connected to the PLIC."""
             )
+        if self.has_alerts() and self.has_alert_handler():
+            # FIXME We need to handle better the case where a block is
+            # not connected to the Alert Handler.
+            self.inst_struct.add_field(
+                name = self.FIRST_ALERT_FIELD_NAME,
+                field_type = ScalarType(Name(["top"]) +
+                                        Name.from_snake_case(self.top["name"]) +
+                                        Name(["alert", "id"])),
+                docstring = """Alert ID of the first Alert of this instance.
+
+This value is undefined if the block is not connected to the Alert Handler."""
+            )
         if self.has_clocks():
             self.inst_struct.add_field(
                 name = self.CLOCK_FIELD_NAME,
@@ -642,6 +874,16 @@ This can be `kDtPlicIrqIdNone` if the block is not connected to the PLIC."""
                     length = Name(["count"]),
                 ),
                 docstring = "Clock signal connected to each clock port"
+            )
+        if self.has_resets():
+            self.inst_struct.add_field(
+                name = self.RESET_FIELD_NAME,
+                field_type = ArrayMapType(
+                    elem_type = ScalarType(TopHelper.DT_RESET_ENUM_NAME),
+                    index_type = ScalarType(self.reset_enum.name),
+                    length = Name(["count"]),
+                ),
+                docstring = "Reset signal connected to each reset port"
             )
         if self.has_periph_io():
             self.inst_struct.add_field(
@@ -653,6 +895,15 @@ This can be `kDtPlicIrqIdNone` if the block is not connected to the PLIC."""
                 ),
                 docstring = "Description of each peripheral I/O"
             )
+        # Add extension fields.
+        if self.extension:
+            ext_struct = self.extension.extend_dt_ip()
+            if ext_struct:
+                self.inst_struct.add_field(
+                    name = self.EXTENSION_FIELD_NAME,
+                    field_type = ext_struct,
+                    docstring = "Extension"
+                )
 
     def _create_instance(self, m):
         """
@@ -690,6 +941,13 @@ This can be `kDtPlicIrqIdNone` if the block is not connected to the PLIC."""
                 inst_clock_map[Name.from_snake_case(self.clock_map[port])] = \
                     Name.from_snake_case(clk_name)
             inst_desc[self.CLOCK_FIELD_NAME] = inst_clock_map
+        # Reset map.
+        if self.has_resets():
+            inst_reset_map = OrderedDict()
+            for (port, rst) in m["reset_connections"].items():
+                inst_reset_map[Name.from_snake_case(self.reset_map[port])] = \
+                    Name.from_snake_case(rst["name"])
+            inst_desc[self.RESET_FIELD_NAME] = inst_reset_map
         # First IRQ
         if self.has_irqs():
             irqs_packed = [irq for irq in self.top["interrupt"] if irq["module_name"] == modname]
@@ -712,6 +970,25 @@ This can be `kDtPlicIrqIdNone` if the block is not connected to the PLIC."""
             else:
                 first_irq = irqs[0]
             inst_desc[self.FIRST_IRQ_FIELD_NAME] = first_irq
+        # First Alert
+        if self.has_alerts() and self.has_alert_handler():
+            alerts_packed = [alert for alert in self.top["alert"]
+                             if alert["module_name"] == modname]
+            alerts = []
+            for alert in alerts_packed:
+                alert_name = Name.from_snake_case(alert["name"])
+                alert_width = int(alert["width"])
+                if alert_width > 1:
+                    for i in range(alert_width):
+                        alerts.append(alert_name + Name([str(i)]))
+                else:
+                    alerts.append(alert_name)
+            # Because the alert information is generated by topgen, if the block has alerts and
+            # the top instantiates an Alert Handler, the alerts must be connected to the Alert
+            # Handler. Assert to check this is the case.
+            assert len(alerts) > 0, \
+                   "An IP declares alerts but does not connect them to the Alert Handler."
+            inst_desc[self.FIRST_ALERT_FIELD_NAME] = alerts[0]
         # Periph I/O
         if self.has_periph_io():
             periph_ios = OrderedDict()
@@ -731,6 +1008,11 @@ This can be `kDtPlicIrqIdNone` if the block is not connected to the PLIC."""
                     logging.warning(f"no connection found for device {modname}, signal {sig}")
                     periph_ios[Name.from_snake_case(sig)] = self._create_periph_io_missing_desc()
             inst_desc[self.PERIPH_IO_FIELD_NAME] = periph_ios
+        # Add extension fields.
+        if self.extension:
+            ext_fields = self.extension.fill_dt_ip(m)
+            if ext_fields:
+                inst_desc[self.EXTENSION_FIELD_NAME] = ext_fields
 
         return inst_desc
 
@@ -806,3 +1088,6 @@ This can be `kDtPlicIrqIdNone` if the block is not connected to the PLIC."""
                 TopHelper.DT_PERIPH_IO_OUTSEL_FIELD_NAME: "0",
             }
         }
+
+    def render_extension(self, ip_pos: Extension.DtIpPos) -> str:
+        return self.extension.render_dt_ip(ip_pos) if self.extension else ""

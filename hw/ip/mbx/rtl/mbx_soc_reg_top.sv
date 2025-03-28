@@ -521,8 +521,9 @@ module mbx_soc_reg_top
   // A valid address hit, access, but failed the RACL check
   assign racl_error_o.valid = |addr_hit & ((reg_re & ~|racl_addr_hit_read) |
                                            (reg_we & ~|racl_addr_hit_write));
-  assign racl_error_o.racl_role = racl_role;
-  assign racl_error_o.overflow  = 1'b0;
+  assign racl_error_o.request_address = top_pkg::TL_AW'(reg_addr);
+  assign racl_error_o.racl_role       = racl_role;
+  assign racl_error_o.overflow        = 1'b0;
 
   if (EnableRacl) begin : gen_racl_log
     assign racl_error_o.ctn_uid     = top_racl_pkg::tlul_extract_ctn_uid_bits(tl_i.a_user.rsvd);
@@ -542,7 +543,7 @@ module mbx_soc_reg_top
   end
 
   // Generate write-enables
-  assign soc_control_re = racl_addr_hit_write[0] & reg_re & !reg_error;
+  assign soc_control_re = racl_addr_hit_read[0] & reg_re & !reg_error;
   assign soc_control_we = racl_addr_hit_write[0] & reg_we & !reg_error;
 
   assign soc_control_abort_wd = reg_wdata[0];

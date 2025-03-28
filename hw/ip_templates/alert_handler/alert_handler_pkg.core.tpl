@@ -4,8 +4,6 @@ CAPI=2:
 # SPDX-License-Identifier: Apache-2.0
 name: ${instance_vlnv(f"lowrisc:ip:{module_instance_name}_pkg:0.1")}
 description: "Alert Handler constants in packages"
-virtual:
-  - "lowrisc:ip_interfaces:${module_instance_name}_pkg"
 
 filesets:
   files_rtl:

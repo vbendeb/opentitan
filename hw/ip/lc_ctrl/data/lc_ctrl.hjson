@@ -218,6 +218,20 @@
       local: "true",
       expose: "true"
     },
+    {
+      name: "EscNumSeverities"
+      desc: "Number of escalation severities"
+      type: "int"
+      default: "4"
+      local: "false"
+    },
+    {
+      name: "EscPingCountWidth"
+      desc: "Width of ping count for the escalation receiver"
+      type: "int"
+      default: "16"
+      local: "false"
+    },
   ]
 
   /////////////////////////////
@@ -262,7 +276,7 @@
       type:    "req_rsp",
       name:    "pwr_lc",
       act:     "rsp",
-      package: "pwrmgr_pkg",
+      package: "lc_ctrl_pkg",
     },
     // Macro-specific test signals to/from LC TAP/DMI
     { struct:  "lc_otp_vendor_test"

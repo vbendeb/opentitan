@@ -15,10 +15,9 @@ use std::path::Path;
 use super::KeyEncoding;
 use crate::error::HsmError;
 use crate::util::attribute::{AttrData, AttributeMap, AttributeType, KeyType, ObjectClass};
-use crate::util::helper;
 
 fn _load_private_key(path: &Path) -> Result<RsaPrivateKey> {
-    let data = helper::read_file(path)?;
+    let data = std::fs::read(path)?;
     let sdata = std::str::from_utf8(&data);
     let format = match sdata {
         Ok(s) if s.contains("-----BEGIN RSA PRIVATE KEY-----") => KeyEncoding::Pkcs1Pem,
@@ -155,7 +154,7 @@ impl TryFrom<&AttributeMap> for RsaPrivateKey {
 }
 
 fn _load_public_key(path: &Path) -> Result<RsaPublicKey> {
-    let data = helper::read_file(path)?;
+    let data = std::fs::read(path)?;
     let sdata = std::str::from_utf8(&data);
     let format = match sdata {
         Ok(s) if s.contains("-----BEGIN RSA PUBLIC KEY-----") => KeyEncoding::Pkcs1Pem,
@@ -299,7 +298,7 @@ pub fn save_public_key<P: AsRef<Path>>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testdata;
+    use crate::util::testdata;
 
     const TEST1_PRIVATE_KEY: &str = r#"{
   "CKA_CLASS": "CKO_PRIVATE_KEY",
@@ -323,29 +322,29 @@ mod tests {
 
     #[test]
     fn test_load_public_keys() -> Result<()> {
-        assert!(load_public_key(testdata!("test1_pkcs8.pub.pem")).is_ok());
-        assert!(load_public_key(testdata!("test1_pkcs8.pub.der")).is_ok());
-        assert!(load_public_key(testdata!("test1_pkcs1.pub.pem")).is_ok());
-        assert!(load_public_key(testdata!("test1_pkcs1.pub.der")).is_ok());
+        assert!(load_public_key(testdata("key/test1_pkcs8.pub.pem")).is_ok());
+        assert!(load_public_key(testdata("key/test1_pkcs8.pub.der")).is_ok());
+        assert!(load_public_key(testdata("key/test1_pkcs1.pub.pem")).is_ok());
+        assert!(load_public_key(testdata("key/test1_pkcs1.pub.der")).is_ok());
         Ok(())
     }
 
     #[test]
     fn test_load_private_keys() -> Result<()> {
-        assert!(load_private_key(testdata!("test1_pkcs8.pem")).is_ok());
-        assert!(load_private_key(testdata!("test1_pkcs8.der")).is_ok());
-        assert!(load_private_key(testdata!("test1_pkcs1.pem")).is_ok());
-        assert!(load_private_key(testdata!("test1_pkcs1.der")).is_ok());
+        assert!(load_private_key(testdata("key/test1_pkcs8.pem")).is_ok());
+        assert!(load_private_key(testdata("key/test1_pkcs8.der")).is_ok());
+        assert!(load_private_key(testdata("key/test1_pkcs1.pem")).is_ok());
+        assert!(load_private_key(testdata("key/test1_pkcs1.der")).is_ok());
         Ok(())
     }
 
     #[test]
     fn test_convert_key_to_hsm() -> Result<()> {
-        let k = load_private_key(testdata!("test1_pkcs8.pem"))?;
+        let k = load_private_key(testdata("key/test1_pkcs8.pem"))?;
         let hsm = AttributeMap::try_from(&k)?;
         assert_eq!(serde_json::to_string_pretty(&hsm)?, TEST1_PRIVATE_KEY);
 
-        let k = load_public_key(testdata!("test1_pkcs8.pub.pem"))?;
+        let k = load_public_key(testdata("key/test1_pkcs8.pub.pem"))?;
         let hsm = AttributeMap::try_from(&k)?;
         assert_eq!(serde_json::to_string_pretty(&hsm)?, TEST1_PUBLIC_KEY);
         Ok(())
@@ -355,12 +354,12 @@ mod tests {
     fn test_convert_hsm_to_key() -> Result<()> {
         let hsm = serde_json::from_str::<AttributeMap>(TEST1_PRIVATE_KEY)?;
         let kpriv = RsaPrivateKey::try_from(&hsm)?;
-        let k = load_private_key(testdata!("test1_pkcs8.pem"))?;
+        let k = load_private_key(testdata("key/test1_pkcs8.pem"))?;
         assert_eq!(kpriv, k);
 
         let hsm = serde_json::from_str::<AttributeMap>(TEST1_PUBLIC_KEY)?;
         let kpub = RsaPublicKey::try_from(&hsm)?;
-        let k = load_public_key(testdata!("test1_pkcs8.pub.pem"))?;
+        let k = load_public_key(testdata("key/test1_pkcs8.pub.pem"))?;
         assert_eq!(kpub, k);
         Ok(())
     }

@@ -61,7 +61,7 @@ module prim_ram_1p_scr import prim_ram_1p_pkg::*; #(
   // Each 64 bit scrambling primitive requires a 64bit IV
   localparam int NonceWidth          = 64 * NumParScr,
   // Compute RAM tiling
-  localparam int NumRamInst          = int'($ceil(Depth / real'(InstDepth)))
+  localparam int NumRamInst          = prim_util_pkg::ceil_div(Depth, InstDepth)
 ) (
   input                                    clk_i,
   input                                    rst_ni,
@@ -83,7 +83,7 @@ module prim_ram_1p_scr import prim_ram_1p_pkg::*; #(
   output logic [Width-1:0]                 rdata_o,
   output logic                             rvalid_o, // Read response (rdata_o) is valid
   output logic [1:0]                       rerror_o, // Bit1: Uncorrectable, Bit0: Correctable
-  output logic [31:0]                      raddr_o,  // Read address for error reporting.
+  output logic [AddrWidth-1:0]             raddr_o,  // Read address for error reporting.
 
   // config
   input  ram_1p_cfg_t     [NumRamInst-1:0] cfg_i,
@@ -234,7 +234,7 @@ module prim_ram_1p_scr import prim_ram_1p_pkg::*; #(
 
   // We latch the non-scrambled address for error reporting.
   logic [AddrWidth-1:0] raddr_q;
-  assign raddr_o = 32'(raddr_q);
+  assign raddr_o = raddr_q;
 
   //////////////////////////////////////////////
   // Keystream Generation for Data Scrambling //

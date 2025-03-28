@@ -5,7 +5,6 @@
 r"""Top Module Generator
 """
 import argparse
-import filecmp
 import logging as log
 import shutil
 import sys
@@ -18,10 +17,12 @@ from typing import Callable, Dict, List, NamedTuple, Optional, Tuple
 import hjson
 import tlgen
 import version_file
+from basegen.typing import ConfigT, ParamsT
+from design.lib.OtpMemMap import OtpMemMap
 from ipgen import (IpBlockRenderer, IpConfig, IpDescriptionOnlyRenderer,
                    IpTemplate, TemplateRenderError)
-from design.lib.OtpMemMap import OtpMemMap
 from mako import exceptions
+from mako.lookup import TemplateLookup
 from mako.template import Template
 from raclgen.lib import DEFAULT_RACL_CONFIG
 from reggen import access, gen_rtl, gen_sec_cm_testplan, window
@@ -41,10 +42,10 @@ from topgen.merge import (
     amend_reset_request, amend_resets, amend_wkup, commit_alert_modules,
     commit_interrupt_modules, commit_outgoing_alert_modules, connect_clocks,
     create_alert_lpgs, elaborate_instance, extract_clocks)
-
 from topgen.resets import Resets
 from topgen.rust import TopGenRust
 from topgen.top import Top
+from topgen.typing import IpBlocksT
 
 # Common header for generated files
 warnhdr = """//
@@ -66,6 +67,26 @@ IP_RAW_PATH = SRCTREE_TOP / "hw" / "ip"
 IP_TEMPLATES_PATH = SRCTREE_TOP / "hw" / "ip_templates"
 
 
+class UniquifiedModules(object):
+    """This holds the uniquified name for all uniquified modules."""
+
+    def __init__(self):
+        self.modules: Dict[str, str] = {}
+
+    def add_module(self, name: str, uniquified_name: str):
+        if name == uniquified_name:
+            return
+        if (name in self.modules and uniquified_name != self.modules[name]):
+            raise SystemExit(f"Multiple renames for module {name}")
+        self.modules[name] = uniquified_name
+
+    def get_uniq_name(self, name: str) -> Optional[str]:
+        return self.modules.get(name)
+
+
+uniquified_modules = UniquifiedModules()
+
+
 class IpAttrs(NamedTuple):
     """Hold IP block, and path to hjson."""
     ip_block: IpBlock
@@ -74,18 +95,19 @@ class IpAttrs(NamedTuple):
     instances: List[object]
 
 
-def _ipgen_render_prelude(
-        template_name: str, topname: str,
-        params: Dict[str, object]) -> (str, IpTemplate, IpConfig):
+def _ipgen_render_prelude(template_name: str, topname: str,
+                          params: ParamsT) -> (str, IpTemplate, IpConfig):
     module_name = (params.get("module_instance_name", template_name)
                    if params else template_name)
     top_name = f"top_{topname}"
     instance_name = f"{top_name}_{module_name}"
-
     ip_template = IpTemplate.from_template_path(IP_TEMPLATES_PATH /
                                                 template_name)
+    params.update({
+        "topname": topname,
+        "uniquified_modules": uniquified_modules.modules
+    })
 
-    params.update({"topname": topname})
     try:
         ip_config = IpConfig(ip_template.params, instance_name, params)
     except ValueError as e:
@@ -95,7 +117,7 @@ def _ipgen_render_prelude(
 
 
 def ipgen_hjson_render(template_name: str, topname: str,
-                       params: Dict[str, object]) -> IpBlock:
+                       params: ParamsT) -> IpBlock:
     """ Render an IP hjson template for a specific toplevel using ipgen.
 
     Renders the hjson template as a string and returns an IpBlock
@@ -103,7 +125,7 @@ def ipgen_hjson_render(template_name: str, topname: str,
 
     Aborts the program execution in case of an error.
     """
-    (module_name, ip_template,
+    (_module_name, ip_template,
      ip_config) = _ipgen_render_prelude(template_name, topname, params)
 
     try:
@@ -115,7 +137,7 @@ def ipgen_hjson_render(template_name: str, topname: str,
         ip_desc, [], f"ipgen description from {ip_template.template_path}")
 
 
-def ipgen_render(template_name: str, topname: str, params: Dict[str, object],
+def ipgen_render(template_name: str, topname: str, params: ParamsT,
                  out_path: Path) -> None:
     """ Render an IP template for a specific toplevel using ipgen.
 
@@ -136,9 +158,10 @@ def ipgen_render(template_name: str, topname: str, params: Dict[str, object],
         sys.exit(1)
 
 
-def generate_top(top: Dict[str, object], name_to_block: Dict[str, IpBlock],
-                 tpl_filename: str, **kwargs: Dict[str, object]) -> None:
-    top_tpl = Template(filename=tpl_filename)
+def generate_top(top: ConfigT, name_to_block: IpBlocksT, tpl_filename: str,
+                 **kwargs: Dict[str, object]) -> None:
+    top_tpl = Template(filename=tpl_filename,
+                       lookup=TemplateLookup([TOPGEN_TEMPLATE_PATH, "/"]))
 
     try:
         return top_tpl.render(top=top, name_to_block=name_to_block, **kwargs)
@@ -147,7 +170,7 @@ def generate_top(top: Dict[str, object], name_to_block: Dict[str, IpBlock],
         return ""
 
 
-def configure_xbars(top: Dict[str, object]):
+def configure_xbars(top: ConfigT) -> None:
     """Complete all xbar configs in the top config.
 
     Run validate and elaborate, and create the inter_signal_lists.
@@ -185,7 +208,7 @@ def configure_xbars(top: Dict[str, object]):
         obj["inter_signal_list"] = inter_signal_list
 
 
-def generate_xbars(top: Dict[str, object], out_path: Path) -> None:
+def generate_xbars(top: ConfigT, out_path: Path) -> None:
     """Re-run validate and elaborate to generate the Xbar objects."""
     top_name = "top_" + top["name"]
     gencmd = (f"// util/topgen.py -t hw/{top_name}/data/{top_name}.hjson "
@@ -227,16 +250,25 @@ def generate_xbars(top: Dict[str, object], out_path: Path) -> None:
         tlgen.generate_tb(xbar, dv_path, top_name)
 
 
-def generate_ipgen(topcfg: Dict[str, object], module: Dict[str, object],
-                   params: Dict[str, object], out_path: Path) -> None:
-    topname = topcfg["name"]
+def generate_ipgen(top: ConfigT, module: ConfigT, params: ParamsT,
+                   out_path: Path) -> None:
+    topname = top["name"]
+    template_name = module["template_type"]
     module_name = module["type"]
     module_instance_name = params.get("module_instance_name")
-    assert not module_instance_name or module_instance_name == module_name
+    if module_instance_name and module_instance_name != module_name:
+        raise ValueError(
+            f"Unexpected module_instance_name: expected {module_name}, got "
+            f"{module_instance_name}")
+    uniq_name = uniquified_modules.get_uniq_name(template_name)
+    if uniq_name and uniq_name != module_instance_name:
+        raise ValueError(
+            f"Unexpected uniquified name: expected {module_instance_name}, "
+            f"got {uniq_name}")
     ipgen_render(module["template_type"], topname, params, out_path)
 
 
-def _get_alert_handler_params(top: Dict[str, object]) -> Dict[str, object]:
+def _get_alert_handler_params(top: ConfigT) -> ParamsT:
     """Returns parameters for alert_hander ipgen from top config."""
     topname = top["name"]
     # default values
@@ -290,6 +322,10 @@ def _get_alert_handler_params(top: Dict[str, object]) -> Dict[str, object]:
                                               int(alert["lpg_idx"])))
             lpg_prev_offset += max(alert['lpg_idx'] for alert in alerts) + 1
     module = lib.find_module(top["module"], "alert_handler")
+    uniquified_modules.add_module(module["template_type"], module["type"])
+
+    n_esc_sev = module["param_decl"]["EscNumSeverities"]
+    ping_cnt_dw = module["param_decl"]["EscPingCountWidth"]
 
     return {
         "module_instance_name": module["type"],
@@ -298,20 +334,22 @@ def _get_alert_handler_params(top: Dict[str, object]) -> Dict[str, object]:
         "accu_cnt_dw": accu_cnt_dw,
         "async_on": async_on,
         "n_classes": n_classes,
+        "n_esc_sev": n_esc_sev,
+        "ping_cnt_dw": ping_cnt_dw,
         "n_lpg": n_lpgs,
         "lpg_map": lpg_map,
         "top_pkg_vlnv": f"lowrisc:constants:top_{topname}_top_pkg",
     }
 
 
-def generate_alert_handler(top: Dict[str, object], module: Dict[str, object],
+def generate_alert_handler(top: ConfigT, module: ConfigT,
                            out_path: Path) -> None:
     log.info("Generating alert_handler with ipgen")
     params = _get_alert_handler_params(top)
     generate_ipgen(top, module, params, out_path)
 
 
-def generate_outgoing_alerts(top: Dict[str, object], out_path: Path) -> None:
+def generate_outgoing_alerts(top: ConfigT, out_path: Path) -> None:
     log.info("Generating outgoing alert definitions")
 
     def render_template(template_path: Path, rendered_path: Path,
@@ -333,7 +371,7 @@ def generate_outgoing_alerts(top: Dict[str, object], out_path: Path) -> None:
                         alerts=alerts)
 
 
-def _get_rv_plic_params(top: Dict[str, object]) -> Dict[str, object]:
+def _get_rv_plic_params(top: ConfigT) -> ParamsT:
     """Gets parameters for plic ipgen from top config."""
     # Get the PLIC instance
     module = lib.find_module(top["module"], "rv_plic")
@@ -344,6 +382,7 @@ def _get_rv_plic_params(top: Dict[str, object]) -> Dict[str, object]:
     num_srcs = sum(
         [int(x["width"]) if "width" in x else 1 for x in top["interrupt"]]) + 1
     num_cores = int(top["num_cores"], 0) if "num_cores" in top else 1
+    uniquified_modules.add_module(module["template_type"], module["type"])
     return {
         "module_instance_name": module["type"],
         "src": num_srcs,
@@ -352,8 +391,7 @@ def _get_rv_plic_params(top: Dict[str, object]) -> Dict[str, object]:
     }
 
 
-def generate_plic(top: Dict[str, object], module: Dict[str, object],
-                  out_path: Path) -> None:
+def generate_plic(top: ConfigT, module: ConfigT, out_path: Path) -> None:
     log.info("Generating rv_plic with ipgen")
     params = _get_rv_plic_params(top)
     generate_ipgen(top, module, params, out_path)
@@ -375,7 +413,7 @@ def generate_regfile_from_path(hjson_path: Path,
         sys.exit(1)
 
 
-def _get_pinmux_params(top: Dict[str, object]) -> Dict[str, object]:
+def _get_pinmux_params(top: ConfigT) -> ParamsT:
     """Gets parameters for pinmux ipgen from top config."""
     # Generation without pinmux and pinout configuration is not supported.
     assert "pinmux" in top
@@ -451,14 +489,13 @@ def _get_pinmux_params(top: Dict[str, object]) -> Dict[str, object]:
     }
 
 
-def generate_pinmux(top: Dict[str, object], module: Dict[str, object],
-                    out_path: Path) -> None:
+def generate_pinmux(top: ConfigT, module: ConfigT, out_path: Path) -> None:
     log.info("Generating pinmux with ipgen")
     params = _get_pinmux_params(top)
     generate_ipgen(top, module, params, out_path)
 
 
-def _get_clkmgr_params(top: Dict[str, object]) -> Dict[str, object]:
+def _get_clkmgr_params(top: ConfigT) -> ParamsT:
     """Gets parameters for clkmgr ipgen from top config."""
     clocks = top["clocks"]
     assert isinstance(clocks, Clocks)
@@ -503,23 +540,22 @@ def _get_clkmgr_params(top: Dict[str, object]) -> Dict[str, object]:
         len(clocks.groups),
         "with_alert_handler":
         with_alert_handler,
-        # TODO: Register VLNVs and look this up instead of hard-coding.
-        "pwrmgr_vlnv_prefix":
-        f"top_{topname}_",
         "top_pkg_vlnv":
         f"lowrisc:constants:top_{topname}_top_pkg",
     }
 
 
 # generate clkmgr with ipgen
-def generate_clkmgr(top: Dict[str, object], module: Dict[str, object],
-                    out_path: Path) -> None:
+def generate_clkmgr(top: ConfigT, module: ConfigT, out_path: Path) -> None:
     log.info("Generating clkmgr with ipgen")
     params = _get_clkmgr_params(top)
+    log.info("clkmgr params:")
+    for k, v in params.items():
+        log.info(f"{k}: {v}")
     generate_ipgen(top, module, params, out_path)
 
 
-def _get_pwrmgr_params(top: Dict[str, object]) -> Dict[str, object]:
+def _get_pwrmgr_params(top: ConfigT) -> ParamsT:
     """Extracts parameters for pwrmgr ipgen."""
     topname = top["name"]
     # Count number of wakeups
@@ -558,19 +594,18 @@ def _get_pwrmgr_params(top: Dict[str, object]) -> Dict[str, object]:
     }
 
 
-def generate_pwrmgr(top: Dict[str, object], module: Dict[str, object],
-                    out_path: Path) -> None:
+def generate_pwrmgr(top: ConfigT, module: ConfigT, out_path: Path) -> None:
     log.info("Generating pwrmgr with ipgen")
     params = _get_pwrmgr_params(top)
     generate_ipgen(top, module, params, out_path)
 
 
-def get_rst_ni(top: Dict[str, object]) -> object:
+def get_rst_ni(top: ConfigT) -> object:
     rstmgr = find_module(top["module"], "rstmgr", True)
     return rstmgr["reset_connections"]
 
 
-def _get_rstmgr_params(top: Dict[str, object]) -> Dict[str, object]:
+def _get_rstmgr_params(top: ConfigT) -> ParamsT:
     """Extracts parameters for rstmgr ipgen."""
     topname = top["name"]
     # Parameters needed for generation
@@ -601,13 +636,13 @@ def _get_rstmgr_params(top: Dict[str, object]) -> Dict[str, object]:
     with_alert_handler = lib.find_module(top['module'],
                                          'alert_handler') is not None
     if with_alert_handler:
-        alert_handler_vlnv_prefix = f"top_{topname}_"
+        alert_handler_vlnv = f"lowrisc:{topname}_ip:alert_handler_pkg"
     elif topname == "englishbreakfast":
         # TODO: Clean templates to not require alert_handler. English Breakfast
         # does not have one, so it uses types and constants from Earl Grey.
-        alert_handler_vlnv_prefix = "top_earlgrey_"
+        alert_handler_vlnv = "lowrisc:earlgrey_ip:alert_handler_pkg"
     else:
-        alert_handler_vlnv_prefix = ""
+        alert_handler_vlnv = ""
 
     return {
         "clks": clks,
@@ -619,26 +654,24 @@ def _get_rstmgr_params(top: Dict[str, object]) -> Dict[str, object]:
         "leaf_rsts": leaf_rsts,
         "rst_ni": rst_ni['rst_ni']['name'],
         "export_rsts": top["exported_rsts"],
-        "alert_handler_vlnv_prefix": alert_handler_vlnv_prefix,
+        "alert_handler_vlnv": alert_handler_vlnv,
         "with_alert_handler": with_alert_handler,
-        "pwrmgr_vlnv_prefix": f"top_{topname}_",
         "top_pkg_vlnv": f"lowrisc:constants:top_{topname}_top_pkg",
     }
 
 
 # generate rstmgr with ipgen
-def generate_rstmgr(top: Dict[str, object], module: Dict[str, object],
-                    out_path: Path) -> None:
+def generate_rstmgr(top: ConfigT, module: ConfigT, out_path: Path) -> None:
     log.info("Generating rstmgr with ipgen")
     params = _get_rstmgr_params(top)
     generate_ipgen(top, module, params, out_path)
 
 
-def _get_flash_ctrl_params(topcfg: Dict[str, object]) -> Dict[str, object]:
+def _get_flash_ctrl_params(top: ConfigT) -> ParamsT:
     """Extracts parameters for flash_ctrl ipgen."""
 
     # Parameters needed for generation
-    flash_mems = find_modules(topcfg["module"], "flash_ctrl", True)
+    flash_mems = find_modules(top["module"], "flash_ctrl", True)
     if len(flash_mems) > 1:
         log.error("This design does not currently support multiple flashes")
         return
@@ -646,15 +679,13 @@ def _get_flash_ctrl_params(topcfg: Dict[str, object]) -> Dict[str, object]:
         raise ValueError(
             "In _get_flash_ctrl_params for design with no flash_ctrl")
 
-    topname = topcfg["name"]
+    topname = top["name"]
     params = vars(flash_mems[0]["memory"]["mem"]["config"])
     # Additional parameters not provided in the top config.
     params.update({
         "metadata_width": 12,
         "info_types": 3,
         "infos_per_bank": [10, 1, 2],
-        # TODO: Register VLNVs and look this up instead of hard-coding.
-        "pwrmgr_vlnv_prefix": f"top_{topname}_",
         "top_pkg_vlnv": f"lowrisc:constants:top_{topname}_top_pkg",
     })
 
@@ -663,100 +694,157 @@ def _get_flash_ctrl_params(topcfg: Dict[str, object]) -> Dict[str, object]:
 
 
 # generate flash_ctrl with ipgen
-def generate_flash(top: Dict[str, object], module: Dict[str, object],
-                   out_path: Path) -> None:
+def generate_flash(top: ConfigT, module: ConfigT, out_path: Path) -> None:
     log.info("Generating flash_ctrl with ipgen")
     params = _get_flash_ctrl_params(top)
     generate_ipgen(top, module, params, out_path)
 
 
-def _get_otp_ctrl_params(out_path: Path,
-                         seed: int = None) -> Dict[str, object]:
+def _get_otp_ctrl_params(top: ConfigT,
+                         out_path: Path,
+                         seed: int = None) -> ParamsT:
     """Returns the parameters extracted from the otp_mmap.hjson file."""
     otp_mmap_path = out_path / "data" / "otp" / "otp_ctrl_mmap.hjson"
     return {"otp_mmap": OtpMemMap.from_mmap_path(otp_mmap_path, seed).config}
 
 
-def generate_otp_ctrl(topcfg: Dict[str, object],
-                      module: Dict[str, object],
+def generate_otp_ctrl(top: ConfigT,
+                      module: ConfigT,
                       cfg_path: Path,
                       out_path: Path,
                       seed: int = None) -> None:
     log.info("Generating otp_ctrl with ipgen")
-    params = _get_otp_ctrl_params(cfg_path, seed)
-    generate_ipgen(topcfg, module, params, out_path)
+    params = _get_otp_ctrl_params(top, cfg_path, seed)
+    generate_ipgen(top, module, params, out_path)
 
 
-def _get_ac_range_check_params(topcfg: Dict[str, object]) -> Dict[str, object]:
+def _get_ac_range_check_params(top: ConfigT) -> ParamsT:
     """Extracts parameters for ac_range_check ipgen."""
     # Determine RACL params from the top-level config, otherwise use ipgen's
     # default values
     racl_params = {}
-    if "racl_config" in topcfg:
+    if "racl_config" in top:
         racl_params = {
-            "nr_role_bits": topcfg["racl"]["nr_role_bits"],
-            "nr_ctn_uid_bits": topcfg["racl"]["nr_ctn_uid_bits"]
+            "nr_role_bits": top["racl"]["nr_role_bits"],
+            "nr_ctn_uid_bits": top["racl"]["nr_ctn_uid_bits"]
         }
 
     # Get the AC Range Check instance
-    ac_ranges = lib.find_module(topcfg['module'], 'ac_range_check')
+    module = lib.find_module(top['module'], 'ac_range_check')
+    uniquified_modules.add_module(module["template_type"], module["type"])
     params = {
-        "num_ranges": ac_ranges["ipgen_param"]["num_ranges"],
-        "module_instance_name": ac_ranges["type"]
+        "num_ranges": module["ipgen_param"]["num_ranges"],
+        "module_instance_name": module["type"]
     }
     params.update(racl_params)
     return params
 
 
 # generate ac_range_check with ipgen
-def generate_ac_range_check(topcfg: Dict[str, object],
-                            module: Dict[str, object], out_path: Path) -> None:
+def generate_ac_range_check(top: ConfigT, module: ConfigT,
+                            out_path: Path) -> None:
     log.info('Generating ac_range_check with ipgen')
-    params = _get_ac_range_check_params(topcfg)
-    generate_ipgen(topcfg, module, params, out_path)
+    params = _get_ac_range_check_params(top)
+    generate_ipgen(top, module, params, out_path)
 
 
-def _get_racl_params(topcfg: Dict[str, object]) -> Dict[str, object]:
+def _get_racl_params(top: ConfigT) -> ParamsT:
     """Extracts parameters for racl_ctrl ipgen."""
-    racl_ctrl = lib.find_module(topcfg["module"], "racl_ctrl")
-    if len(topcfg["racl"]["policies"]) == 1:
+    module = lib.find_module(top["module"], "racl_ctrl")
+    if len(top["racl"]["policies"]) == 1:
         # If there is only one set of policies, take the first one
-        policies = list(topcfg["racl"]["policies"].values())[0]
+        policies = list(top["racl"]["policies"].values())[0]
     else:
         # More than one policy, we need to find the matching set of policies
-        racl_group = racl_ctrl["racl_group"]
-        policies = topcfg["racl"]["policies"][racl_group]
+        racl_group = module.get("racl_group", "Null")
+        policies = top["racl"]["policies"][racl_group]
 
     num_subscribing_ips = defaultdict(int)
-    for m in topcfg["module"]:
+    for m in top["module"]:
         racl_mappings = m.get("racl_mappings", {})
         for if_name, mapping in racl_mappings.items():
             racl_group = racl_mappings[if_name]["racl_group"]
             num_subscribing_ips[racl_group] += 1
 
+    uniquified_modules.add_module(module["template_type"], module["type"])
+
     return {
-        "module_instance_name": racl_ctrl["type"],
-        "nr_role_bits": topcfg["racl"]["nr_role_bits"],
-        "nr_ctn_uid_bits": topcfg["racl"]["nr_ctn_uid_bits"],
-        "nr_policies": len(policies),
+        "module_instance_name": module["type"],
+        "nr_role_bits": top["racl"]["nr_role_bits"],
+        "nr_ctn_uid_bits": top["racl"]["nr_ctn_uid_bits"],
+        "nr_policies": top["racl"]["nr_policies"],
         'nr_subscribing_ips': num_subscribing_ips[racl_group],
         "policies": policies
     }
 
 
 # Generate RACL collateral
-def generate_racl(topcfg: Dict[str, object], module: Dict[str, object],
-                  out_path: Path) -> None:
+def generate_racl(top: ConfigT, module: ConfigT, out_path: Path) -> None:
     # Not all tops use RACL
-    if "racl_config" not in topcfg:
+    if "racl_config" not in top:
         raise ValueError(
             "There is a racl_ctrl module but no 'racl_config' in top config")
     log.info("Generating RACL Control IP with ipgen")
-    params = _get_racl_params(topcfg)
+    params = _get_racl_params(top)
+    generate_ipgen(top, module, params, out_path)
+
+
+def _get_gpio_params(top: ConfigT) -> ParamsT:
+    """Extracts parameters for GPIO ipgen."""
+    module = lib.find_module(top["module"], "gpio")
+    uniquified_modules.add_module(module["template_type"], module["type"])
+
+    params = {
+        # TODO(#26553): Remove the following code once topgen automatically
+        # incorporates template parameters.
+        "num_inp_period_counters": module.get("ipgen_param", {}).get("num_inp_period_counters", 0),
+        "module_instance_name": module["type"]
+    }
+    return params
+
+
+def generate_gpio(top: ConfigT, module: ConfigT,
+                  out_path: Path) -> None:
+    log.info('Generating GPIO with ipgen')
+    params = _get_gpio_params(top)
+    generate_ipgen(top, module, params, out_path)
+
+
+def _get_rv_core_ibex_params(topcfg: Dict[str, object]) -> Dict[str, object]:
+    """Extracts parameters for rv_core_ibex ipgen."""
+    module = lib.find_module(topcfg["module"], "rv_core_ibex")
+    uniquified_modules.add_module(module["template_type"], module["type"])
+
+    return {
+        "num_regions": module['ipgen_param']['NumRegions'],
+        'module_instance_name': module['type']
+    }
+
+
+def generate_rv_core_ibex(topcfg: Dict[str, object], module: Dict[str, object],
+                          out_path: Path) -> None:
+    log.info("Generating RV Core Ibex with ipgen")
+    params = _get_rv_core_ibex_params(topcfg)
     generate_ipgen(topcfg, module, params, out_path)
 
 
-# def generate_top_only(top_only_dict: Dict[str, bool], out_path: Path,
+def _get_pwm_params(top: ConfigT) -> ParamsT:
+    """Extracts parameters for PWM ipgen."""
+
+    pwm = lib.find_module(top["module"], "pwm")
+    params = {
+        "module_instance_name": pwm["type"]
+    }
+    return params
+
+
+def generate_pwm(top: ConfigT, module: ConfigT,
+                 out_path: Path) -> None:
+    log.info('Generating PWM with ipgen')
+    params = _get_pwm_params(top)
+    generate_ipgen(top, module, params, out_path)
+
+
 def generate_top_only(top_only_dict: List[str], out_path: Path, top_name: str,
                       alt_hjson_path: str) -> None:
     """Generate the regfile for top_only IPs."""
@@ -772,8 +860,8 @@ def generate_top_only(top_only_dict: List[str], out_path: Path, top_name: str,
         generate_regfile_from_path(hjson_path, genrtl_dir)
 
 
-def generate_top_ral(top: Dict[str, object], name_to_block: Dict[str, IpBlock],
-                     dv_base_names: List[str], out_path: str):
+def generate_top_ral(topname: str, top: ConfigT, name_to_block: IpBlocksT,
+                     dv_base_names: List[str], out_path: str) -> None:
     # construct top ral block
     regwidth = int(top["datawidth"])
     assert regwidth % 8 == 0
@@ -805,8 +893,8 @@ def generate_top_ral(top: Dict[str, object], name_to_block: Dict[str, IpBlock],
     for item in list(top.get("memory", [])):
         mems.append(create_mem(item, addrsep, regwidth))
 
-    # Top-level may override the mem setting. Store the new type to name_to_block
-    # If no other instance uses the original type, delete it
+    # Top-level may override the mem setting. Store the new type to
+    # name_to_block. If no other instance uses the original type, delete it
     original_types = set()
     for module in top["module"]:
         if "memory" in module.keys() and len(module["memory"]) > 0:
@@ -843,14 +931,14 @@ def generate_top_ral(top: Dict[str, object], name_to_block: Dict[str, IpBlock],
             del name_to_block[t]
 
     addr_spaces = {addr_space["name"] for addr_space in top["addr_spaces"]}
-    chip = Top(regwidth, addr_spaces, name_to_block, inst_to_block, if_addrs,
-               mems, attrs)
+    chip = Top(topname, regwidth, addr_spaces, name_to_block, inst_to_block,
+               if_addrs, mems, attrs)
 
     # generate the top ral model with template
     return gen_dv(chip, dv_base_names, str(out_path))
 
 
-def create_mem(item, addrsep, regwidth):
+def create_mem(item, addrsep, regwidth) -> window.Window:
     byte_write = ("byte_write" in item and
                   item["byte_write"].lower() == "true")
     data_intg_passthru = ("data_intg_passthru" in item and
@@ -872,7 +960,7 @@ def create_mem(item, addrsep, regwidth):
 
 
 def generate_rust(topname, completecfg, name_to_block, out_path, version_stamp,
-                  src_tree_top, topgen_template_path):
+                  src_tree_top, topgen_template_path) -> None:
     # Template render helper
     def render_template(template_path: str, rendered_path: Path, **other_info):
         template_contents = generate_top(completecfg, name_to_block,
@@ -913,8 +1001,8 @@ def generate_rust(topname, completecfg, name_to_block, out_path, version_stamp,
                         helper=rs_helper)
 
 
-def _amend_block_reset_connections(module: Dict[str, object],
-                                   default_power_domain: str):
+def _amend_block_reset_connections(module: ConfigT,
+                                   default_power_domain: str) -> None:
     for port, reset in module["reset_connections"].items():
         if isinstance(reset, str):
             if "domain" not in module:
@@ -931,7 +1019,7 @@ def _amend_block_reset_connections(module: Dict[str, object],
             }
 
 
-def amend_reset_connections(topcfg: Dict[str, object]):
+def amend_reset_connections(topcfg: ConfigT) -> None:
     """Complete the reset connections information for each module.
 
     Add an explicit domain entry for each reset connection.
@@ -947,17 +1035,8 @@ def amend_reset_connections(topcfg: Dict[str, object]):
         _amend_block_reset_connections(xbar, default_power_domain)
 
 
-def _dump_cfg(path: Path, cfg: Dict[str, object]):
-    text = hjson.dumps(cfg, for_json=True, default=vars) + '\n'
-    text_length = len(text)
-    log.info(f'will dump {path} with {text_length} bytes')
-    path.write_text(text)
-
-
-def create_generic_ip_blocks(topcfg: Dict[str, object],
-                             alias_cfgs: Dict[str,
-                                              Dict[str,
-                                                   object]], cfg_path: Path,
+def create_generic_ip_blocks(topcfg: ConfigT, alias_cfgs: Dict[str, ConfigT],
+                             cfg_path: Path,
                              out_path: Path) -> Dict[str, IpAttrs]:
     """Create IpAttrs for each generic ip type.
 
@@ -966,7 +1045,7 @@ def create_generic_ip_blocks(topcfg: Dict[str, object],
     Raise an exception if any module's "attr" flag is invalid.
     """
 
-    def handle_instance(top_only: bool):
+    def handle_instance(top_only: bool) -> None:
         if top_only:
             hjson_path = cfg_path / "ip" / ip_type / "data" / f"{ip_type}.hjson"
         else:
@@ -1005,8 +1084,8 @@ def create_generic_ip_blocks(topcfg: Dict[str, object],
 
 
 def create_ipgen_ip_block(topname: str, template_name: str, module_name: str,
-                          params: Dict[str, object],
-                          alias_cfgs: Dict[str, Dict[str, object]]) -> IpBlock:
+                          params: ParamsT,
+                          alias_cfgs: Dict[str, ConfigT]) -> IpBlock:
     ip_block = ipgen_hjson_render(template_name, topname, params)
     if module_name in alias_cfgs:
         ip_block = ip_block.alias_from_raw(False, alias_cfgs[module_name],
@@ -1014,10 +1093,9 @@ def create_ipgen_ip_block(topname: str, template_name: str, module_name: str,
     return ip_block
 
 
-def create_ipgen_blocks(
-        topcfg: Dict[str, object], alias_cfgs: Dict[str, Dict[str, object]],
-        cfg_path: Path, out_path: Path,
-        name_to_block: Dict[str, IpBlock]) -> Dict[str, IpAttrs]:
+def create_ipgen_blocks(topcfg: ConfigT, alias_cfgs: Dict[str, ConfigT],
+                        cfg_path: Path, out_path: Path,
+                        name_to_block: IpBlocksT) -> Dict[str, IpAttrs]:
     """Create IpAttrs for each ipgen ip type.
 
     Most importantly, IpAttrs holds the IpBlock. The order in which
@@ -1045,11 +1123,12 @@ def create_ipgen_blocks(
     the total number of alerts and interrupts is set correctly.
     """
 
-    def insert_ip_attrs(module: Dict[str, object], params: Dict[str, object]):
+    def insert_ip_attrs(module: ConfigT, params: ParamsT):
         template_name = module["template_type"]
         module_name = module["type"]
         log.info(f"Ipgen for {module_name} from template {template_name}")
-        hjson_path = out_path / "ip_autogen" / module_name / "data" / f"{module_name}.hjson"
+        hjson_path = (out_path / "ip_autogen" / module_name / "data" /
+                      f"{module_name}.hjson")
         ip_block = create_ipgen_ip_block(topname, template_name, module_name,
                                          params, alias_cfgs)
         name_to_block[module_name] = ip_block
@@ -1073,28 +1152,39 @@ def create_ipgen_blocks(
         raise SystemExit("There are ipgen modules with multiple instances: "
                          f"{multi_instance_ipgens}")
 
+    if "gpio" in ipgen_instances:
+        instance = ipgen_instances["gpio"][0]
+        insert_ip_attrs(instance, _get_gpio_params(topcfg))
+    if "pwm" in ipgen_instances:
+        instance = ipgen_instances["pwm"][0]
+        insert_ip_attrs(instance, _get_pwm_params(topcfg))
     if "racl_config" in topcfg:
         amend_racl(topcfg, name_to_block, allow_missing_blocks=True)
         assert "racl_ctrl" in ipgen_instances
-        insert_ip_attrs(ipgen_instances["racl_ctrl"][0],
-                        _get_racl_params(topcfg))
+        instance = ipgen_instances["racl_ctrl"][0]
+        insert_ip_attrs(instance, _get_racl_params(topcfg))
     if "clkmgr" in ipgen_instances:
-        insert_ip_attrs(ipgen_instances["clkmgr"][0],
-                        _get_clkmgr_params(topcfg))
+        instance = ipgen_instances["clkmgr"][0]
+        insert_ip_attrs(instance, _get_clkmgr_params(topcfg))
     if "flash_ctrl" in ipgen_instances:
-        insert_ip_attrs(ipgen_instances["flash_ctrl"][0],
-                        _get_flash_ctrl_params(topcfg))
+        instance = ipgen_instances["flash_ctrl"][0]
+        insert_ip_attrs(instance, _get_flash_ctrl_params(topcfg))
     if "otp_ctrl" in ipgen_instances:
-        insert_ip_attrs(ipgen_instances["otp_ctrl"][0],
-                        _get_otp_ctrl_params(cfg_path))
+        instance = ipgen_instances["otp_ctrl"][0]
+        insert_ip_attrs(instance, _get_otp_ctrl_params(topcfg, cfg_path))
     if "ac_range_check" in ipgen_instances:
-        insert_ip_attrs(ipgen_instances["ac_range_check"][0],
-                        _get_ac_range_check_params(topcfg))
+        instance = ipgen_instances["ac_range_check"][0]
+        insert_ip_attrs(instance, _get_ac_range_check_params(topcfg))
+
+    if "rv_core_ibex" in ipgen_instances:
+        instance = ipgen_instances["rv_core_ibex"][0]
+        insert_ip_attrs(instance, _get_rv_core_ibex_params(topcfg))
+
     # Pinmux depends on flash_ctrl and otp_ctrl
     if "pinmux" in ipgen_instances:
         amend_pinmux_io(topcfg, name_to_block)
-        insert_ip_attrs(ipgen_instances["pinmux"][0],
-                        _get_pinmux_params(topcfg))
+        instance = ipgen_instances["pinmux"][0]
+        insert_ip_attrs(instance, _get_pinmux_params(topcfg))
 
     # Pwrmgr depends on pinmux
     # Add pwrmgr after necessary amends
@@ -1122,9 +1212,10 @@ def create_ipgen_blocks(
 
 
 def _process_top(
-    topcfg: Dict[str, object], args: argparse.Namespace, cfg_path: Path,
-    out_path: Path, alias_cfgs: Dict[str, Dict[str, object]]
-) -> (Dict[str, object], Dict[str, IpBlock], Dict[str, Path]):
+        topcfg: ConfigT, args: argparse.Namespace, cfg_path: Path,
+        out_path: Path,
+        alias_cfgs: Dict[str,
+                         ConfigT]) -> (ConfigT, IpBlocksT, Dict[str, Path]):
     """Generate the full top config file.
 
     This creates ip_blocks for all ips used by this top config and uses
@@ -1176,24 +1267,23 @@ def _process_top(
     return completecfg, name_to_block, name_to_hjson
 
 
-def complete_topcfg(topcfg: Dict[str, object], name_to_block: Dict[str,
-                                                                   IpBlock]):
+def complete_topcfg(topcfg: ConfigT, name_to_block: IpBlocksT) -> None:
     commit_alert_modules(topcfg, name_to_block)
     commit_interrupt_modules(topcfg, name_to_block)
     commit_outgoing_alert_modules(topcfg, name_to_block)
 
 
-def generate_full_ipgens(args: argparse.Namespace, topcfg: Dict[str, object],
-                         name_to_block: Dict[str, Dict[str, object]],
-                         alias_cfgs: Dict[str, Dict[str, object]],
-                         cfg_path: Path, out_path: Path):
+def generate_full_ipgens(args: argparse.Namespace, topcfg: ConfigT,
+                         name_to_block: Dict[str, ConfigT],
+                         alias_cfgs: Dict[str, ConfigT], cfg_path: Path,
+                         out_path: Path) -> None:
 
     # TODO, there are no interdependencies between ips so do them in any
     # order, which means could just iterate over all in the topcfg.
 
     def generate_modules(template_type: str,
                          generate_module: Callable[[Dict, Dict, Path], None],
-                         single_instance: bool):
+                         single_instance: bool) -> None:
         modules = ipgens_by_template_type[template_type]
         if len(modules) > 1 and single_instance:
             raise SystemExit(
@@ -1243,6 +1333,15 @@ def generate_full_ipgens(args: argparse.Namespace, topcfg: Dict[str, object],
     # Generate rstmgr if there is an instance
     generate_modules("rstmgr", generate_rstmgr, single_instance=True)
 
+    # Generate gpio if there is an instance
+    generate_modules("gpio", generate_gpio, single_instance=True)
+
+    # Generate rv_core_ibex if there is an instance
+    generate_modules("rv_core_ibex", generate_rv_core_ibex,
+                     single_instance=True)
+    # Generate pwm if there is an instance
+    generate_modules("pwm", generate_pwm, single_instance=True)
+
     # Generate ac_range_check
     generate_modules("ac_range_check",
                      generate_ac_range_check,
@@ -1253,8 +1352,7 @@ def generate_full_ipgens(args: argparse.Namespace, topcfg: Dict[str, object],
         generate_modules("racl_ctrl", generate_racl, single_instance=True)
 
 
-def _check_countermeasures(completecfg: Dict[str, object],
-                           name_to_block: Dict[str, IpBlock],
+def _check_countermeasures(completecfg: ConfigT, name_to_block: IpBlocksT,
                            name_to_hjson: Dict[str, Path]) -> bool:
     success = True
     for name, hjson_path in name_to_hjson.items():
@@ -1264,6 +1362,7 @@ def _check_countermeasures(completecfg: Dict[str, object],
         log.debug("Checking countermeasures for %s.", name)
         success &= name_to_block[name].check_cm_annotations(
             rtl_names, hjson_path.name)
+        success &= name_to_block[name].check_regwens()
     if success:
         log.info("All Hjson declared countermeasures are implemented in RTL.")
     else:
@@ -1271,7 +1370,7 @@ def _check_countermeasures(completecfg: Dict[str, object],
     return success
 
 
-def dump_completecfg(cfg: Dict[str, object], out_path: Path) -> None:
+def dump_completecfg(cfg: ConfigT, out_path: Path) -> None:
     topname = cfg["name"]
     top_name = f"top_{topname}"
     cfg_dir = out_path / "data/autogen"
@@ -1479,46 +1578,32 @@ def main():
         log.error('Seed "rnd_cnst_seed" not found in configuration HJSON.')
         exit(1)
 
-    # TODO, long term, the levels of dependency should be automatically
-    # determined instead of hardcoded.  The following are a few examples:
-    # Example 1: pinmux depends on amending all modules before calculating the
-    #            correct number of pins.
-    #            This would be 1 level of dependency and require 2 passes.
-    # Example 2: pinmux depends on amending all modules, and pwrmgr depends on
-    #            pinmux generation to know correct number of wakeups.  This
-    #            would be 2 levels of dependency and require 3 passes.
+    # The generation of ipgen modules needs to be carefully orchestrated to
+    # avoid performing multiple passes when creating the complete top
+    # configuration. Please refer to the description in util/topgen/README.md.
     #
-    # How does multi-pass work?
-    # In example 1, the first pass gathers all modules and merges them.
-    # However, the merge process uses a stale pinmux.  The correct pinmux is
-    # then generated using the merged configuration.  The second pass now merges
-    # all the correct modules (including the generated pinmux) and creates the
-    # final merged config.
-    #
-    # In example 2, the first pass gathers all modules and merges them.
-    # However, the merge process uses a stale pinmux and pwrmgr.  The correct
-    # pinmux is then generated using the merged configuration.  However, since
-    # pwrmgr is dependent on this new pinmux, it is still generated incorrectly.
-    # The second pass merge now has an updated pinmux but stale pwrmgr.  The
-    # correct pwrmgr can now be generated.  The final pass then merges all the
-    # correct modules and creates the final configuration.
+    # This performs mutiple passes until the complete top configuration
+    # doesn't change.
     #
     # This fix is related to #2083
     maximum_passes = 3
 
     # topgen generates IP blocks and associated Hjson configuration in multiple
-    # steps. After each step, the IP Hjson configuration is read back and then
-    # combined into the toplevel configuration. To generate the chip-level RAL,
-    # we need to run the full generation step, but ultimately only care about
-    # the toplevel configuration (a single Hjson file). Since we don't have a
-    # better way at the moment dump all output into a temporary directory, and
-    # delete it after the fact, retaining only the toplevel configuration.
+    # steps. In each step, the ipgen peripheral's IP Hjson configuration is
+    # regenerated from the updated top configuration, which can induce further
+    # changes to the toplevel configuration.
+    #
+    # To generate the chip-level RAL we need to run the full generation step,
+    # but ultimately only care about the toplevel configuration (a single Hjson
+    # file). Since we don't have a better way at the moment, we dump all output
+    # into a temporary directory, and delete it after the fact, retaining only
+    # the toplevel configuration.
     if args.top_ral:
         out_path_gen = Path(tempfile.mkdtemp())
     else:
         out_path_gen = out_path
 
-    alias_cfgs: Dict[str, Dict[str, object]] = {}
+    alias_cfgs: Dict[str, ConfigT] = {}
     if args.alias_files:
         for alias in args.alias_files:
             alias_cfg = load_cfg(alias)
@@ -1532,26 +1617,25 @@ def main():
 
     topname = topcfg["name"]
     cfg_copy = deepcopy(topcfg)
+    cfg_last_dump = None
     for pass_idx in range(maximum_passes):
         log.info("Generation pass {}".format(pass_idx + 1))
         # Use the same seed for each pass to have stable random constants.
         secure_prng.reseed(topcfg["rnd_cnst_seed"])
-        # Insert the config file path of the HJSON to allow parsing files relative
-        # the config directory
+        # Insert the config file path of the HJSON to allow parsing files
+        # relative the config directory
         cfg_copy["cfg_path"] = Path(args.topcfg).parent
         completecfg, name_to_block, name_to_hjson = _process_top(
             cfg_copy, args, cfg_path, out_path_gen, alias_cfgs)
         # Delete config path before dumping, not needed
         del completecfg["cfg_path"]
-        dump_path = Path(f"/tmp/top{topname}cfg_{pass_idx}.hjson")
-        _dump_cfg(dump_path, completecfg)
-        if pass_idx > 0 and filecmp.cmp(
-                f"/tmp/top{topname}cfg_{pass_idx}.hjson",
-                "/tmp/top{}cfg_{}.hjson".format(topname, pass_idx),
-                shallow=False):
+        cfg_dump = hjson.dumps(completecfg, for_json=True, default=vars)
+        if pass_idx > 0 and cfg_dump == cfg_last_dump:
             log.info("process_top converged after {} passes".format(pass_idx +
                                                                     1))
             break
+        else:
+            cfg_last_dump = cfg_dump
         cfg_copy = completecfg
     else:
         log.error("Too many process_top passes without convergence")
@@ -1581,7 +1665,7 @@ def main():
         # the other files (e.g. RTL files) generated through topgen.
         shutil.rmtree(out_path_gen, ignore_errors=True)
 
-        exit_code = generate_top_ral(completecfg, name_to_block,
+        exit_code = generate_top_ral(topname, completecfg, name_to_block,
                                      args.dv_base_names, out_path)
         sys.exit(exit_code)
 
@@ -1615,8 +1699,9 @@ def main():
         # Change verbosity to log.INFO to see an okay confirmation message:
         # the log level is set to log.ERROR upon start to avoid the chatter
         # of the regular topgen elaboration.
+        log_level = log.DEBUG if args.verbose else log.INFO
         log.basicConfig(format="%(levelname)s: %(message)s",
-                        level=log.INFO,
+                        level=log_level,
                         force=True)
 
         okay = _check_countermeasures(completecfg, name_to_block,
@@ -1672,7 +1757,8 @@ def main():
                         topcfg=completecfg,
                         racl_config=racl_config)
         render_template(TOPGEN_TEMPLATE_PATH / 'toplevel_racl_pkg.sv.tpl',
-                        out_path / 'rtl' / 'autogen' / f'top_{topname}_racl_pkg.sv',
+                        out_path / 'rtl' / 'autogen' /
+                        f'top_{topname}_racl_pkg.sv',
                         gencmd=gencmd_sv,
                         topcfg=completecfg,
                         racl_config=racl_config)
@@ -1700,7 +1786,8 @@ def main():
 
             # "toplevel_pkg.sv.tpl" -> "rtl/autogen/{top_name}{addr_space_suffix}_pkg.sv"
             render_template(TOPGEN_TEMPLATE_PATH / "toplevel_pkg.sv.tpl",
-                            out_path / "rtl" / "autogen" / f"{top_name}{addr_space_suffix}_pkg.sv",
+                            out_path / "rtl" / "autogen" /
+                            f"{top_name}{addr_space_suffix}_pkg.sv",
                             helper=c_helper,
                             addr_space=addr_space,
                             gencmd=gencmd_sv)
@@ -1717,9 +1804,10 @@ def main():
                 # Save the header macro prefix into `c_helper`
                 rel_header_dir = cformat_dir.relative_to(root_paths[idx])
                 c_helper.header_macro_prefix = (
-                    "OPENTITAN_" + str(rel_header_dir).replace("/", "_").upper())
+                    "OPENTITAN_" +
+                    str(rel_header_dir).replace("/", "_").upper())
 
-                # "{top_name}.h.tpl" -> "sw/autogen/{top_name}.h"
+                # "toplevel.h.tpl" -> "sw/autogen/{top_name}.h"
                 cheader_path = cformat_dir / f"{top_name}{addr_space_suffix}.h"
                 render_template(TOPGEN_TEMPLATE_PATH / "toplevel.h.tpl",
                                 cheader_path,
@@ -1733,7 +1821,8 @@ def main():
 
                 # "toplevel.c.tpl" -> "sw/autogen/{top_name}{addr_space_suffix}.c"
                 render_template(TOPGEN_TEMPLATE_PATH / "toplevel.c.tpl",
-                                cformat_dir / f"{top_name}{addr_space_suffix}.c",
+                                cformat_dir /
+                                f"{top_name}{addr_space_suffix}.c",
                                 helper=c_helper,
                                 addr_space=addr_space['name'],
                                 gencmd=gencmd_c)
@@ -1769,37 +1858,39 @@ def main():
 
             # "toplevel_memory.ld.tpl" ->
             #   "sw/autogen/{top_name}{addr_space_suffix}_memory.ld"
-            render_template(TOPGEN_TEMPLATE_PATH / "toplevel_memory.ld.tpl",
-                            cformat_dir / f"{top_name}_memory.ld",
-                            addr_space='hart',  # TODO: Don't hard-code
-                            helper=c_helper,
-                            gencmd=gencmd_c)
+            render_template(
+                TOPGEN_TEMPLATE_PATH / "toplevel_memory.ld.tpl",
+                cformat_dir / f"{top_name}_memory.ld",
+                addr_space='hart',  # TODO: Don't hard-code
+                helper=c_helper,
+                gencmd=gencmd_c)
 
             # Auto-generate tests in "sw/device/tests/autogen" area.
-            # TODO: Fix the test templates to not be earlgrey-specific
-            if topname == "earlgrey":
-                outfile = cformat_dir / "tests" / "BUILD"
-                render_template(TOPGEN_TEMPLATE_PATH / "BUILD.tpl",
-                                outfile,
-                                helper=c_helper,
-                                addr_space='hart',  # TODO: Don't hard-code
-                                gencmd=gencmd_bzl)
+            outfile = cformat_dir / "tests" / "BUILD"
+            render_template(
+                TOPGEN_TEMPLATE_PATH / "BUILD.tpl",
+                outfile,
+                helper=c_helper,
+                addr_space='hart',  # TODO: Don't hard-code
+                gencmd=gencmd_bzl)
 
             outfile = cformat_dir / "tests" / "plic_all_irqs_test.c"
-            render_template(TOPGEN_TEMPLATE_PATH / "plic_all_irqs_test.c.tpl",
-                            outfile,
-                            helper=c_helper,
-                            addr_space='hart',  # TODO: Don't hard-code
-                            gencmd=gencmd_c)
+            render_template(
+                TOPGEN_TEMPLATE_PATH / "plic_all_irqs_test.c.tpl",
+                outfile,
+                helper=c_helper,
+                addr_space='hart',  # TODO: Don't hard-code
+                gencmd=gencmd_c)
 
             # Render alert tests only if there is really an alert handler
             if lib.find_module(completecfg['module'], 'alert_handler'):
                 outfile = cformat_dir / "tests" / "alert_test.c"
-                render_template(TOPGEN_TEMPLATE_PATH / "alert_test.c.tpl",
-                                outfile,
-                                helper=c_helper,
-                                addr_space='hart',  # TODO: Don't hard-code
-                                gencmd=gencmd_c)
+                render_template(
+                    TOPGEN_TEMPLATE_PATH / "alert_test.c.tpl",
+                    outfile,
+                    helper=c_helper,
+                    addr_space='hart',  # TODO: Don't hard-code
+                    gencmd=gencmd_c)
 
         # generate chip level xbar and alert_handler TB
         tb_files = [

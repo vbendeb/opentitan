@@ -145,6 +145,28 @@ dif_result_t dif_clkmgr_jitter_set_enabled(const dif_clkmgr_t *clkmgr,
   return kDifOk;
 }
 
+OT_WARN_UNUSED_RESULT
+dif_result_t dif_clkmgr_find_gateable_clock(
+    const dif_clkmgr_t *clkmgr, dt_instance_id_t inst_id,
+    dif_clkmgr_gateable_clock_t *clock) {
+  if (clkmgr == NULL || clock == NULL) {
+    return kDifBadArg;
+  }
+  dt_clkmgr_t dt;
+  dif_result_t res = dif_clkmgr_get_dt(clkmgr, &dt);
+  if (res != kDifOk) {
+    return res;
+  }
+  // Query the DT to find the information.
+  for (size_t i = 0; i < dt_clkmgr_gateable_clock_count(dt); i++) {
+    if (dt_clkmgr_gateable_clock(dt, i) == inst_id) {
+      *clock = i;
+      return kDifOk;
+    }
+  }
+  return kDifError;
+}
+
 dif_result_t dif_clkmgr_gateable_clock_get_enabled(
     const dif_clkmgr_t *clkmgr, dif_clkmgr_gateable_clock_t clock,
     dif_toggle_t *state) {
@@ -176,6 +198,28 @@ dif_result_t dif_clkmgr_gateable_clock_set_enabled(
                       clk_enables_val);
 
   return kDifOk;
+}
+
+OT_WARN_UNUSED_RESULT
+dif_result_t dif_clkmgr_find_hintable_clock(
+    const dif_clkmgr_t *clkmgr, dt_instance_id_t inst_id,
+    dif_clkmgr_hintable_clock_t *clock) {
+  if (clkmgr == NULL || clock == NULL) {
+    return kDifBadArg;
+  }
+  dt_clkmgr_t dt;
+  dif_result_t res = dif_clkmgr_get_dt(clkmgr, &dt);
+  if (res != kDifOk) {
+    return res;
+  }
+  // Query the DT to find the information.
+  for (size_t i = 0; i < dt_clkmgr_hintable_clock_count(dt); i++) {
+    if (dt_clkmgr_hintable_clock(dt, i) == inst_id) {
+      *clock = i;
+      return kDifOk;
+    }
+  }
+  return kDifError;
 }
 
 dif_result_t dif_clkmgr_hintable_clock_get_enabled(
@@ -372,10 +416,16 @@ dif_result_t dif_clkmgr_enable_measure_counts(const dif_clkmgr_t *clkmgr,
       lo_field = CLKMGR_##kind_##_MEAS_CTRL_SHADOWED_LO_FIELD;     \
       hi_field = CLKMGR_##kind_##_MEAS_CTRL_SHADOWED_HI_FIELD; break, break)
 
+#if defined(OPENTITAN_IS_EARLGREY)
     case kDifClkmgrMeasureClockIo:
       PICK_COUNT_CTRL_FIELDS(IO);
     case kDifClkmgrMeasureClockIoDiv2:
       PICK_COUNT_CTRL_FIELDS(IO_DIV2);
+#elif defined(OPENTITAN_IS_DARJEELING)
+// Darjeeling does not have Io / IoDiv2 clock measurements
+#else
+#error "dif_clkmgr does not support this top"
+#endif
     case kDifClkmgrMeasureClockIoDiv4:
       PICK_COUNT_CTRL_FIELDS(IO_DIV4);
     case kDifClkmgrMeasureClockMain:
@@ -422,12 +472,18 @@ dif_result_t dif_clkmgr_disable_measure_counts(
       en_offset = CLKMGR_##kind_##_MEAS_CTRL_EN_REG_OFFSET; \
       break, break)
 
+#if defined(OPENTITAN_IS_EARLGREY)
     case kDifClkmgrMeasureClockIo:
       PICK_EN_OFFSET(IO);
       break;
     case kDifClkmgrMeasureClockIoDiv2:
       PICK_EN_OFFSET(IO_DIV2);
       break;
+#elif defined(OPENTITAN_IS_DARJEELING)
+// Darjeeling does not have Io / IoDiv2 clock measurements
+#else
+#error "dif_clkmgr does not support this top"
+#endif
     case kDifClkmgrMeasureClockIoDiv4:
       PICK_EN_OFFSET(IO_DIV4);
       break;
@@ -460,10 +516,16 @@ dif_result_t dif_clkmgr_measure_counts_get_enable(
       en_offset = CLKMGR_##kind_##_MEAS_CTRL_EN_REG_OFFSET; \
       break, break)
 
+#if defined(OPENTITAN_IS_EARLGREY)
     case kDifClkmgrMeasureClockIo:
       PICK_EN_OFFSET(IO);
     case kDifClkmgrMeasureClockIoDiv2:
       PICK_EN_OFFSET(IO_DIV2);
+#elif defined(OPENTITAN_IS_DARJEELING)
+// Darjeeling does not have Io / IoDiv2 clock measurements
+#else
+#error "dif_clkmgr does not support this top"
+#endif
     case kDifClkmgrMeasureClockIoDiv4:
       PICK_EN_OFFSET(IO_DIV4);
     case kDifClkmgrMeasureClockMain:
@@ -497,10 +559,16 @@ dif_result_t dif_clkmgr_measure_counts_get_thresholds(
       reg_offset = CLKMGR_##kind_##_MEAS_CTRL_SHADOWED_REG_OFFSET; \
       lo_field = CLKMGR_##kind_##_MEAS_CTRL_SHADOWED_LO_FIELD;     \
       hi_field = CLKMGR_##kind_##_MEAS_CTRL_SHADOWED_HI_FIELD; break, break)
+#if defined(OPENTITAN_IS_EARLGREY)
     case kDifClkmgrMeasureClockIo:
       PICK_THRESHOLD_FIELDS(IO);
     case kDifClkmgrMeasureClockIoDiv2:
       PICK_THRESHOLD_FIELDS(IO_DIV2);
+#elif defined(OPENTITAN_IS_DARJEELING)
+// Darjeeling does not have Io / IoDiv2 clock measurements
+#else
+#error "dif_clkmgr does not support this top"
+#endif
     case kDifClkmgrMeasureClockIoDiv4:
       PICK_THRESHOLD_FIELDS(IO_DIV4);
     case kDifClkmgrMeasureClockMain:

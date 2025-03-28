@@ -35,6 +35,8 @@ module top_darjeeling #(
   parameter logic [7:0] LcCtrlRevisionId = 8'h 01,
   parameter logic [31:0] LcCtrlIdcodeValue = 32'h00000001,
   // parameters for alert_handler
+  parameter int AlertHandlerEscNumSeverities = 4,
+  parameter int AlertHandlerEscPingCountWidth = 16,
   // parameters for spi_host0
   // parameters for pwrmgr_aon
   // parameters for rstmgr_aon
@@ -50,6 +52,8 @@ module top_darjeeling #(
   parameter int SramCtrlRetAonNumRamInst = 1,
   parameter bit SramCtrlRetAonInstrExec = 0,
   parameter int SramCtrlRetAonNumPrinceRoundsHalf = 3,
+  parameter bit SramCtrlRetAonEccCorrection = 0,
+  parameter int SramCtrlRetAonRaclPolicySelRangesRamNum = 1,
   // parameters for rv_dm
   parameter logic [31:0] RvDmIdcodeValue = 32'h 0000_0001,
   parameter bit RvDmUseDmiInterface = 1,
@@ -90,11 +94,15 @@ module top_darjeeling #(
   parameter int SramCtrlMainNumRamInst = 1,
   parameter bit SramCtrlMainInstrExec = 1,
   parameter int SramCtrlMainNumPrinceRoundsHalf = 3,
+  parameter bit SramCtrlMainEccCorrection = 0,
+  parameter int SramCtrlMainRaclPolicySelRangesRamNum = 1,
   // parameters for sram_ctrl_mbox
   parameter int SramCtrlMboxInstSize = 4096,
   parameter int SramCtrlMboxNumRamInst = 1,
   parameter bit SramCtrlMboxInstrExec = 0,
   parameter int SramCtrlMboxNumPrinceRoundsHalf = 3,
+  parameter bit SramCtrlMboxEccCorrection = 0,
+  parameter int SramCtrlMboxRaclPolicySelRangesRamNum = 1,
   // parameters for rom_ctrl0
   parameter RomCtrl0BootRomInitFile = "",
   parameter bit SecRomCtrl0DisableScrambling = 1'b0,
@@ -316,11 +324,14 @@ module top_darjeeling #(
   localparam int LcCtrlNumRmaAckSigs = 1;
   // local parameters for spi_host0
   localparam int SpiHost0NumCS = 1;
+  // local parameters for sram_ctrl_ret_aon
+  localparam int SramCtrlRetAonOutstanding = 2;
+  // local parameters for sram_ctrl_main
+  localparam int SramCtrlMainOutstanding = 2;
+  // local parameters for sram_ctrl_mbox
+  localparam int SramCtrlMboxOutstanding = 2;
   // local parameters for racl_ctrl
   localparam int RaclCtrlNumSubscribingIps = 9;
-  // local parameters for rv_core_ibex
-  localparam int unsigned RvCoreIbexNEscalationSeverities = alert_handler_reg_pkg::N_ESC_SEV;
-  localparam int unsigned RvCoreIbexWidthPingCounter = alert_handler_reg_pkg::PING_CNT_DW;
 
   // Signals
   logic [3:0] mio_p2d;
@@ -526,8 +537,8 @@ module top_darjeeling #(
   pwrmgr_pkg::pwr_clk_rsp_t       pwrmgr_aon_pwr_clk_rsp;
   pwrmgr_pkg::pwr_otp_req_t       pwrmgr_aon_pwr_otp_req;
   pwrmgr_pkg::pwr_otp_rsp_t       pwrmgr_aon_pwr_otp_rsp;
-  pwrmgr_pkg::pwr_lc_req_t       pwrmgr_aon_pwr_lc_req;
-  pwrmgr_pkg::pwr_lc_rsp_t       pwrmgr_aon_pwr_lc_rsp;
+  lc_ctrl_pkg::pwr_lc_req_t       pwrmgr_aon_pwr_lc_req;
+  lc_ctrl_pkg::pwr_lc_rsp_t       pwrmgr_aon_pwr_lc_rsp;
   logic       pwrmgr_aon_strap;
   logic       pwrmgr_aon_low_power;
   lc_ctrl_pkg::lc_tx_t       pwrmgr_aon_fetch_en;
@@ -765,6 +776,7 @@ module top_darjeeling #(
   otp_ctrl_pkg::otp_manuf_state_t       lc_ctrl_otp_manuf_state;
   otp_ctrl_pkg::otp_device_id_t       keymgr_dpe_otp_device_id;
   prim_mubi_pkg::mubi8_t       sram_ctrl_main_otp_en_sram_ifetch;
+  prim_mubi_pkg::mubi8_t       rv_dm_otp_dis_rv_dm_late_debug;
 
   // define mixed connection to port
   assign edn0_edn_req[2] = ast_edn_req_i;
@@ -833,6 +845,9 @@ module top_darjeeling #(
   // TODO: This should be further automated in the future.
   assign rv_core_ibex_irq_timer = intr_rv_timer_timer_expired_hart0_timer0;
   assign rv_core_ibex_hart_id = '0;
+
+  // Unconditionally disable the late debug feature and enable early debug
+  assign rv_dm_otp_dis_rv_dm_late_debug = prim_mubi_pkg::MuBi8True;
 
   assign rv_core_ibex_boot_addr = ADDR_SPACE_ROM_CTRL0__ROM;
 
@@ -1252,7 +1267,9 @@ module top_darjeeling #(
     .ProductId(LcCtrlProductId),
     .RevisionId(LcCtrlRevisionId),
     .IdcodeValue(LcCtrlIdcodeValue),
-    .NumRmaAckSigs(LcCtrlNumRmaAckSigs)
+    .NumRmaAckSigs(LcCtrlNumRmaAckSigs),
+    .EscNumSeverities(AlertHandlerEscNumSeverities),
+    .EscPingCountWidth(AlertHandlerEscPingCountWidth)
   ) u_lc_ctrl (
       // [10]: fatal_prog_error
       // [11]: fatal_state_error
@@ -1314,7 +1331,9 @@ module top_darjeeling #(
   );
   alert_handler #(
     .RndCnstLfsrSeed(RndCnstAlertHandlerLfsrSeed),
-    .RndCnstLfsrPerm(RndCnstAlertHandlerLfsrPerm)
+    .RndCnstLfsrPerm(RndCnstAlertHandlerLfsrPerm),
+    .EscNumSeverities(AlertHandlerEscNumSeverities),
+    .EscPingCountWidth(AlertHandlerEscPingCountWidth)
   ) u_alert_handler (
 
       // Interrupt
@@ -1384,8 +1403,8 @@ module top_darjeeling #(
   );
   pwrmgr #(
     .AlertAsyncOn(alert_handler_reg_pkg::AsyncOn[14:14]),
-    .EscNumSeverities(4),
-    .EscPingCountWidth(16)
+    .EscNumSeverities(AlertHandlerEscNumSeverities),
+    .EscPingCountWidth(AlertHandlerEscPingCountWidth)
   ) u_pwrmgr_aon (
 
       // Interrupt
@@ -1578,6 +1597,8 @@ module top_darjeeling #(
       .aon_timer_rst_req_o(pwrmgr_aon_rstreqs[0]),
       .lc_escalate_en_i(lc_ctrl_lc_escalate_en),
       .sleep_mode_i(pwrmgr_aon_low_power),
+      .racl_policies_i(top_racl_pkg::RACL_POLICY_VEC_DEFAULT),
+      .racl_error_o(),
       .tl_i(aon_timer_aon_tl_req),
       .tl_o(aon_timer_aon_tl_rsp),
 
@@ -1678,7 +1699,10 @@ module top_darjeeling #(
     .InstSize(SramCtrlRetAonInstSize),
     .NumRamInst(SramCtrlRetAonNumRamInst),
     .InstrExec(SramCtrlRetAonInstrExec),
-    .NumPrinceRoundsHalf(SramCtrlRetAonNumPrinceRoundsHalf)
+    .NumPrinceRoundsHalf(SramCtrlRetAonNumPrinceRoundsHalf),
+    .Outstanding(SramCtrlRetAonOutstanding),
+    .EccCorrection(SramCtrlRetAonEccCorrection),
+    .RaclPolicySelRangesRamNum(SramCtrlRetAonRaclPolicySelRangesRamNum)
   ) u_sram_ctrl_ret_aon (
       // [50]: fatal_error
       .alert_tx_o  ( alert_tx[50:50] ),
@@ -1694,6 +1718,8 @@ module top_darjeeling #(
       .otp_en_sram_ifetch_i(prim_mubi_pkg::MuBi8False),
       .racl_policies_i(top_racl_pkg::RACL_POLICY_VEC_DEFAULT),
       .racl_error_o(),
+      .racl_policy_sel_ranges_ram_i({SramCtrlRetAonRaclPolicySelRangesRamNum{top_racl_pkg::RACL_RANGE_T_DEFAULT}}),
+      .sram_rerror_o(),
       .regs_tl_i(sram_ctrl_ret_aon_regs_tl_req),
       .regs_tl_o(sram_ctrl_ret_aon_regs_tl_rsp),
       .ram_tl_i(sram_ctrl_ret_aon_ram_tl_req),
@@ -1723,7 +1749,7 @@ module top_darjeeling #(
       .lc_hw_debug_en_i(lc_ctrl_lc_hw_debug_en),
       .lc_dft_en_i(lc_ctrl_pkg::Off),
       .pinmux_hw_debug_en_i(lc_ctrl_pkg::Off),
-      .otp_dis_rv_dm_late_debug_i(prim_mubi_pkg::MuBi8False),
+      .otp_dis_rv_dm_late_debug_i(rv_dm_otp_dis_rv_dm_late_debug),
       .unavailable_i(1'b0),
       .ndmreset_req_o(rv_dm_ndmreset_req),
       .dmactive_o(),
@@ -2048,7 +2074,10 @@ module top_darjeeling #(
     .InstSize(SramCtrlMainInstSize),
     .NumRamInst(SramCtrlMainNumRamInst),
     .InstrExec(SramCtrlMainInstrExec),
-    .NumPrinceRoundsHalf(SramCtrlMainNumPrinceRoundsHalf)
+    .NumPrinceRoundsHalf(SramCtrlMainNumPrinceRoundsHalf),
+    .Outstanding(SramCtrlMainOutstanding),
+    .EccCorrection(SramCtrlMainEccCorrection),
+    .RaclPolicySelRangesRamNum(SramCtrlMainRaclPolicySelRangesRamNum)
   ) u_sram_ctrl_main (
       // [68]: fatal_error
       .alert_tx_o  ( alert_tx[68:68] ),
@@ -2064,6 +2093,8 @@ module top_darjeeling #(
       .otp_en_sram_ifetch_i(sram_ctrl_main_otp_en_sram_ifetch),
       .racl_policies_i(top_racl_pkg::RACL_POLICY_VEC_DEFAULT),
       .racl_error_o(),
+      .racl_policy_sel_ranges_ram_i({SramCtrlMainRaclPolicySelRangesRamNum{top_racl_pkg::RACL_RANGE_T_DEFAULT}}),
+      .sram_rerror_o(),
       .regs_tl_i(sram_ctrl_main_regs_tl_req),
       .regs_tl_o(sram_ctrl_main_regs_tl_rsp),
       .ram_tl_i(sram_ctrl_main_ram_tl_req),
@@ -2085,7 +2116,10 @@ module top_darjeeling #(
     .InstSize(SramCtrlMboxInstSize),
     .NumRamInst(SramCtrlMboxNumRamInst),
     .InstrExec(SramCtrlMboxInstrExec),
-    .NumPrinceRoundsHalf(SramCtrlMboxNumPrinceRoundsHalf)
+    .NumPrinceRoundsHalf(SramCtrlMboxNumPrinceRoundsHalf),
+    .Outstanding(SramCtrlMboxOutstanding),
+    .EccCorrection(SramCtrlMboxEccCorrection),
+    .RaclPolicySelRangesRamNum(SramCtrlMboxRaclPolicySelRangesRamNum)
   ) u_sram_ctrl_mbox (
       // [69]: fatal_error
       .alert_tx_o  ( alert_tx[69:69] ),
@@ -2101,6 +2135,8 @@ module top_darjeeling #(
       .otp_en_sram_ifetch_i(prim_mubi_pkg::MuBi8False),
       .racl_policies_i(top_racl_pkg::RACL_POLICY_VEC_DEFAULT),
       .racl_error_o(),
+      .racl_policy_sel_ranges_ram_i({SramCtrlMboxRaclPolicySelRangesRamNum{top_racl_pkg::RACL_RANGE_T_DEFAULT}}),
+      .sram_rerror_o(),
       .regs_tl_i(sram_ctrl_mbox_regs_tl_req),
       .regs_tl_o(sram_ctrl_mbox_regs_tl_rsp),
       .ram_tl_i(sram_ctrl_mbox_ram_tl_req),
@@ -2201,10 +2237,10 @@ module top_darjeeling #(
   );
   mbx #(
     .EnableRacl(1'b1),
-    .RaclErrorRsp(1'b1),
-    .RaclPolicySelVecSoc(RACL_POLICY_SEL_MBX0_SOC),
-    .RaclPolicySelWinSocWdata(RACL_POLICY_SEL_MBX0_SOC_WIN_WDATA),
-    .RaclPolicySelWinSocRdata(RACL_POLICY_SEL_MBX0_SOC_WIN_RDATA),
+    .RaclErrorRsp(top_racl_pkg::ErrorRsp),
+    .RaclPolicySelVecSoc(RACL_POLICY_SEL_VEC_MBX0_SOC),
+    .RaclPolicySelWinSocWdata(RACL_POLICY_SEL_WIN_MBX0_SOC_WDATA),
+    .RaclPolicySelWinSocRdata(RACL_POLICY_SEL_WIN_MBX0_SOC_RDATA),
     .AlertAsyncOn(alert_handler_reg_pkg::AsyncOn[74:73])
   ) u_mbx0 (
 
@@ -2237,10 +2273,10 @@ module top_darjeeling #(
   );
   mbx #(
     .EnableRacl(1'b1),
-    .RaclErrorRsp(1'b1),
-    .RaclPolicySelVecSoc(RACL_POLICY_SEL_MBX1_SOC),
-    .RaclPolicySelWinSocWdata(RACL_POLICY_SEL_MBX1_SOC_WIN_WDATA),
-    .RaclPolicySelWinSocRdata(RACL_POLICY_SEL_MBX1_SOC_WIN_RDATA),
+    .RaclErrorRsp(top_racl_pkg::ErrorRsp),
+    .RaclPolicySelVecSoc(RACL_POLICY_SEL_VEC_MBX1_SOC),
+    .RaclPolicySelWinSocWdata(RACL_POLICY_SEL_WIN_MBX1_SOC_WDATA),
+    .RaclPolicySelWinSocRdata(RACL_POLICY_SEL_WIN_MBX1_SOC_RDATA),
     .AlertAsyncOn(alert_handler_reg_pkg::AsyncOn[76:75])
   ) u_mbx1 (
 
@@ -2273,10 +2309,10 @@ module top_darjeeling #(
   );
   mbx #(
     .EnableRacl(1'b1),
-    .RaclErrorRsp(1'b1),
-    .RaclPolicySelVecSoc(RACL_POLICY_SEL_MBX2_SOC),
-    .RaclPolicySelWinSocWdata(RACL_POLICY_SEL_MBX2_SOC_WIN_WDATA),
-    .RaclPolicySelWinSocRdata(RACL_POLICY_SEL_MBX2_SOC_WIN_RDATA),
+    .RaclErrorRsp(top_racl_pkg::ErrorRsp),
+    .RaclPolicySelVecSoc(RACL_POLICY_SEL_VEC_MBX2_SOC),
+    .RaclPolicySelWinSocWdata(RACL_POLICY_SEL_WIN_MBX2_SOC_WDATA),
+    .RaclPolicySelWinSocRdata(RACL_POLICY_SEL_WIN_MBX2_SOC_RDATA),
     .AlertAsyncOn(alert_handler_reg_pkg::AsyncOn[78:77])
   ) u_mbx2 (
 
@@ -2340,10 +2376,10 @@ module top_darjeeling #(
   );
   mbx #(
     .EnableRacl(1'b1),
-    .RaclErrorRsp(1'b1),
-    .RaclPolicySelVecSoc(RACL_POLICY_SEL_MBX4_SOC),
-    .RaclPolicySelWinSocWdata(RACL_POLICY_SEL_MBX4_SOC_WIN_WDATA),
-    .RaclPolicySelWinSocRdata(RACL_POLICY_SEL_MBX4_SOC_WIN_RDATA),
+    .RaclErrorRsp(top_racl_pkg::ErrorRsp),
+    .RaclPolicySelVecSoc(RACL_POLICY_SEL_VEC_MBX4_SOC),
+    .RaclPolicySelWinSocWdata(RACL_POLICY_SEL_WIN_MBX4_SOC_WDATA),
+    .RaclPolicySelWinSocRdata(RACL_POLICY_SEL_WIN_MBX4_SOC_RDATA),
     .AlertAsyncOn(alert_handler_reg_pkg::AsyncOn[82:81])
   ) u_mbx4 (
 
@@ -2376,10 +2412,10 @@ module top_darjeeling #(
   );
   mbx #(
     .EnableRacl(1'b1),
-    .RaclErrorRsp(1'b1),
-    .RaclPolicySelVecSoc(RACL_POLICY_SEL_MBX5_SOC),
-    .RaclPolicySelWinSocWdata(RACL_POLICY_SEL_MBX5_SOC_WIN_WDATA),
-    .RaclPolicySelWinSocRdata(RACL_POLICY_SEL_MBX5_SOC_WIN_RDATA),
+    .RaclErrorRsp(top_racl_pkg::ErrorRsp),
+    .RaclPolicySelVecSoc(RACL_POLICY_SEL_VEC_MBX5_SOC),
+    .RaclPolicySelWinSocWdata(RACL_POLICY_SEL_WIN_MBX5_SOC_WDATA),
+    .RaclPolicySelWinSocRdata(RACL_POLICY_SEL_WIN_MBX5_SOC_RDATA),
     .AlertAsyncOn(alert_handler_reg_pkg::AsyncOn[84:83])
   ) u_mbx5 (
 
@@ -2443,10 +2479,10 @@ module top_darjeeling #(
   );
   mbx #(
     .EnableRacl(1'b1),
-    .RaclErrorRsp(1'b1),
-    .RaclPolicySelVecSoc(RACL_POLICY_SEL_MBX_JTAG_SOC),
-    .RaclPolicySelWinSocWdata(RACL_POLICY_SEL_MBX_JTAG_SOC_WIN_WDATA),
-    .RaclPolicySelWinSocRdata(RACL_POLICY_SEL_MBX_JTAG_SOC_WIN_RDATA),
+    .RaclErrorRsp(top_racl_pkg::ErrorRsp),
+    .RaclPolicySelVecSoc(RACL_POLICY_SEL_VEC_MBX_JTAG_SOC),
+    .RaclPolicySelWinSocWdata(RACL_POLICY_SEL_WIN_MBX_JTAG_SOC_WDATA),
+    .RaclPolicySelWinSocRdata(RACL_POLICY_SEL_WIN_MBX_JTAG_SOC_RDATA),
     .AlertAsyncOn(alert_handler_reg_pkg::AsyncOn[88:87])
   ) u_mbx_jtag (
 
@@ -2479,10 +2515,10 @@ module top_darjeeling #(
   );
   mbx #(
     .EnableRacl(1'b1),
-    .RaclErrorRsp(1'b1),
-    .RaclPolicySelVecSoc(RACL_POLICY_SEL_MBX_PCIE0_SOC),
-    .RaclPolicySelWinSocWdata(RACL_POLICY_SEL_MBX_PCIE0_SOC_WIN_WDATA),
-    .RaclPolicySelWinSocRdata(RACL_POLICY_SEL_MBX_PCIE0_SOC_WIN_RDATA),
+    .RaclErrorRsp(top_racl_pkg::ErrorRsp),
+    .RaclPolicySelVecSoc(RACL_POLICY_SEL_VEC_MBX_PCIE0_SOC),
+    .RaclPolicySelWinSocWdata(RACL_POLICY_SEL_WIN_MBX_PCIE0_SOC_WDATA),
+    .RaclPolicySelWinSocRdata(RACL_POLICY_SEL_WIN_MBX_PCIE0_SOC_RDATA),
     .AlertAsyncOn(alert_handler_reg_pkg::AsyncOn[90:89])
   ) u_mbx_pcie0 (
 
@@ -2515,10 +2551,10 @@ module top_darjeeling #(
   );
   mbx #(
     .EnableRacl(1'b1),
-    .RaclErrorRsp(1'b1),
-    .RaclPolicySelVecSoc(RACL_POLICY_SEL_MBX_PCIE1_SOC),
-    .RaclPolicySelWinSocWdata(RACL_POLICY_SEL_MBX_PCIE1_SOC_WIN_WDATA),
-    .RaclPolicySelWinSocRdata(RACL_POLICY_SEL_MBX_PCIE1_SOC_WIN_RDATA),
+    .RaclErrorRsp(top_racl_pkg::ErrorRsp),
+    .RaclPolicySelVecSoc(RACL_POLICY_SEL_VEC_MBX_PCIE1_SOC),
+    .RaclPolicySelWinSocWdata(RACL_POLICY_SEL_WIN_MBX_PCIE1_SOC_WDATA),
+    .RaclPolicySelWinSocRdata(RACL_POLICY_SEL_WIN_MBX_PCIE1_SOC_RDATA),
     .AlertAsyncOn(alert_handler_reg_pkg::AsyncOn[92:91])
   ) u_mbx_pcie1 (
 
@@ -2582,8 +2618,8 @@ module top_darjeeling #(
     .NumSubscribingIps(RaclCtrlNumSubscribingIps),
     .NumExternalSubscribingIps(RaclCtrlNumExternalSubscribingIps)
   ) u_racl_ctrl (
-      // [95]: recov_ctrl_update_err
-      // [96]: fatal_fault
+      // [95]: fatal_fault
+      // [96]: recov_ctrl_update_err
       .alert_tx_o  ( alert_tx[96:95] ),
       .alert_rx_i  ( alert_rx[96:95] ),
 
@@ -2601,8 +2637,8 @@ module top_darjeeling #(
   );
   ac_range_check #(
     .EnableRacl(1'b1),
-    .RaclErrorRsp(1'b1),
-    .RaclPolicySelVec(RACL_POLICY_SEL_AC_RANGE_CHECK),
+    .RaclErrorRsp(top_racl_pkg::ErrorRsp),
+    .RaclPolicySelVec(RACL_POLICY_SEL_VEC_AC_RANGE_CHECK),
     .AlertAsyncOn(alert_handler_reg_pkg::AsyncOn[98:97])
   ) u_ac_range_check (
 
@@ -2635,8 +2671,8 @@ module top_darjeeling #(
     .RndCnstLfsrPerm(RndCnstRvCoreIbexLfsrPerm),
     .RndCnstIbexKeyDefault(RndCnstRvCoreIbexIbexKeyDefault),
     .RndCnstIbexNonceDefault(RndCnstRvCoreIbexIbexNonceDefault),
-    .NEscalationSeverities(RvCoreIbexNEscalationSeverities),
-    .WidthPingCounter(RvCoreIbexWidthPingCounter),
+    .NEscalationSeverities(AlertHandlerEscNumSeverities),
+    .WidthPingCounter(AlertHandlerEscPingCountWidth),
     .PMPEnable(RvCoreIbexPMPEnable),
     .PMPGranularity(RvCoreIbexPMPGranularity),
     .PMPNumRegions(RvCoreIbexPMPNumRegions),
@@ -3431,5 +3467,10 @@ module top_darjeeling #(
 
   // make sure scanmode_i is never X (including during reset)
   `ASSERT_KNOWN(scanmodeKnown, scanmode_i, clk_main_i, 0)
+
+  // TODO(#26288) : EnCsrngSwAppReadSize should not be present in Darjeeling; presently, this signal
+  // must be used to avoid a lint error.
+  logic unused_en_csrng;
+  assign unused_en_csrng = ^otp_ctrl_otp_broadcast.hw_cfg1_data.en_csrng_sw_app_read;
 
 endmodule

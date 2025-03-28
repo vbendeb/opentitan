@@ -84,18 +84,26 @@ cc_test(
 )
 
 cc_library(
+    name = "template",
+    srcs = ["template.c"],
+    hdrs = ["template.h"],
+    deps = [
+        "//sw/device/lib/base:macros",
+        "//sw/device/lib/base:memory",
+        "//sw/device/lib/base:status",
+    ],
+)
+
+cc_library(
     name = "cert",
     srcs = ["cert.c"],
     hdrs = ["cert.h"],
     deps = [
-        ":asn1",
-        "//hw/top:flash_ctrl_c_regs",
         "//sw/device/lib/base:hardened",
+        "//sw/device/lib/base:memory",
         "//sw/device/silicon_creator/lib:error",
         "//sw/device/silicon_creator/lib/drivers:flash_ctrl",
         "//sw/device/silicon_creator/lib/drivers:hmac",
-        "//sw/device/silicon_creator/lib/drivers:keymgr",
-        "//sw/device/silicon_creator/lib/sigverify:ecdsa_p256_key",
     ],
 )
 
@@ -118,6 +126,7 @@ cc_library(
     hdrs = ["dice.h"],
     deps = [
         ":cert",
+        ":template",
         "//sw/device/lib/base:memory",
         "//sw/device/lib/base:status",
         "//sw/device/lib/testing/test_framework:check",
@@ -130,6 +139,7 @@ cc_library(
         "//sw/device/silicon_creator/lib/cert:uds_template_library",
         "//sw/device/silicon_creator/lib/drivers:hmac",
         "//sw/device/silicon_creator/lib/drivers:lifecycle",
+        "//sw/device/silicon_creator/lib/ownership:datatypes",
         "//sw/device/silicon_creator/lib/sigverify:ecdsa_p256_key",
         "//sw/device/silicon_creator/manuf/base:perso_tlv_data",
         "//sw/device/silicon_creator/manuf/lib:flash_info_fields",
@@ -138,10 +148,10 @@ cc_library(
 
 cc_library(
     name = "cbor",
+    srcs = ["cbor.c"],
     hdrs = ["cbor.h"],
     deps = [
         "//sw/device/lib/base:status",
-        "@open-dice//:cbor_reader_writer",
     ],
 )
 
@@ -172,6 +182,7 @@ cc_library(
         "//sw/device/silicon_creator/lib/base:util",
         "//sw/device/silicon_creator/lib/cert:dice_keys",
         "//sw/device/silicon_creator/lib/drivers:lifecycle",
+        "//sw/device/silicon_creator/lib/ownership:datatypes",
         "//sw/device/silicon_creator/manuf/base:perso_tlv_data",
     ],
 )
@@ -192,6 +203,7 @@ cc_library(
     hdrs = ["tpm.h"],
     deps = [
         ":cert",
+        ":template",
         "//sw/device/lib/base:status",
         "//sw/device/lib/testing/test_framework:check",
         "//sw/device/silicon_creator/lib/cert:tpm_ek_template_library",
@@ -215,14 +227,14 @@ cc_library(
         "//sw/device/silicon_creator/lib:manifest",
         "//sw/device/silicon_creator/lib/base:boot_measurements",
         "//sw/device/silicon_creator/lib/base:sec_mmio",
+        "//sw/device/silicon_creator/lib/base:static_dice_cdi_0",
         "//sw/device/silicon_creator/lib/base:util",
-        "//sw/device/silicon_creator/lib/cert:cdi_0_template_library",
-        "//sw/device/silicon_creator/lib/cert:cdi_1_template_library",
         "//sw/device/silicon_creator/lib/cert:dice",
         "//sw/device/silicon_creator/lib/drivers:flash_ctrl",
         "//sw/device/silicon_creator/lib/drivers:hmac",
         "//sw/device/silicon_creator/lib/drivers:keymgr",
         "//sw/device/silicon_creator/lib/drivers:kmac",
+        "//sw/device/silicon_creator/lib/ownership:datatypes",
         "//sw/device/silicon_creator/manuf/base:perso_tlv_data",
     ],
 )

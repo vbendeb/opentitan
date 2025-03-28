@@ -85,6 +85,7 @@ module soc_dbg_ctrl
 
   // SEC_CM: BUS.INTEGRITY
   // SEC_CM: DEBUG_POLICY_VALID.CONFIG.SHADOW
+  // SEC_CM: DEBUG_POLICY_CATEGORY.CONFIG.SHADOW
   soc_dbg_ctrl_core_reg_top u_core_reg (
     .clk_i,
     .rst_ni,
@@ -199,7 +200,7 @@ module soc_dbg_ctrl
       // In Soc_DbgStProd, the debug policy is driven by the RoT according to the negotiated or
       // authorized policy
       lc_ctrl_state_pkg::SocDbgStProd: begin
-        soc_dbg_policy_d.category = dbg_category_e'(core_reg2hw.debug_policy_category_shadowed.q);
+        soc_dbg_policy_d.category = dbg_category_e'(core_hw2reg.debug_policy_category_shadowed.d);
         soc_dbg_policy_d.valid    =
           prim_mubi_pkg::mubi4_t'(core_reg2hw.debug_policy_valid_shadowed.q);
         soc_dbg_policy_d.relocked = prim_mubi_pkg::mubi4_t'(core_reg2hw.debug_policy_relocked.q);
@@ -369,7 +370,7 @@ module soc_dbg_ctrl
     endcase
   end
 
-  // SEC_CM: FSM.SPARSE
+  // SEC_CM: HALT.FSM.SPARSE
   `PRIM_FLOP_SPARSE_FSM(u_state_regs, halt_state_d, halt_state_q, halt_state_e, Idle)
 
   logic unused_signals;

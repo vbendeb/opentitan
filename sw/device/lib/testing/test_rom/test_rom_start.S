@@ -37,6 +37,7 @@
 #define SENSOR_CTRL_BASE_ADDR               TOP_EARLGREY_SENSOR_CTRL_AON_BASE_ADDR
 
 #elif defined(OPENTITAN_IS_DARJEELING)
+#include "otp_ctrl_regs.h"
 #include "hw/top_darjeeling/sw/autogen/top_darjeeling_memory.h"
 #define OTP_CTRL_CORE_BASE_ADDR             TOP_DARJEELING_OTP_CTRL_CORE_BASE_ADDR
 #define AST_BASE_ADDR                       TOP_DARJEELING_AST_BASE_ADDR
@@ -187,14 +188,28 @@ _reset_start:
   .global _start
   .type _start, @function
 _start:
-#ifdef OPENTITAN_IS_EARLGREY
+  // Certain tops like Darjeeling lock down everything but the ROM by default.
+  //
+  // Remove address space protections by configuring entry 15 as
+  // read-write-execute for the entire address space and then clearing
+  // all other entries.
+  // NOTE: This should happen before attempting to access any address outside
+  // the initial ePMP RX region at reset, e.g. `kDeviceType` which is in
+  // .rodata, or the MMIO.
+  li   t0, (0x9f << 24) // Locked NAPOT read-write-execute.
+  csrw pmpcfg3, t0
+  li   t0, 0x7fffffff   // NAPOT encoded region covering entire 34-bit address space.
+  csrw pmpaddr15, t0
+  csrw pmpcfg0, zero
+  csrw pmpcfg1, zero
+  csrw pmpcfg2, zero
+
   // Check if AST initialization should be skipped.
   li   a0, (OTP_CTRL_CORE_BASE_ADDR + \
             OTP_CTRL_SW_CFG_WINDOW_REG_OFFSET)
   lw   t0, OTP_CTRL_PARAM_CREATOR_SW_CFG_AST_INIT_EN_OFFSET(a0)
   li   t1, MULTIBIT_ASM_BOOL4_TRUE
   bne  t0, t1, .L_ast_init_skip
-
 
   // Copy the AST configuration from OTP.
   li   a0, (AST_BASE_ADDR)
@@ -204,6 +219,7 @@ _start:
             OTP_CTRL_PARAM_CREATOR_SW_CFG_AST_CFG_OFFSET)
   call crt_section_copy
 
+#ifdef OPENTITAN_IS_EARLGREY
   // Wait for AST initialization to complete.
   li   a0, SENSOR_CTRL_BASE_ADDR
 .L_ast_done_loop:
@@ -218,7 +234,7 @@ _start:
   lw   t0, OTP_CTRL_PARAM_CREATOR_SW_CFG_JITTER_EN_OFFSET(a0)
   li   a0, CLKMGR_AON_BASE_ADDR
   sw   t0, CLKMGR_JITTER_ENABLE_REG_OFFSET(a0)
-#endif /* OTP_CTRL_CORE_BASE_ADDR */
+#endif
 
 .L_ast_init_skip:
 #ifdef ENTROPY_SRC_BASE_ADDR
@@ -252,20 +268,6 @@ _start:
          (MULTIBIT_ASM_BOOL4_FALSE << EDN_CTRL_AUTO_REQ_MODE_OFFSET) | \
          (MULTIBIT_ASM_BOOL4_FALSE << EDN_CTRL_CMD_FIFO_RST_OFFSET)
   sw t0, EDN_CTRL_REG_OFFSET(a0)
-
-  // Remove address space protections by configuring entry 15 as
-  // read-write-execute for the entire address space and then clearing
-  // all other entries.
-  // NOTE: This should happen before attemting to access any address outside
-  // the initial ePMP RX region at reset, e.g. `kDeviceType` which is in
-  // .rodata.
-  li   t0, (0x9f << 24) // Locked NAPOT read-write-execute.
-  csrw pmpcfg3, t0
-  li   t0, 0x7fffffff   // NAPOT encoded region covering entire 34-bit address space.
-  csrw pmpaddr15, t0
-  csrw pmpcfg0, zero
-  csrw pmpcfg1, zero
-  csrw pmpcfg2, zero
 
   // Scramble and initialize main memory (main SRAM).
   // Memory accesses will stall until initialization is complete.

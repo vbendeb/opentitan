@@ -27,7 +27,6 @@ DASHBOARDS: Dict[str, List[Path]] = {
         REPO_TOP / "hw/ip/csrng/data/csrng.hjson",
         REPO_TOP / "hw/ip/adc_ctrl/data/adc_ctrl.hjson",
         REPO_TOP / "hw/ip/edn/data/edn.hjson",
-        REPO_TOP / "hw/ip/gpio/data/gpio.hjson",
         REPO_TOP / "hw/ip/hmac/data/hmac.hjson",
         REPO_TOP / "hw/ip/i2c/data/i2c.hjson",
         REPO_TOP / "hw/ip/keymgr/data/keymgr.hjson",
@@ -38,7 +37,6 @@ DASHBOARDS: Dict[str, List[Path]] = {
         REPO_TOP / "hw/ip/pwm/data/pwm.hjson",
         REPO_TOP / "hw/ip/rom_ctrl/data/rom_ctrl.hjson",
         REPO_TOP / "hw/ip/rv_dm/data/rv_dm.hjson",
-        REPO_TOP / "hw/ip/rv_core_ibex/data/rv_core_ibex.hjson",
         REPO_TOP / "hw/ip/rv_timer/data/rv_timer.hjson",
         REPO_TOP / "hw/ip/spi_host/data/spi_host.hjson",
         REPO_TOP / "hw/ip/spi_device/data/spi_device.hjson",
@@ -55,8 +53,10 @@ DASHBOARDS: Dict[str, List[Path]] = {
         REPO_TOP / "hw/top_earlgrey/ip_autogen/pinmux/data/pinmux.hjson",
         REPO_TOP / "hw/top_earlgrey/ip_autogen/pwrmgr/data/pwrmgr.hjson",
         REPO_TOP / "hw/top_earlgrey/ip_autogen/rstmgr/data/rstmgr.hjson",
+        REPO_TOP / "hw/top_earlgrey/ip_autogen/core_ibex/data/core_ibex.hjson",
         REPO_TOP / "hw/top_earlgrey/ip_autogen/rv_plic/data/rv_plic.hjson",
         REPO_TOP / "hw/top_earlgrey/ip/sensor_ctrl/data/sensor_ctrl.hjson",
+        REPO_TOP / "hw/top_earlgrey/ip_autogen/gpio/data/gpio.hjson",
     ],
 }
 
@@ -93,7 +93,7 @@ def main() -> None:
     # gen_dashboards()
 
     # load both the context and the book from stdin
-    context, book = json.load(sys.stdin)
+    _context, book = json.load(sys.stdin)
 
     for chapter in md_utils.chapters(book["sections"]):
         # Add in the generated dashboard html

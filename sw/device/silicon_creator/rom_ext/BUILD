@@ -12,10 +12,8 @@ load(
     "ROM_EXT_VERSION",
 )
 load(
-    "//sw/device/silicon_creator/imm_rom_ext:defs.bzl",
-    "SLOT_A_IMM_ROM_EXT_SECTIONS",
-    "SLOT_B_IMM_ROM_EXT_SECTIONS",
-    "SLOT_VIRTUAL_IMM_ROM_EXT_SECTIONS",
+    "//sw/device/silicon_creator/rom_ext/imm_section:defs.bzl",
+    "IMM_SECTION_VARIATIONS",
 )
 
 package(default_visibility = ["//visibility:public"])
@@ -106,6 +104,7 @@ ld_library(
     deps = [
         "//sw/device:info_sections",
         "//sw/device/silicon_creator/lib/base:static_critical_sections",
+        "//sw/device/silicon_creator/lib/base:static_dice_sections",
     ],
 )
 
@@ -193,6 +192,7 @@ cc_library(
         "//sw/device/silicon_creator/lib/base:chip",
         "//sw/device/silicon_creator/lib/base:sec_mmio",
         "//sw/device/silicon_creator/lib/base:static_critical",
+        "//sw/device/silicon_creator/lib/base:static_dice",
         "//sw/device/silicon_creator/lib/boot_svc:boot_svc_msg",
         "//sw/device/silicon_creator/lib/cert:dice_chain",
         "//sw/device/silicon_creator/lib/drivers:ast",
@@ -240,7 +240,6 @@ opentitan_binary(
         "//hw/top_earlgrey:sim_verilator_base",
         "//hw/top_earlgrey:silicon_creator",
     ],
-    immutable_rom_ext_sections = SLOT_A_IMM_ROM_EXT_SECTIONS["main"],
     linker_script = ":ld_slot_a",
     manifest = ":manifest",
     # TODO(#26060): Temporarily disable SPX signing of ROM_EXT.
@@ -252,6 +251,7 @@ opentitan_binary(
         "//sw/device/silicon_creator/lib:manifest_def",
         "//sw/device/silicon_creator/lib/ownership:test_owner",
         "//sw/device/silicon_creator/lib/ownership/keys/fake",
+        "//sw/device/silicon_creator/rom_ext/imm_section:main_section_slot_a",
     ],
 )
 
@@ -267,7 +267,6 @@ opentitan_binary(
         "//hw/top_earlgrey:sim_verilator_base",
         "//hw/top_earlgrey:silicon_creator",
     ],
-    immutable_rom_ext_sections = SLOT_B_IMM_ROM_EXT_SECTIONS["main"],
     linker_script = ":ld_slot_b",
     manifest = ":manifest",
     # TODO(#26060): Temporarily disable SPX signing of ROM_EXT.
@@ -279,6 +278,7 @@ opentitan_binary(
         "//sw/device/silicon_creator/lib:manifest_def",
         "//sw/device/silicon_creator/lib/ownership:test_owner",
         "//sw/device/silicon_creator/lib/ownership/keys/fake",
+        "//sw/device/silicon_creator/rom_ext/imm_section:main_section_slot_b",
     ],
 )
 
@@ -294,7 +294,6 @@ opentitan_binary(
         "//hw/top_earlgrey:sim_verilator_base",
         "//hw/top_earlgrey:silicon_creator",
     ],
-    immutable_rom_ext_sections = SLOT_VIRTUAL_IMM_ROM_EXT_SECTIONS["main"],
     linker_script = ":ld_slot_virtual",
     manifest = ":manifest",
     transitive_features = ROM_EXT_FEATURES,
@@ -304,12 +303,13 @@ opentitan_binary(
         "//sw/device/silicon_creator/lib:manifest_def",
         "//sw/device/silicon_creator/lib/ownership:test_owner",
         "//sw/device/silicon_creator/lib/ownership/keys/fake",
+        "//sw/device/silicon_creator/rom_ext/imm_section:main_section_slot_virtual",
     ],
 )
 
 [
     opentitan_binary(
-        name = "rom_ext_with_{}_imm_slot_virtual".format(name),
+        name = "rom_ext_with_{}_imm_slot_virtual".format(imm_name),
         testonly = True,
         ecdsa_key = {"//sw/device/silicon_creator/rom/keys/fake/ecdsa:prod_key_0_ecdsa_p256": "prod_key_0"},
         exec_env = [
@@ -319,7 +319,6 @@ opentitan_binary(
             "//hw/top_earlgrey:sim_verilator_base",
             "//hw/top_earlgrey:silicon_creator",
         ],
-        immutable_rom_ext_sections = imm_rom_ext_sections,
         linker_script = ":ld_slot_virtual",
         manifest = ":manifest",
         transitive_features = ROM_EXT_FEATURES,
@@ -329,10 +328,33 @@ opentitan_binary(
             "//sw/device/silicon_creator/lib:manifest_def",
             "//sw/device/silicon_creator/lib/ownership:test_owner",
             "//sw/device/silicon_creator/lib/ownership/keys/fake",
+            "//sw/device/silicon_creator/rom_ext/imm_section:{}_section_slot_virtual".format(imm_name),
         ],
     )
-    for name, imm_rom_ext_sections in SLOT_VIRTUAL_IMM_ROM_EXT_SECTIONS.items()
+    for imm_name in IMM_SECTION_VARIATIONS
 ]
+
+# This binary is a test-only ROM_EXT that has ownership initialized in
+# the "NewVersion" update mode.  Initializing in this mode makes the
+# test flows for the "NewVersion" style of ownership updates easier.
+opentitan_binary(
+    name = "rom_ext_owner_update_newversion",
+    testonly = True,
+    ecdsa_key = {"//sw/device/silicon_creator/rom/keys/fake/ecdsa:prod_key_0_ecdsa_p256": "prod_key_0"},
+    exec_env = [
+        "//hw/top_earlgrey:fpga_cw310",
+    ],
+    linker_script = ":ld_slot_a",
+    manifest = ":manifest",
+    deps = [
+        ":rom_ext",
+        "//sw/device/lib/crt",
+        "//sw/device/silicon_creator/lib:manifest_def",
+        "//sw/device/silicon_creator/lib/ownership:test_owner_update_mode_newversion",
+        "//sw/device/silicon_creator/lib/ownership/keys/fake",
+        "//sw/device/silicon_creator/rom_ext/imm_section:main_section_slot_a",
+    ],
+)
 
 manifest(d = {
     "name": "manifest_bad_address_translation",
@@ -342,6 +364,7 @@ manifest(d = {
 
 opentitan_binary(
     name = "rom_ext_slot_a_bad_address_translation",
+    testonly = True,
     ecdsa_key = {"//sw/device/silicon_creator/rom/keys/fake/ecdsa:test_key_0_ecdsa_p256": "test_key_0"},
     exec_env = [
         "//hw/top_earlgrey:fpga_cw310",
@@ -356,6 +379,7 @@ opentitan_binary(
         ":rom_ext",
         "//sw/device/lib/crt",
         "//sw/device/silicon_creator/lib:manifest_def",
-        "//sw/device/silicon_creator/rom_ext/keys/fake",
+        "//sw/device/silicon_creator/lib/ownership:test_owner",
+        "//sw/device/silicon_creator/lib/ownership/keys/fake",
     ],
 )

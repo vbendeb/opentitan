@@ -6,7 +6,7 @@
     },
     "ibex": {
         "name": "Ibex",
-        "data_file": "hw/ip/rv_core_ibex/data/rv_core_ibex.hjson",
+        "data_file": "hw/top_earlgrey/ip_autogen/rv_core_ibex/data/rv_core_ibex.hjson",
         "report": null
     },
     "interrupt-controller": {
@@ -121,8 +121,8 @@
     },
     "gpio": {
         "name": "GPIO",
-        "data_file": "hw/ip/gpio/data/gpio.hjson",
-        "report": "/hw/ip/gpio/dv"
+        "data_file": "hw/top_earlgrey/ip_autogen/gpio/data/gpio.hjson",
+        "report": "/hw/top_earlgrey/ip_autogen/gpio/dv"
     },
     "i2c": {
         "name": "I2C",
@@ -141,8 +141,8 @@
     },
     "pwm": {
         "name": "PWM",
-        "data_file": "hw/ip/pwm/data/pwm.hjson",
-        "report": "/hw/ip/pwm/dv"
+        "data_file": "hw/top_earlgrey/ip_autogen/pwm/data/pwm.hjson",
+        "report": "/hw/top_earlgrey/ip_autogen/pwm/dv"
     },
     "retention-sram": {
         "name": "Retention SRAM",
