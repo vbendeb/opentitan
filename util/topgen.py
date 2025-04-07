@@ -270,7 +270,6 @@ def generate_ipgen(top: ConfigT, module: ConfigT, params: ParamsT,
 
 def _get_alert_handler_params(top: ConfigT) -> ParamsT:
     """Returns parameters for alert_hander ipgen from top config."""
-    topname = top["name"]
     # default values
     esc_cnt_dw = 32
     accu_cnt_dw = 16
@@ -338,7 +337,6 @@ def _get_alert_handler_params(top: ConfigT) -> ParamsT:
         "ping_cnt_dw": ping_cnt_dw,
         "n_lpg": n_lpgs,
         "lpg_map": lpg_map,
-        "top_pkg_vlnv": f"lowrisc:constants:top_{topname}_top_pkg",
     }
 
 
@@ -419,7 +417,6 @@ def _get_pinmux_params(top: ConfigT) -> ParamsT:
     assert "pinmux" in top
     assert "pinout" in top
 
-    topname = top["name"]
     pinmux = top["pinmux"]
 
     # Get number of wakeup detectors
@@ -484,8 +481,6 @@ def _get_pinmux_params(top: ConfigT) -> ParamsT:
         "n_dio_periph_out": n_dio_periph_out,
         "enable_usb_wakeup": pinmux['enable_usb_wakeup'],
         "enable_strap_sampling": pinmux['enable_strap_sampling'],
-        "top_pkg_vlnv": f"lowrisc:constants:top_{topname}_top_pkg",
-        "scan_role_pkg_vlnv": f"lowrisc:systems:top_{topname}_scan_role_pkg",
     }
 
 
@@ -518,7 +513,6 @@ def _get_clkmgr_params(top: ConfigT) -> ParamsT:
     with_alert_handler = lib.find_module(top['module'],
                                          'alert_handler') is not None
 
-    topname = top["name"]
     return {
         "src_clks":
         OrderedDict({name: vars(obj)
@@ -540,8 +534,6 @@ def _get_clkmgr_params(top: ConfigT) -> ParamsT:
         len(clocks.groups),
         "with_alert_handler":
         with_alert_handler,
-        "top_pkg_vlnv":
-        f"lowrisc:constants:top_{topname}_top_pkg",
     }
 
 
@@ -557,7 +549,6 @@ def generate_clkmgr(top: ConfigT, module: ConfigT, out_path: Path) -> None:
 
 def _get_pwrmgr_params(top: ConfigT) -> ParamsT:
     """Extracts parameters for pwrmgr ipgen."""
-    topname = top["name"]
     # Count number of wakeups
     n_wkups = len(top["wakeups"])
     log.info("Found {} wakeup signals".format(n_wkups))
@@ -583,6 +574,10 @@ def _get_pwrmgr_params(top: ConfigT) -> ParamsT:
     if top['power'].get('halt_ibex_via_rom_ctrl', False):
         n_rom_ctrl += 1
 
+    clocks = top["clocks"]
+    assert isinstance(clocks, Clocks)
+    src_clks = [obj.name for obj in clocks.srcs.values() if not obj.aon]
+
     return {
         "NumWkups": n_wkups,
         "Wkups": top["wakeups"],
@@ -590,7 +585,8 @@ def _get_pwrmgr_params(top: ConfigT) -> ParamsT:
         "rst_reqs": top["reset_requests"],
         "wait_for_external_reset": top['power']['wait_for_external_reset'],
         "NumRomInputs": n_rom_ctrl,
-        "top_pkg_vlnv": f"lowrisc:constants:top_{topname}_top_pkg",
+        "has_aon_clk": any(obj.aon for obj in clocks.srcs.values()),
+        "src_clks": src_clks,
     }
 
 
@@ -607,7 +603,6 @@ def get_rst_ni(top: ConfigT) -> object:
 
 def _get_rstmgr_params(top: ConfigT) -> ParamsT:
     """Extracts parameters for rstmgr ipgen."""
-    topname = top["name"]
     # Parameters needed for generation
     reset_obj = top["resets"]
 
@@ -616,13 +611,19 @@ def _get_rstmgr_params(top: ConfigT) -> ParamsT:
 
     # unique clocks
     clks = reset_obj.get_clocks()
+    clocks = top["clocks"]
+    assert isinstance(clocks, Clocks)
+    src_freqs = {sv.name: sv.freq for sv in clocks.srcs.values()}
+    src_freqs.update({dv.name: dv.freq for dv in clocks.derived_srcs.values()})
+    # Create a dictionary indexed by clks containing their frequency.
+    clk_freqs = {clk: src_freqs[clk] for clk in clks}
 
     # resets sent to reset struct
     output_rsts = reset_obj.get_top_resets()
 
-    # sw controlled resets
-    sw_rsts = reset_obj.get_sw_resets()
-
+    # sw controlled resets: dict indexed by device containing the clock
+    sw_rsts = OrderedDict([(r.name, r.clock.name)
+                           for r in reset_obj.get_sw_resets()])
     # rst_ni
     rst_ni = get_rst_ni(top)
 
@@ -635,17 +636,9 @@ def _get_rstmgr_params(top: ConfigT) -> ParamsT:
     # Will connect to alert_handler
     with_alert_handler = lib.find_module(top['module'],
                                          'alert_handler') is not None
-    if with_alert_handler:
-        alert_handler_vlnv = f"lowrisc:{topname}_ip:alert_handler_pkg"
-    elif topname == "englishbreakfast":
-        # TODO: Clean templates to not require alert_handler. English Breakfast
-        # does not have one, so it uses types and constants from Earl Grey.
-        alert_handler_vlnv = "lowrisc:earlgrey_ip:alert_handler_pkg"
-    else:
-        alert_handler_vlnv = ""
 
     return {
-        "clks": clks,
+        "clk_freqs": clk_freqs,
         "reqs": top["reset_requests"],
         "power_domains": top["power"]["domains"],
         "num_rstreqs": n_rstreqs,
@@ -654,9 +647,7 @@ def _get_rstmgr_params(top: ConfigT) -> ParamsT:
         "leaf_rsts": leaf_rsts,
         "rst_ni": rst_ni['rst_ni']['name'],
         "export_rsts": top["exported_rsts"],
-        "alert_handler_vlnv": alert_handler_vlnv,
         "with_alert_handler": with_alert_handler,
-        "top_pkg_vlnv": f"lowrisc:constants:top_{topname}_top_pkg",
     }
 
 
@@ -679,14 +670,12 @@ def _get_flash_ctrl_params(top: ConfigT) -> ParamsT:
         raise ValueError(
             "In _get_flash_ctrl_params for design with no flash_ctrl")
 
-    topname = top["name"]
     params = vars(flash_mems[0]["memory"]["mem"]["config"])
     # Additional parameters not provided in the top config.
     params.update({
         "metadata_width": 12,
         "info_types": 3,
         "infos_per_bank": [10, 1, 2],
-        "top_pkg_vlnv": f"lowrisc:constants:top_{topname}_top_pkg",
     })
 
     params.pop('base_addrs', None)
@@ -751,20 +740,22 @@ def generate_ac_range_check(top: ConfigT, module: ConfigT,
 def _get_racl_params(top: ConfigT) -> ParamsT:
     """Extracts parameters for racl_ctrl ipgen."""
     module = lib.find_module(top["module"], "racl_ctrl")
+    racl_group = module.get("racl_group", "Null")
     if len(top["racl"]["policies"]) == 1:
         # If there is only one set of policies, take the first one
         policies = list(top["racl"]["policies"].values())[0]
     else:
         # More than one policy, we need to find the matching set of policies
-        racl_group = module.get("racl_group", "Null")
         policies = top["racl"]["policies"][racl_group]
 
     num_subscribing_ips = defaultdict(int)
     for m in top["module"]:
         racl_mappings = m.get("racl_mappings", {})
-        for if_name, mapping in racl_mappings.items():
-            racl_group = racl_mappings[if_name]["racl_group"]
-            num_subscribing_ips[racl_group] += 1
+
+        for group in set(
+            mapping['racl_group'] for mapping in racl_mappings.values()
+        ):
+            num_subscribing_ips[group] += 1
 
     uniquified_modules.add_module(module["template_type"], module["type"])
 

@@ -11,9 +11,9 @@ filesets:
       - lowrisc:prim:util
       - lowrisc:prim:assert
       - lowrisc:tlul:common
+      - lowrisc:tlul:adapter_racl
       - lowrisc:tlul:adapter_sram
-      - lowrisc:tlul:request_loopback
-      - lowrisc:systems:top_racl_pkg
+      - lowrisc:virtual_constants:top_racl_pkg
     files:
       - rtl/tlul_adapter_sram_racl.sv
     file_type: systemVerilogSource

@@ -8,7 +8,7 @@ filesets:
   files_rtl_generic:
     depend:
       # Place the autogen packages first to avoid conflicts
-      - lowrisc:systems:top_earlgrey_racl_pkg
+      - lowrisc:earlgrey_constants:top_racl_pkg
       - lowrisc:earlgrey_ip:alert_handler_reg
       - lowrisc:earlgrey_ip:pwrmgr_pkg
       - lowrisc:ip:uart:0.1
@@ -30,7 +30,7 @@ filesets:
       - lowrisc:prim:flash
       - lowrisc:ip:sram_ctrl
       - lowrisc:ip:keymgr
-      - lowrisc:constants:top_earlgrey_top_pkg
+      - lowrisc:earlgrey_constants:top_pkg
       - lowrisc:constants:top_earlgrey_jtag_id_pkg
       - lowrisc:constants:top_earlgrey_ibex_pmp_reset_pkg
       - lowrisc:ip:lc_ctrl

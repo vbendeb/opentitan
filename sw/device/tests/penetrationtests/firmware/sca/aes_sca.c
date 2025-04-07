@@ -17,7 +17,7 @@
 #include "sw/device/tests/penetrationtests/json/aes_sca_commands.h"
 #include "sw/device/tests/penetrationtests/json/commands.h"
 
-#if !OT_IS_ENGLISH_BREAKFAST
+#ifndef OPENTITAN_IS_ENGLISHBREAKFAST
 #include "sw/device/lib/testing/aes_testutils.h"
 #endif
 
@@ -202,7 +202,7 @@ static status_t aes_key_mask_and_config(const uint8_t *key, size_t key_len) {
   }
   TRY(dif_aes_start(&aes, &transaction, &key_shares, NULL));
 
-#if !OT_IS_ENGLISH_BREAKFAST
+#ifndef OPENTITAN_IS_ENGLISHBREAKFAST
   if (transaction.force_masks) {
     // Disable masking. Force the masking PRNG output value to 0.
     TRY(aes_sca_load_fixed_seed());
@@ -615,15 +615,18 @@ status_t handle_aes_pentest_init(ujson_t *uj) {
     return ABORTED();
   }
 
-  // Disable the instruction cache and dummy instructions for better SCA
-  // measurements.
-  pentest_configure_cpu(uj_cpuctrl.icache_disable,
-                        uj_cpuctrl.dummy_instr_disable);
+  // Configure the CPU for the pentest.
+  penetrationtest_device_info_t uj_output;
+  TRY(pentest_configure_cpu(
+      uj_cpuctrl.icache_disable, uj_cpuctrl.dummy_instr_disable,
+      uj_cpuctrl.enable_jittery_clock, uj_cpuctrl.enable_sram_readback,
+      &uj_output.clock_jitter_locked, &uj_output.clock_jitter_en,
+      &uj_output.sram_main_readback_locked, &uj_output.sram_ret_readback_locked,
+      &uj_output.sram_main_readback_en, &uj_output.sram_ret_readback_en));
 
   // Read device ID and return to host.
-  penetrationtest_device_id_t uj_output;
   TRY(pentest_read_device_id(uj_output.device_id));
-  RESP_OK(ujson_serialize_penetrationtest_device_id_t, uj, &uj_output);
+  RESP_OK(ujson_serialize_penetrationtest_device_info_t, uj, &uj_output);
 
   return OK_STATUS();
 }
@@ -652,10 +655,15 @@ status_t handle_aes_pentest_seed_lfsr(ujson_t *uj) {
   }
   pentest_seed_lfsr(seed_local, kPentestLfsrMasking);
 
-#if !OT_IS_ENGLISH_BREAKFAST
+#ifndef OPENTITAN_IS_ENGLISHBREAKFAST
   if (transaction.force_masks) {
     LOG_INFO("Disabling masks.");
-    status_t res = aes_testutils_masking_prng_zero_output_seed();
+    const dif_csrng_t csrng = {
+        .base_addr = mmio_region_from_addr(TOP_EARLGREY_CSRNG_BASE_ADDR)};
+    const dif_edn_t edn0 = {
+        .base_addr = mmio_region_from_addr(TOP_EARLGREY_EDN0_BASE_ADDR)};
+
+    status_t res = aes_testutils_masking_prng_zero_output_seed(&csrng, &edn0);
     if (res.value != 0) {
       return ABORTED();
     }

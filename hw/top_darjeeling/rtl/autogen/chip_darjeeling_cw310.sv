@@ -994,6 +994,10 @@ module chip_darjeeling_cw310 #(
   otp_ctrl_pkg::otp_ast_req_t otp_ctrl_otp_ast_pwr_seq;
   otp_ctrl_pkg::otp_ast_rsp_t otp_ctrl_otp_ast_pwr_seq_h;
 
+  // OTP DFT configuration
+  prim_otp_cfg_pkg::otp_cfg_t otp_cfg;
+  assign otp_cfg = prim_otp_cfg_pkg::OTP_CFG_DEFAULT;
+
   // entropy source interface
   // The entropy source pacakge definition should eventually be moved to es
   entropy_src_pkg::entropy_src_hw_if_req_t entropy_src_hw_if_req;
@@ -1172,13 +1176,11 @@ module chip_darjeeling_cw310 #(
     .clk_ast_alert_i (clkmgr_aon_clocks.clk_io_div4_secure),
     .clk_ast_es_i (clkmgr_aon_clocks.clk_main_secure),
     .clk_ast_rng_i (clkmgr_aon_clocks.clk_main_secure),
-    .clk_ast_usb_i (clkmgr_aon_clocks.clk_usb_peri),
     .rst_ast_tlul_ni (rstmgr_aon_resets.rst_lc_io_div4_n[rstmgr_pkg::Domain0Sel]),
     .rst_ast_adc_ni (rstmgr_aon_resets.rst_lc_aon_n[rstmgr_pkg::DomainAonSel]),
     .rst_ast_alert_ni (rstmgr_aon_resets.rst_lc_io_div4_n[rstmgr_pkg::Domain0Sel]),
     .rst_ast_es_ni (rstmgr_aon_resets.rst_lc_n[rstmgr_pkg::Domain0Sel]),
     .rst_ast_rng_ni (rstmgr_aon_resets.rst_lc_n[rstmgr_pkg::Domain0Sel]),
-    .rst_ast_usb_ni (rstmgr_aon_resets.rst_por_usb_n[rstmgr_pkg::Domain0Sel]),
     .clk_ast_ext_i         ( ext_clk ),
 
     // pok test for FPGA
@@ -1215,9 +1217,9 @@ module chip_darjeeling_cw310 #(
     // usb source clock
     .usb_ref_pulse_i       ( '0 ),
     .usb_ref_val_i         ( '0 ),
-    .clk_src_usb_en_i      ( base_ast_pwr.usb_clk_en ),
-    .clk_src_usb_o         ( ast_base_clks.clk_usb ),
-    .clk_src_usb_val_o     ( ast_base_pwr.usb_clk_val ),
+    .clk_src_usb_en_i      ( '0 ),
+    .clk_src_usb_o         (    ),
+    .clk_src_usb_val_o     (    ),
     // entropy_src
     .es_req_i              ( entropy_src_hw_if_req ),
     .es_rsp_o              ( entropy_src_hw_if_rsp ),
@@ -1495,7 +1497,34 @@ assign unused_signals = ^{pwrmgr_boot_status.clk_status,
 
   assign srst_n = manual_in_por_button_n;
 
-
+  // Extend the internal reset request from the power manager.
+  //
+  // TODO: To model the SoC within FPGA this logic is insufficient; its presence here
+  // is to avoid a design that locks up awaiting the deassertion of the signal
+  // `soc_rst_req_async_i` in response to an internal reset request.
+  logic  internal_request_d, internal_request_q;
+  logic  external_reset, count_up;
+  logic  [3:0] count;
+  always_ff @(posedge ast_base_clks.clk_aon or negedge por_n[0]) begin
+    if (!por_n[0]) begin
+      external_reset     <= 1'b0;
+      internal_request_q <= 1'b0;
+      count_up           <= '0;
+      count              <= '0;
+    end else begin
+      internal_request_q <= internal_request_d;
+      if (!internal_request_q && internal_request_d) begin
+        count_up       <= 1'b1;
+        external_reset <= 1;
+      end else if (count == 'd8) begin
+        count_up       <= 0;
+        external_reset <= 0;
+        count          <= '0;
+      end else if (count_up) begin
+        count <= count + 1;
+      end
+    end
+  end
 
   //////////////////////
   // Top-level design //
@@ -1543,7 +1572,6 @@ assign unused_signals = ^{pwrmgr_boot_status.clk_status,
     .por_n_i                      ( por_n                 ),
     .clk_main_i                   ( ast_base_clks.clk_sys ),
     .clk_io_i                     ( ast_base_clks.clk_io  ),
-    .clk_usb_i                    ( ast_base_clks.clk_usb ),
     .clk_aon_i                    ( ast_base_clks.clk_aon ),
     .clks_ast_o                   ( clkmgr_aon_clocks     ),
     .clk_main_jitter_en_o         ( jen                   ),
@@ -1579,6 +1607,8 @@ assign unused_signals = ^{pwrmgr_boot_status.clk_status,
     .debug_halt_cpu_boot_i        ( '0                         ),
     .dma_sys_req_o                (                            ),
     .dma_sys_rsp_i                ( '0                         ),
+    .soc_rst_req_async_i          ( external_reset             ),
+    .soc_lsio_trigger_i           ( '0                         ),
     .entropy_src_hw_if_req_o      ( entropy_src_hw_if_req      ),
     .entropy_src_hw_if_rsp_i      ( entropy_src_hw_if_rsp      ),
     .calib_rdy_i                  ( ast_init_done              ),

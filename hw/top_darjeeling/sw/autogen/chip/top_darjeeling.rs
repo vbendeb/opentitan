@@ -201,7 +201,7 @@ pub const CLKMGR_AON_BASE_ADDR: usize = 0x30420000;
 /// memory-mapped registers associated with this peripheral should have an
 /// address between #CLKMGR_AON_BASE_ADDR and
 /// `CLKMGR_AON_BASE_ADDR + CLKMGR_AON_SIZE_BYTES`.
-pub const CLKMGR_AON_SIZE_BYTES: usize = 0x80;
+pub const CLKMGR_AON_SIZE_BYTES: usize = 0x40;
 
 /// Peripheral base address for pinmux_aon in top darjeeling.
 ///
@@ -852,8 +852,10 @@ pub enum PlicPeripheral {
     MbxPcie0 = 28,
     /// mbx_pcie1
     MbxPcie1 = 29,
+    /// racl_ctrl
+    RaclCtrl = 30,
     /// ac_range_check
-    AcRangeCheck = 30,
+    AcRangeCheck = 31,
 }
 
 impl TryFrom<u32> for PlicPeripheral {
@@ -890,7 +892,8 @@ impl TryFrom<u32> for PlicPeripheral {
             27 => Ok(Self::MbxJtag),
             28 => Ok(Self::MbxPcie0),
             29 => Ok(Self::MbxPcie1),
-            30 => Ok(Self::AcRangeCheck),
+            30 => Ok(Self::RaclCtrl),
+            31 => Ok(Self::AcRangeCheck),
             _ => Err(val),
         }
     }
@@ -1219,8 +1222,10 @@ pub enum PlicIrqId {
     MbxPcie1MbxAbort = 156,
     /// mbx_pcie1_mbx_error
     MbxPcie1MbxError = 157,
+    /// racl_ctrl_racl_error
+    RaclCtrlRaclError = 158,
     /// ac_range_check_deny_cnt_reached
-    AcRangeCheckDenyCntReached = 158,
+    AcRangeCheckDenyCntReached = 159,
 }
 
 impl TryFrom<u32> for PlicIrqId {
@@ -1385,7 +1390,8 @@ impl TryFrom<u32> for PlicIrqId {
             155 => Ok(Self::MbxPcie1MbxReady),
             156 => Ok(Self::MbxPcie1MbxAbort),
             157 => Ok(Self::MbxPcie1MbxError),
-            158 => Ok(Self::AcRangeCheckDenyCntReached),
+            158 => Ok(Self::RaclCtrlRaclError),
+            159 => Ok(Self::AcRangeCheckDenyCntReached),
             _ => Err(val),
         }
     }
@@ -1406,7 +1412,7 @@ pub enum PlicTarget {
 ///
 /// This array is a mapping from `PlicIrqId` to
 /// `PlicPeripheral`.
-pub const PLIC_INTERRUPT_FOR_PERIPHERAL: [PlicPeripheral; 159] = [
+pub const PLIC_INTERRUPT_FOR_PERIPHERAL: [PlicPeripheral; 160] = [
     // None -> PlicPeripheral::Unknown
     PlicPeripheral::Unknown,
     // Uart0TxWatermark -> PlicPeripheral::Uart0
@@ -1723,6 +1729,8 @@ pub const PLIC_INTERRUPT_FOR_PERIPHERAL: [PlicPeripheral; 159] = [
     PlicPeripheral::MbxPcie1,
     // MbxPcie1MbxError -> PlicPeripheral::MbxPcie1
     PlicPeripheral::MbxPcie1,
+    // RaclCtrlRaclError -> PlicPeripheral::RaclCtrl
+    PlicPeripheral::RaclCtrl,
     // AcRangeCheckDenyCntReached -> PlicPeripheral::AcRangeCheck
     PlicPeripheral::AcRangeCheck,
 ];
@@ -2785,8 +2793,6 @@ pub enum GateableClocks {
     IoDiv4Peri = 0,
     /// Clock clk_io_div2_peri in group peri
     IoDiv2Peri = 1,
-    /// Clock clk_usb_peri in group peri
-    UsbPeri = 2,
 }
 
 /// Clock Manager Software-Hinted Clocks.

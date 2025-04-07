@@ -129,6 +129,7 @@ module top_darjeeling #(
   // parameters for racl_ctrl
   parameter int RaclCtrlNumExternalSubscribingIps = 1,
   // parameters for ac_range_check
+  parameter bit AcRangeCheckRangeCheckErrorRsp = 1,
   // parameters for rv_core_ibex
   parameter bit RvCoreIbexPMPEnable = 1,
   parameter int unsigned RvCoreIbexPMPGranularity = 0,
@@ -299,7 +300,6 @@ module top_darjeeling #(
   // All externally supplied clocks
   input clk_main_i,
   input clk_io_i,
-  input clk_usb_i,
   input clk_aon_i,
 
   // All clocks forwarded to ast
@@ -331,7 +331,7 @@ module top_darjeeling #(
   // local parameters for sram_ctrl_mbox
   localparam int SramCtrlMboxOutstanding = 2;
   // local parameters for racl_ctrl
-  localparam int RaclCtrlNumSubscribingIps = 9;
+  localparam int RaclCtrlNumSubscribingIps = 11;
 
   // Signals
   logic [3:0] mio_p2d;
@@ -417,7 +417,7 @@ module top_darjeeling #(
   // rv_core_ibex
 
 
-  logic [158:0]  intr_vector;
+  logic [159:0]  intr_vector;
   // Interrupt source list
   logic intr_uart0_tx_watermark;
   logic intr_uart0_rx_watermark;
@@ -514,6 +514,7 @@ module top_darjeeling #(
   logic intr_mbx_pcie1_mbx_ready;
   logic intr_mbx_pcie1_mbx_abort;
   logic intr_mbx_pcie1_mbx_error;
+  logic intr_racl_ctrl_racl_error;
   logic intr_ac_range_check_deny_cnt_reached;
 
   // Alert list
@@ -922,21 +923,15 @@ module top_darjeeling #(
     prim_mubi_pkg::mubi4_t unused_cg_en_2;
     assign unused_cg_en_2 = clkmgr_aon_cg_en.io_powerup;
     prim_mubi_pkg::mubi4_t unused_cg_en_3;
-    assign unused_cg_en_3 = clkmgr_aon_cg_en.usb_powerup;
+    assign unused_cg_en_3 = clkmgr_aon_cg_en.io_div2_powerup;
     prim_mubi_pkg::mubi4_t unused_cg_en_4;
-    assign unused_cg_en_4 = clkmgr_aon_cg_en.io_div2_powerup;
+    assign unused_cg_en_4 = clkmgr_aon_cg_en.aon_infra;
     prim_mubi_pkg::mubi4_t unused_cg_en_5;
-    assign unused_cg_en_5 = clkmgr_aon_cg_en.aon_infra;
+    assign unused_cg_en_5 = clkmgr_aon_cg_en.aon_peri;
     prim_mubi_pkg::mubi4_t unused_cg_en_6;
-    assign unused_cg_en_6 = clkmgr_aon_cg_en.aon_peri;
+    assign unused_cg_en_6 = clkmgr_aon_cg_en.aon_timers;
     prim_mubi_pkg::mubi4_t unused_cg_en_7;
-    assign unused_cg_en_7 = clkmgr_aon_cg_en.aon_timers;
-    prim_mubi_pkg::mubi4_t unused_cg_en_8;
-    assign unused_cg_en_8 = clkmgr_aon_cg_en.usb_infra;
-    prim_mubi_pkg::mubi4_t unused_cg_en_9;
-    assign unused_cg_en_9 = clkmgr_aon_cg_en.io_div2_peri;
-    prim_mubi_pkg::mubi4_t unused_cg_en_10;
-    assign unused_cg_en_10 = clkmgr_aon_cg_en.usb_peri;
+    assign unused_cg_en_7 = clkmgr_aon_cg_en.io_div2_peri;
     prim_mubi_pkg::mubi4_t unused_rst_en_0;
     assign unused_rst_en_0 = rstmgr_aon_rst_en.por_aon[rstmgr_pkg::DomainAonSel];
     prim_mubi_pkg::mubi4_t unused_rst_en_1;
@@ -956,47 +951,39 @@ module top_darjeeling #(
     prim_mubi_pkg::mubi4_t unused_rst_en_8;
     assign unused_rst_en_8 = rstmgr_aon_rst_en.por_io_div4[rstmgr_pkg::Domain0Sel];
     prim_mubi_pkg::mubi4_t unused_rst_en_9;
-    assign unused_rst_en_9 = rstmgr_aon_rst_en.por_usb[rstmgr_pkg::DomainAonSel];
+    assign unused_rst_en_9 = rstmgr_aon_rst_en.lc_shadowed[rstmgr_pkg::DomainAonSel];
     prim_mubi_pkg::mubi4_t unused_rst_en_10;
-    assign unused_rst_en_10 = rstmgr_aon_rst_en.por_usb[rstmgr_pkg::Domain0Sel];
+    assign unused_rst_en_10 = rstmgr_aon_rst_en.lc[rstmgr_pkg::DomainAonSel];
     prim_mubi_pkg::mubi4_t unused_rst_en_11;
-    assign unused_rst_en_11 = rstmgr_aon_rst_en.lc_shadowed[rstmgr_pkg::DomainAonSel];
+    assign unused_rst_en_11 = rstmgr_aon_rst_en.lc_shadowed[rstmgr_pkg::Domain0Sel];
     prim_mubi_pkg::mubi4_t unused_rst_en_12;
-    assign unused_rst_en_12 = rstmgr_aon_rst_en.lc[rstmgr_pkg::DomainAonSel];
+    assign unused_rst_en_12 = rstmgr_aon_rst_en.lc_aon[rstmgr_pkg::DomainAonSel];
     prim_mubi_pkg::mubi4_t unused_rst_en_13;
-    assign unused_rst_en_13 = rstmgr_aon_rst_en.lc_shadowed[rstmgr_pkg::Domain0Sel];
+    assign unused_rst_en_13 = rstmgr_aon_rst_en.lc_aon[rstmgr_pkg::Domain0Sel];
     prim_mubi_pkg::mubi4_t unused_rst_en_14;
-    assign unused_rst_en_14 = rstmgr_aon_rst_en.lc_aon[rstmgr_pkg::DomainAonSel];
+    assign unused_rst_en_14 = rstmgr_aon_rst_en.lc_io[rstmgr_pkg::DomainAonSel];
     prim_mubi_pkg::mubi4_t unused_rst_en_15;
-    assign unused_rst_en_15 = rstmgr_aon_rst_en.lc_aon[rstmgr_pkg::Domain0Sel];
+    assign unused_rst_en_15 = rstmgr_aon_rst_en.lc_io[rstmgr_pkg::Domain0Sel];
     prim_mubi_pkg::mubi4_t unused_rst_en_16;
-    assign unused_rst_en_16 = rstmgr_aon_rst_en.lc_io[rstmgr_pkg::DomainAonSel];
+    assign unused_rst_en_16 = rstmgr_aon_rst_en.lc_io_div2[rstmgr_pkg::DomainAonSel];
     prim_mubi_pkg::mubi4_t unused_rst_en_17;
-    assign unused_rst_en_17 = rstmgr_aon_rst_en.lc_io[rstmgr_pkg::Domain0Sel];
+    assign unused_rst_en_17 = rstmgr_aon_rst_en.lc_io_div2[rstmgr_pkg::Domain0Sel];
     prim_mubi_pkg::mubi4_t unused_rst_en_18;
-    assign unused_rst_en_18 = rstmgr_aon_rst_en.lc_io_div2[rstmgr_pkg::DomainAonSel];
+    assign unused_rst_en_18 = rstmgr_aon_rst_en.lc_io_div4_shadowed[rstmgr_pkg::DomainAonSel];
     prim_mubi_pkg::mubi4_t unused_rst_en_19;
-    assign unused_rst_en_19 = rstmgr_aon_rst_en.lc_io_div2[rstmgr_pkg::Domain0Sel];
+    assign unused_rst_en_19 = rstmgr_aon_rst_en.lc_io_div4_shadowed[rstmgr_pkg::Domain0Sel];
     prim_mubi_pkg::mubi4_t unused_rst_en_20;
-    assign unused_rst_en_20 = rstmgr_aon_rst_en.lc_io_div4_shadowed[rstmgr_pkg::DomainAonSel];
+    assign unused_rst_en_20 = rstmgr_aon_rst_en.sys[rstmgr_pkg::DomainAonSel];
     prim_mubi_pkg::mubi4_t unused_rst_en_21;
-    assign unused_rst_en_21 = rstmgr_aon_rst_en.lc_io_div4_shadowed[rstmgr_pkg::Domain0Sel];
+    assign unused_rst_en_21 = rstmgr_aon_rst_en.sys_io_div4[rstmgr_pkg::DomainAonSel];
     prim_mubi_pkg::mubi4_t unused_rst_en_22;
-    assign unused_rst_en_22 = rstmgr_aon_rst_en.lc_usb[rstmgr_pkg::DomainAonSel];
+    assign unused_rst_en_22 = rstmgr_aon_rst_en.sys_io_div4[rstmgr_pkg::Domain0Sel];
     prim_mubi_pkg::mubi4_t unused_rst_en_23;
-    assign unused_rst_en_23 = rstmgr_aon_rst_en.lc_usb[rstmgr_pkg::Domain0Sel];
+    assign unused_rst_en_23 = rstmgr_aon_rst_en.spi_device[rstmgr_pkg::DomainAonSel];
     prim_mubi_pkg::mubi4_t unused_rst_en_24;
-    assign unused_rst_en_24 = rstmgr_aon_rst_en.sys[rstmgr_pkg::DomainAonSel];
+    assign unused_rst_en_24 = rstmgr_aon_rst_en.spi_host0[rstmgr_pkg::DomainAonSel];
     prim_mubi_pkg::mubi4_t unused_rst_en_25;
-    assign unused_rst_en_25 = rstmgr_aon_rst_en.sys_io_div4[rstmgr_pkg::DomainAonSel];
-    prim_mubi_pkg::mubi4_t unused_rst_en_26;
-    assign unused_rst_en_26 = rstmgr_aon_rst_en.sys_io_div4[rstmgr_pkg::Domain0Sel];
-    prim_mubi_pkg::mubi4_t unused_rst_en_27;
-    assign unused_rst_en_27 = rstmgr_aon_rst_en.spi_device[rstmgr_pkg::DomainAonSel];
-    prim_mubi_pkg::mubi4_t unused_rst_en_28;
-    assign unused_rst_en_28 = rstmgr_aon_rst_en.spi_host0[rstmgr_pkg::DomainAonSel];
-    prim_mubi_pkg::mubi4_t unused_rst_en_29;
-    assign unused_rst_en_29 = rstmgr_aon_rst_en.i2c0[rstmgr_pkg::DomainAonSel];
+    assign unused_rst_en_25 = rstmgr_aon_rst_en.i2c0[rstmgr_pkg::DomainAonSel];
 //VCS coverage on
 // pragma coverage on
 
@@ -1483,7 +1470,6 @@ module top_darjeeling #(
       .clk_aon_i (clkmgr_aon_clocks.clk_aon_powerup),
       .clk_main_i (clkmgr_aon_clocks.clk_main_powerup),
       .clk_io_i (clkmgr_aon_clocks.clk_io_powerup),
-      .clk_usb_i (clkmgr_aon_clocks.clk_usb_powerup),
       .clk_io_div2_i (clkmgr_aon_clocks.clk_io_div2_powerup),
       .clk_io_div4_i (clkmgr_aon_clocks.clk_io_div4_powerup),
       .rst_ni (rstmgr_aon_resets.rst_lc_io_div4_n[rstmgr_pkg::DomainAonSel]),
@@ -1522,7 +1508,6 @@ module top_darjeeling #(
       .clk_i (clkmgr_aon_clocks.clk_io_div4_powerup),
       .clk_main_i (clk_main_i),
       .clk_io_i (clk_io_i),
-      .clk_usb_i (clk_usb_i),
       .clk_aon_i (clk_aon_i),
       .rst_shadowed_ni (rstmgr_aon_resets.rst_lc_io_div4_shadowed_n[rstmgr_pkg::DomainAonSel]),
       .rst_ni (rstmgr_aon_resets.rst_lc_io_div4_n[rstmgr_pkg::DomainAonSel]),
@@ -1531,13 +1516,11 @@ module top_darjeeling #(
       .rst_io_div2_ni (rstmgr_aon_resets.rst_lc_io_div2_n[rstmgr_pkg::DomainAonSel]),
       .rst_io_div4_ni (rstmgr_aon_resets.rst_lc_io_div4_n[rstmgr_pkg::DomainAonSel]),
       .rst_main_ni (rstmgr_aon_resets.rst_lc_n[rstmgr_pkg::DomainAonSel]),
-      .rst_usb_ni (rstmgr_aon_resets.rst_lc_usb_n[rstmgr_pkg::DomainAonSel]),
       .rst_root_ni (rstmgr_aon_resets.rst_por_io_div4_n[rstmgr_pkg::DomainAonSel]),
       .rst_root_io_ni (rstmgr_aon_resets.rst_por_io_n[rstmgr_pkg::DomainAonSel]),
       .rst_root_io_div2_ni (rstmgr_aon_resets.rst_por_io_div2_n[rstmgr_pkg::DomainAonSel]),
       .rst_root_io_div4_ni (rstmgr_aon_resets.rst_por_io_div4_n[rstmgr_pkg::DomainAonSel]),
-      .rst_root_main_ni (rstmgr_aon_resets.rst_por_n[rstmgr_pkg::DomainAonSel]),
-      .rst_root_usb_ni (rstmgr_aon_resets.rst_por_usb_n[rstmgr_pkg::DomainAonSel])
+      .rst_root_main_ni (rstmgr_aon_resets.rst_por_n[rstmgr_pkg::DomainAonSel])
   );
   pinmux #(
     .AlertAsyncOn(alert_handler_reg_pkg::AsyncOn[19:19]),
@@ -2344,6 +2327,11 @@ module top_darjeeling #(
       .rst_ni (rstmgr_aon_resets.rst_lc_n[rstmgr_pkg::Domain0Sel])
   );
   mbx #(
+    .EnableRacl(1'b1),
+    .RaclErrorRsp(top_racl_pkg::ErrorRsp),
+    .RaclPolicySelVecSoc(RACL_POLICY_SEL_VEC_MBX3_SOC),
+    .RaclPolicySelWinSocWdata(RACL_POLICY_SEL_WIN_MBX3_SOC_WDATA),
+    .RaclPolicySelWinSocRdata(RACL_POLICY_SEL_WIN_MBX3_SOC_RDATA),
     .AlertAsyncOn(alert_handler_reg_pkg::AsyncOn[80:79])
   ) u_mbx3 (
 
@@ -2361,8 +2349,8 @@ module top_darjeeling #(
       .doe_intr_en_o(mbx3_doe_intr_en_o),
       .doe_intr_o(mbx3_doe_intr_o),
       .doe_async_msg_support_o(mbx3_doe_async_msg_support_o),
-      .racl_policies_i(top_racl_pkg::RACL_POLICY_VEC_DEFAULT),
-      .racl_error_o(),
+      .racl_policies_i(racl_ctrl_racl_policies),
+      .racl_error_o(racl_ctrl_racl_error[3]),
       .sram_tl_h_o(main_tl_mbx3__sram_req),
       .sram_tl_h_i(main_tl_mbx3__sram_rsp),
       .core_tl_d_i(mbx3_core_tl_d_req),
@@ -2398,7 +2386,7 @@ module top_darjeeling #(
       .doe_intr_o(mbx4_doe_intr_o),
       .doe_async_msg_support_o(mbx4_doe_async_msg_support_o),
       .racl_policies_i(racl_ctrl_racl_policies),
-      .racl_error_o(racl_ctrl_racl_error[3]),
+      .racl_error_o(racl_ctrl_racl_error[4]),
       .sram_tl_h_o(main_tl_mbx4__sram_req),
       .sram_tl_h_i(main_tl_mbx4__sram_rsp),
       .core_tl_d_i(mbx4_core_tl_d_req),
@@ -2434,7 +2422,7 @@ module top_darjeeling #(
       .doe_intr_o(mbx5_doe_intr_o),
       .doe_async_msg_support_o(mbx5_doe_async_msg_support_o),
       .racl_policies_i(racl_ctrl_racl_policies),
-      .racl_error_o(racl_ctrl_racl_error[4]),
+      .racl_error_o(racl_ctrl_racl_error[5]),
       .sram_tl_h_o(main_tl_mbx5__sram_req),
       .sram_tl_h_i(main_tl_mbx5__sram_rsp),
       .core_tl_d_i(mbx5_core_tl_d_req),
@@ -2447,6 +2435,11 @@ module top_darjeeling #(
       .rst_ni (rstmgr_aon_resets.rst_lc_n[rstmgr_pkg::Domain0Sel])
   );
   mbx #(
+    .EnableRacl(1'b1),
+    .RaclErrorRsp(top_racl_pkg::ErrorRsp),
+    .RaclPolicySelVecSoc(RACL_POLICY_SEL_VEC_MBX6_SOC),
+    .RaclPolicySelWinSocWdata(RACL_POLICY_SEL_WIN_MBX6_SOC_WDATA),
+    .RaclPolicySelWinSocRdata(RACL_POLICY_SEL_WIN_MBX6_SOC_RDATA),
     .AlertAsyncOn(alert_handler_reg_pkg::AsyncOn[86:85])
   ) u_mbx6 (
 
@@ -2464,8 +2457,8 @@ module top_darjeeling #(
       .doe_intr_en_o(mbx6_doe_intr_en_o),
       .doe_intr_o(mbx6_doe_intr_o),
       .doe_async_msg_support_o(mbx6_doe_async_msg_support_o),
-      .racl_policies_i(top_racl_pkg::RACL_POLICY_VEC_DEFAULT),
-      .racl_error_o(),
+      .racl_policies_i(racl_ctrl_racl_policies),
+      .racl_error_o(racl_ctrl_racl_error[6]),
       .sram_tl_h_o(main_tl_mbx6__sram_req),
       .sram_tl_h_i(main_tl_mbx6__sram_rsp),
       .core_tl_d_i(mbx6_core_tl_d_req),
@@ -2501,7 +2494,7 @@ module top_darjeeling #(
       .doe_intr_o(mbx_jtag_doe_intr_o),
       .doe_async_msg_support_o(mbx_jtag_doe_async_msg_support_o),
       .racl_policies_i(racl_ctrl_racl_policies),
-      .racl_error_o(racl_ctrl_racl_error[5]),
+      .racl_error_o(racl_ctrl_racl_error[7]),
       .sram_tl_h_o(main_tl_mbx_jtag__sram_req),
       .sram_tl_h_i(main_tl_mbx_jtag__sram_rsp),
       .core_tl_d_i(mbx_jtag_core_tl_d_req),
@@ -2537,7 +2530,7 @@ module top_darjeeling #(
       .doe_intr_o(mbx_pcie0_doe_intr_o),
       .doe_async_msg_support_o(mbx_pcie0_doe_async_msg_support_o),
       .racl_policies_i(racl_ctrl_racl_policies),
-      .racl_error_o(racl_ctrl_racl_error[6]),
+      .racl_error_o(racl_ctrl_racl_error[8]),
       .sram_tl_h_o(main_tl_mbx_pcie0__sram_req),
       .sram_tl_h_i(main_tl_mbx_pcie0__sram_rsp),
       .core_tl_d_i(mbx_pcie0_core_tl_d_req),
@@ -2573,7 +2566,7 @@ module top_darjeeling #(
       .doe_intr_o(mbx_pcie1_doe_intr_o),
       .doe_async_msg_support_o(mbx_pcie1_doe_async_msg_support_o),
       .racl_policies_i(racl_ctrl_racl_policies),
-      .racl_error_o(racl_ctrl_racl_error[7]),
+      .racl_error_o(racl_ctrl_racl_error[9]),
       .sram_tl_h_o(main_tl_mbx_pcie1__sram_req),
       .sram_tl_h_i(main_tl_mbx_pcie1__sram_rsp),
       .core_tl_d_i(mbx_pcie1_core_tl_d_req),
@@ -2618,6 +2611,9 @@ module top_darjeeling #(
     .NumSubscribingIps(RaclCtrlNumSubscribingIps),
     .NumExternalSubscribingIps(RaclCtrlNumExternalSubscribingIps)
   ) u_racl_ctrl (
+
+      // Interrupt
+      .intr_racl_error_o (intr_racl_ctrl_racl_error),
       // [95]: fatal_fault
       // [96]: recov_ctrl_update_err
       .alert_tx_o  ( alert_tx[96:95] ),
@@ -2639,7 +2635,8 @@ module top_darjeeling #(
     .EnableRacl(1'b1),
     .RaclErrorRsp(top_racl_pkg::ErrorRsp),
     .RaclPolicySelVec(RACL_POLICY_SEL_VEC_AC_RANGE_CHECK),
-    .AlertAsyncOn(alert_handler_reg_pkg::AsyncOn[98:97])
+    .AlertAsyncOn(alert_handler_reg_pkg::AsyncOn[98:97]),
+    .RangeCheckErrorRsp(AcRangeCheckRangeCheckErrorRsp)
   ) u_ac_range_check (
 
       // Interrupt
@@ -2656,7 +2653,7 @@ module top_darjeeling #(
       .ctn_filtered_tl_h2d_o(ctn_tl_h2d_o),
       .ctn_filtered_tl_d2h_i(ctn_tl_d2h_i),
       .racl_policies_i(racl_ctrl_racl_policies),
-      .racl_error_o(racl_ctrl_racl_error[8]),
+      .racl_error_o(racl_ctrl_racl_error[10]),
       .tl_i(ac_range_check_tl_req),
       .tl_o(ac_range_check_tl_rsp),
 
@@ -2756,7 +2753,8 @@ module top_darjeeling #(
 
   // interrupt assignments
   assign intr_vector = {
-      intr_ac_range_check_deny_cnt_reached, // IDs [158 +: 1]
+      intr_ac_range_check_deny_cnt_reached, // IDs [159 +: 1]
+      intr_racl_ctrl_racl_error, // IDs [158 +: 1]
       intr_mbx_pcie1_mbx_error, // IDs [157 +: 1]
       intr_mbx_pcie1_mbx_abort, // IDs [156 +: 1]
       intr_mbx_pcie1_mbx_ready, // IDs [155 +: 1]
@@ -2859,10 +2857,8 @@ module top_darjeeling #(
   xbar_main u_xbar_main (
     .clk_main_i (clkmgr_aon_clocks.clk_main_infra),
     .clk_fixed_i (clkmgr_aon_clocks.clk_io_div4_infra),
-    .clk_usb_i (clkmgr_aon_clocks.clk_usb_infra),
     .rst_main_ni (rstmgr_aon_resets.rst_lc_n[rstmgr_pkg::Domain0Sel]),
     .rst_fixed_ni (rstmgr_aon_resets.rst_lc_io_div4_n[rstmgr_pkg::Domain0Sel]),
-    .rst_usb_ni (rstmgr_aon_resets.rst_lc_usb_n[rstmgr_pkg::Domain0Sel]),
 
     // port: tl_rv_core_ibex__corei
     .tl_rv_core_ibex__corei_i(main_tl_rv_core_ibex__corei_req),

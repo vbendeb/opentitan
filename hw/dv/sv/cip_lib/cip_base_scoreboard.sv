@@ -236,6 +236,8 @@ class cip_base_scoreboard #(type RAL_T = dv_base_reg_block,
         forever begin
           alert_esc_seq_item item;
           alert_fifos[alert_name].get(item);
+          `uvm_info(`gfn, $sformatf("[cfg.en_scb=%0d] - Received alert_esc_item: \n%0s",
+                                    cfg.en_scb, item.sprint), UVM_DEBUG)
           if (!cfg.en_scb) continue;
           if (item.alert_esc_type == AlertEscSigTrans && !item.ping_timeout &&
               item.alert_handshake_sta inside {AlertReceived, AlertAckComplete}) begin
@@ -312,15 +314,19 @@ class cip_base_scoreboard #(type RAL_T = dv_base_reg_block,
   endtask
 
   virtual task check_alert_triggered(string alert_name);
+    int unsigned ping_count = cfg.m_alert_agent_cfgs[alert_name].ping_count;
     // If the alert happens when we are in the middle of ping handshake phases then wait until we
     // are out of ping.
     wait(!cfg.m_alert_agent_cfgs[alert_name].under_ping_handshake &&
-         !cfg.m_alert_agent_cfgs[alert_name].under_ping_handshake_ph_2)
+         !cfg.m_alert_agent_cfgs[alert_name].under_ping_handshake_ph_2);
     // Add 1 extra negedge edge clock to make sure no race condition.
     repeat(alert_esc_agent_pkg::ALERT_B2B_DELAY + 1 + expected_alert[alert_name].max_delay) begin
       cfg.clk_rst_vif.wait_n_clks(1);
       if (under_alert_handshake[alert_name] || cfg.under_reset) return;
     end
+    // Ignore the alert if it's due to a ping by checking if there's been a ping since the
+    // check started
+    if (ping_count != cfg.m_alert_agent_cfgs[alert_name].ping_count) return;
     // Ignore the alert if the scoreboard is disabled or if the alert is not fatal and the ignore
     // alert bit is set.
     if (!cfg.en_scb || (ignore_exp_alert && !expected_alert[alert_name].is_fatal)) return;
@@ -340,6 +346,8 @@ class cip_base_scoreboard #(type RAL_T = dv_base_reg_block,
     if (!(alert_name inside {cfg.list_of_alerts})) begin
       `uvm_fatal(`gfn, $sformatf("alert_name %0s is not in cfg.list_of_alerts!", alert_name))
     end
+    `uvm_info(`gfn, $sformatf("Pushing expected alert with: is_fatal=%0d | max_delay=%0d",
+                              is_fatal, max_delay), UVM_DEBUG)
     exp_alert_q[alert_name].push_back(expected_alert_t'{1, is_fatal, max_delay});
     // Notify process_set_exp_alerts there is work to do.
     ->new_exp_alert;
