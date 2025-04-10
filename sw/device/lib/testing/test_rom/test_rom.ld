@@ -15,40 +15,24 @@ OUTPUT_ARCH(riscv)
  */
 __DYNAMIC = 0;
 
-INCLUDE OPENTITAN_TOP_MEMORY_LD
-
-#include "ottf_ld_top_config.ld"
-
-/**
- * Region aliases.
- */
-#ifdef OPENTITAN_IS_DARJEELING
-REGION_ALIAS("test_rom", rom0)
-#else
-REGION_ALIAS("test_rom", rom)
-#endif
+INCLUDE hw/top_earlgrey/sw/autogen/top_earlgrey_memory.ld
 
 /**
  * The boot address, which indicates the location of the initial interrupt
  * vector.
  */
-_boot_address = ORIGIN(test_rom);
-
-/**
- * Location of the manifest.
- */
-_manifest_address = ORIGIN(ottf_storage);
+_boot_address = ORIGIN(rom);
 
 /**
  * Symbols to be used in the setup of the address translation for ROM_EXT.
  */
 _rom_ext_virtual_start_address = ORIGIN(rom_ext_virtual);
 _rom_ext_virtual_size = LENGTH(rom_ext_virtual);
-ASSERT((_rom_ext_virtual_size <= (LENGTH(ottf_storage) / 2)),
+ASSERT((_rom_ext_virtual_size <= (LENGTH(eflash) / 2)),
   "Error: rom ext flash is bigger than slot.");
 
 _rom_digest_size = 32;
-_chip_info_start = ORIGIN(test_rom) + LENGTH(test_rom) - _rom_digest_size - _chip_info_size;
+_chip_info_start = ORIGIN(rom) + LENGTH(rom) - _rom_digest_size - _chip_info_size;
 
 /* DV Log offset (has to be different to other boot stages). */
 _dv_log_offset = 0x0;
@@ -73,14 +57,14 @@ SECTIONS {
    */
   .vectors _boot_address : ALIGN(4) {
     KEEP(*(.vectors))
-  } > test_rom
+  } > rom
 
   /**
    * C runtime (CRT) section, containing program initialization code.
    */
   .crt : ALIGN(4) {
     KEEP(*(.crt))
-  } > test_rom
+  } > rom
 
   /**
    * Standard text section, containing program code.
@@ -88,7 +72,7 @@ SECTIONS {
   .text : ALIGN(4) {
     *(.text)
     *(.text.*)
-  } > test_rom
+  } > rom
 
   /**
    * Read-only data section, containing all large compile-time constants, like
@@ -101,7 +85,7 @@ SECTIONS {
     *(.srodata.*)
     *(.rodata)
     *(.rodata.*)
-  } > test_rom
+  } > rom
 
   /**
    * Critical static data that is accessible by both the ROM and the ROM
@@ -144,14 +128,14 @@ SECTIONS {
     /* This puts it in ram_main at runtime (for the VMA), but puts the section
      * into rom for load time (for the LMA). This is why `_data_init_*` uses
      * `LOADADDR`. */
-  } > ram_main AT> test_rom
+  } > ram_main AT> rom
 
   /**
    * Immutable chip_info data, containing build-time-recorded information.
    */
   .chip_info _chip_info_start : ALIGN(4) {
     KEEP(*(.chip_info))
-  } > test_rom
+  } > rom
 
   /**
    * Standard BSS section. This will be zeroed at runtime by the CRT.

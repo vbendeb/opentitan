@@ -12,8 +12,6 @@ load("//rules:fusesoc.bzl", "fusesoc_build")
 # run with 4 threads.
 load("@bazel_skylib//rules:common_settings.bzl", "string_list_flag")
 
-exports_files(["tool_requirements.py"])
-
 string_list_flag(
     name = "verilator_options",
     build_setting_default = [
@@ -34,45 +32,15 @@ string_list_flag(
     ],
 )
 
-filegroup(
-    name = "cores",
-    srcs = [
-        "check_tool_requirements.core",
-    ],
-    visibility = ["//visibility:public"],
-)
-
-filegroup(
-    name = "verilator_files",
-    srcs = glob(["dv/verilator/**"]),
-    visibility = ["//visibility:public"],
-)
-
-filegroup(
-    name = "dpi_files",
-    srcs = glob(["dv/dpi/**"]),
-    visibility = ["//visibility:public"],
-)
-
-filegroup(
-    name = "dv_common_files",
-    srcs = glob(["dv/sv/**"]),
-    visibility = ["//visibility:public"],
-)
-
 fusesoc_build(
     name = "verilator_real",
     srcs = [
-        ":dpi_files",
-        ":dv_common_files",
-        ":rtl_files",
-        ":verilator_files",
-        "//hw/ip:verilator_files",
+        ":all_files",
     ],
     cores = [
-        ":cores",
+        "//:cores",
     ],
-    data = ["//hw/ip/otbn:rtl_files"],
+    data = ["//hw/ip/otbn:all_files"],
     make_options = ":make_options",
     output_groups = {
         "binary": ["sim-verilator/Vchip_sim_tb"],
@@ -137,22 +105,17 @@ genrule(
 # is a bit of a hack.  Longer term, we need proper rules for expressing the
 # relationships between verilog components.
 filegroup(
-    name = "rtl_files",
+    name = "all_files",
     srcs = glob(
         ["**"],
-        # NOTE(lowRISC/opentitan#15882): verilator does not work with foundry repo present.
-        # Exclude it and DV files since we don't need it anyway.
-        exclude = [
-            "foundry/**",
-            "**/dv/**",
-            "doc/**",
-        ],
-    ) + glob(
-        # dv_macros are needed by Ibex, so include this back in.
-        ["dv/sv/dv_utils/**"],
+        # TODO(lowRISC/opentitan#15882): make Verilator work with foundry repo present.
+        exclude = ["foundry/**"],
     ) + [
-        "//hw/ip:rtl_files",
-        "//hw/top_earlgrey:rtl_files",
+        "//:tool_requirements.py",
+        "//hw/ip:all_files",
+        "//hw/ip_templates:all_files",
+        "//hw/top_earlgrey:all_files",
+        "//util:check_tool_requirements.py",
     ],
     visibility = ["//visibility:public"],
 )

@@ -7,9 +7,8 @@ use std::cell::Cell;
 use std::cmp;
 use std::rc::Rc;
 use std::time::Duration;
-use zerocopy::{FromBytes, Immutable, IntoBytes};
+use zerocopy::{AsBytes, FromBytes, FromZeroes};
 
-use crate::io::gpio::GpioPin;
 use crate::io::i2c::{self, Bus, DeviceStatus, DeviceTransfer, I2cError, ReadStatus, Transfer};
 use crate::transport::hyperdebug::{BulkInterface, Inner};
 use crate::transport::{TransportError, TransportInterfaceType};
@@ -36,9 +35,9 @@ const USB_MAX_SIZE: usize = 64;
 
 /// Wire format of USB packet to request a short I2C transaction
 /// (receiving at most 127 bytes).
-#[derive(Immutable, IntoBytes, FromBytes, Debug)]
+#[derive(AsBytes, FromBytes, FromZeroes, Debug)]
 #[allow(dead_code)] // Fields not explicitly read anywhere
-#[repr(C, packed)]
+#[repr(packed)]
 struct CmdTransferShort {
     encapsulation_header: u8,
     port: u8,
@@ -50,9 +49,9 @@ struct CmdTransferShort {
 
 /// Wire format of USB packet to request a long I2C transaction
 /// (receiving up to 32767 bytes).
-#[derive(Immutable, IntoBytes, FromBytes, Debug)]
+#[derive(AsBytes, FromBytes, FromZeroes, Debug)]
 #[allow(dead_code)] // Fields not explicitly read anywhere
-#[repr(C, packed)]
+#[repr(packed)]
 struct CmdTransferLong {
     encapsulation_header: u8,
     port: u8,
@@ -60,14 +59,14 @@ struct CmdTransferLong {
     write_count: u8,
     read_count: u8,
     read_count1: u8,
-    flags: u8,
+    reserved: u8,
     data: [u8; USB_MAX_SIZE - 6],
 }
 
 /// Wire format of USB packet containing I2C transaction response.
-#[derive(Immutable, IntoBytes, FromBytes, Debug)]
+#[derive(AsBytes, FromBytes, FromZeroes, Debug)]
 #[allow(dead_code)] // Reserved field not read anywhere
-#[repr(C, packed)]
+#[repr(packed)]
 struct RspTransfer {
     encapsulation_header: u8,
     status_code: u16,
@@ -85,9 +84,9 @@ impl RspTransfer {
     }
 }
 
-#[derive(Immutable, IntoBytes, FromBytes, Debug)]
+#[derive(AsBytes, FromBytes, FromZeroes, Debug)]
 #[allow(dead_code)] // Fields not explicitly read anywhere
-#[repr(C, packed)]
+#[repr(packed)]
 struct CmdGetDeviceStatus {
     encapsulation_header: u8,
     port: u8,
@@ -102,8 +101,8 @@ const I2C_DEVICE_CMD_PREPARE_READ_DATA: u8 = 0x01;
 // Bits for use in upper half of `CmdGetDeviceStatus.port`.
 const I2C_DEVICE_FLAG_STICKY: u8 = 0x80;
 
-#[derive(Immutable, IntoBytes, FromBytes, Debug)]
-#[repr(C, packed)]
+#[derive(AsBytes, FromBytes, FromZeroes, Debug)]
+#[repr(packed)]
 struct RspGetDeviceStatus {
     encapsulation_header: u8,
     struct_size: u16,
@@ -125,9 +124,9 @@ impl RspGetDeviceStatus {
     }
 }
 
-#[derive(Immutable, IntoBytes, FromBytes, Debug)]
+#[derive(AsBytes, FromBytes, FromZeroes, Debug)]
 #[allow(dead_code)] // Fields not explicitly read anywhere
-#[repr(C, packed)]
+#[repr(packed)]
 struct CmdPrepareReadData {
     encapsulation_header: u8,
     port: u8,
@@ -157,7 +156,7 @@ impl HyperdebugI2cBus {
             idx < 16,
             TransportError::InvalidInstance(TransportInterfaceType::I2c, idx.to_string())
         );
-        let mut usb_handle = inner.usb_device.borrow_mut();
+        let usb_handle = inner.usb_device.borrow_mut();
 
         // Exclusively claim I2C interface, preparing for bulk transfers.
         usb_handle.claim_interface(i2c_interface.interface)?;
@@ -176,13 +175,7 @@ impl HyperdebugI2cBus {
     }
 
     /// Transmit data for a single I2C operation, using one or more USB packets.
-    fn transmit_then_receive(
-        &self,
-        addr: u8,
-        wbuf: &[u8],
-        rbuf: &mut [u8],
-        gsc_ready: bool,
-    ) -> Result<()> {
+    fn transmit_then_receive(&self, addr: u8, wbuf: &[u8], rbuf: &mut [u8]) -> Result<()> {
         ensure!(
             rbuf.len() < self.max_read_size,
             I2cError::InvalidDataLength(rbuf.len())
@@ -192,7 +185,7 @@ impl HyperdebugI2cBus {
             I2cError::InvalidDataLength(wbuf.len())
         );
         let encapsulation_header_size = if self.cmsis_encapsulation { 1 } else { 0 };
-        let mut index = if rbuf.len() < 128 && !gsc_ready {
+        let mut index = if rbuf.len() < 128 {
             // Short format header
             let mut req = CmdTransferShort {
                 encapsulation_header: Self::CMSIS_DAP_CUSTOM_COMMAND_I2C,
@@ -207,15 +200,15 @@ impl HyperdebugI2cBus {
             self.usb_write_bulk(&req.as_bytes()[1 - encapsulation_header_size..1 + 4 + databytes])?;
             databytes
         } else {
-            // Long format header (wider read_count field and additional flags)
+            // Long format header
             let mut req = CmdTransferLong {
                 encapsulation_header: Self::CMSIS_DAP_CUSTOM_COMMAND_I2C,
                 port: self.bus_idx | (((wbuf.len() & 0x0F00) >> 4) as u8),
                 addr,
                 write_count: (wbuf.len() & 0x00FF) as u8,
-                read_count: (rbuf.len() & 0x007F | 0x0080) as u8,
+                read_count: (rbuf.len() & 0x007F) as u8,
                 read_count1: (rbuf.len() >> 7) as u8,
-                flags: if gsc_ready { 0x80 } else { 0x00 },
+                reserved: 0,
                 data: [0; USB_MAX_SIZE - 6],
             };
             let databytes = cmp::min(USB_MAX_SIZE - 6 - encapsulation_header_size, wbuf.len());
@@ -235,7 +228,7 @@ impl HyperdebugI2cBus {
         let mut bytecount = 0;
         while bytecount < 4 + encapsulation_header_size {
             let read_count = self.usb_read_bulk(
-                &mut resp.as_mut_bytes()[1 - encapsulation_header_size + bytecount..][..64],
+                &mut resp.as_bytes_mut()[1 - encapsulation_header_size + bytecount..][..64],
             )?;
             ensure!(
                 read_count > 0,
@@ -264,7 +257,7 @@ impl HyperdebugI2cBus {
         rbuf[..databytes].clone_from_slice(&resp.data[..databytes]);
         let mut index = databytes;
         while index < rbuf.len() {
-            let databytes = self.usb_read_bulk(&mut rbuf[index..])?;
+            let databytes = self.usb_read_bulk(&mut resp.data[index..])?;
             ensure!(
                 databytes > 0,
                 TransportError::CommunicationError(
@@ -343,25 +336,6 @@ impl Bus for HyperdebugI2cBus {
             .cmd_no_output(&format!("i2c set speed {} {}", &self.bus_idx, max_speed))
     }
 
-    fn set_pins(
-        &self,
-        serial_clock: Option<&Rc<dyn GpioPin>>,
-        serial_data: Option<&Rc<dyn GpioPin>>,
-        gsc_ready: Option<&Rc<dyn GpioPin>>,
-    ) -> Result<()> {
-        if serial_clock.is_some() || serial_data.is_some() {
-            bail!(I2cError::InvalidPin);
-        }
-        if let Some(pin) = gsc_ready {
-            self.inner.cmd_no_output(&format!(
-                "i2c set ready {} {}",
-                &self.bus_idx,
-                pin.get_internal_pin_name().ok_or(I2cError::InvalidPin)?
-            ))?;
-        }
-        Ok(())
-    }
-
     fn set_default_address(&self, addr: u8) -> Result<()> {
         self.default_addr.set(Some(addr));
         Ok(())
@@ -373,22 +347,6 @@ impl Bus for HyperdebugI2cBus {
             .ok_or(I2cError::MissingAddress)?;
         while !transaction.is_empty() {
             match transaction {
-                [Transfer::Write(wbuf), Transfer::GscReady, Transfer::Read(rbuf), ..] => {
-                    // Hyperdebug can do I2C write followed by I2C read as a single USB
-                    // request/reply.  Take advantage of that by detecting pairs of
-                    // Transfer::Write followed by Transfer::Read.
-                    ensure!(
-                        wbuf.len() <= self.max_write_size,
-                        I2cError::InvalidDataLength(wbuf.len())
-                    );
-                    ensure!(
-                        rbuf.len() <= self.max_read_size,
-                        I2cError::InvalidDataLength(rbuf.len())
-                    );
-                    self.transmit_then_receive(addr, wbuf, rbuf, true)?;
-                    // Skip three steps ahead, as three items were processed.
-                    transaction = &mut transaction[3..];
-                }
                 [Transfer::Write(wbuf), Transfer::Read(rbuf), ..] => {
                     // Hyperdebug can do I2C write followed by I2C read as a single USB
                     // request/reply.  Take advantage of that by detecting pairs of
@@ -401,16 +359,7 @@ impl Bus for HyperdebugI2cBus {
                         rbuf.len() <= self.max_read_size,
                         I2cError::InvalidDataLength(rbuf.len())
                     );
-                    self.transmit_then_receive(addr, wbuf, rbuf, false)?;
-                    // Skip two steps ahead, as two items were processed.
-                    transaction = &mut transaction[2..];
-                }
-                [Transfer::Write(wbuf), Transfer::GscReady, ..] => {
-                    ensure!(
-                        wbuf.len() <= self.max_write_size,
-                        I2cError::InvalidDataLength(wbuf.len())
-                    );
-                    self.transmit_then_receive(addr, wbuf, &mut [], true)?;
+                    self.transmit_then_receive(addr, wbuf, rbuf)?;
                     // Skip two steps ahead, as two items were processed.
                     transaction = &mut transaction[2..];
                 }
@@ -419,7 +368,7 @@ impl Bus for HyperdebugI2cBus {
                         wbuf.len() <= self.max_write_size,
                         I2cError::InvalidDataLength(wbuf.len())
                     );
-                    self.transmit_then_receive(addr, wbuf, &mut [], false)?;
+                    self.transmit_then_receive(addr, wbuf, &mut [])?;
                     transaction = &mut transaction[1..];
                 }
                 [Transfer::Read(rbuf), ..] => {
@@ -427,11 +376,10 @@ impl Bus for HyperdebugI2cBus {
                         rbuf.len() <= self.max_read_size,
                         I2cError::InvalidDataLength(rbuf.len())
                     );
-                    self.transmit_then_receive(addr, &[], rbuf, false)?;
+                    self.transmit_then_receive(addr, &[], rbuf)?;
                     transaction = &mut transaction[1..];
                 }
                 [] => (),
-                _ => bail!(TransportError::UnsupportedOperation),
             }
         }
         Ok(())
@@ -460,7 +408,7 @@ impl Bus for HyperdebugI2cBus {
         let mut bytecount = 0;
         while bytecount < 7 {
             let read_count = self.usb_read_bulk_timeout(
-                &mut resp.as_mut_bytes()[bytecount..][..64],
+                &mut resp.as_bytes_mut()[bytecount..][..64],
                 Duration::from_millis(req.timeout_ms as u64 + 500),
             )?;
             ensure!(

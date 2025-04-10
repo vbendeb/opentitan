@@ -167,7 +167,7 @@ cc_library(
     deps = [
         ":mod_exp_ibex",
         ":rsa_key",
-        "//hw/top:otp_ctrl_c_regs",
+        "//hw/ip/otp_ctrl/data:otp_ctrl_c_regs",
         "//sw/device/lib/base:hardened",
         "//sw/device/silicon_creator/lib/drivers:hmac",
         "//sw/device/silicon_creator/lib/drivers:lifecycle",
@@ -202,7 +202,7 @@ cc_library(
     hdrs = ["spx_verify.h"],
     deps = [
         ":spx_key",
-        "//hw/top:otp_ctrl_c_regs",
+        "//hw/ip/otp_ctrl/data:otp_ctrl_c_regs",
         "//sw/device/lib/base:hardened",
         "//sw/device/silicon_creator/lib/drivers:hmac",
         "//sw/device/silicon_creator/lib/drivers:lifecycle",
@@ -232,7 +232,7 @@ cc_library(
     srcs = ["usage_constraints.c"],
     hdrs = ["usage_constraints.h"],
     deps = [
-        "//hw/top:otp_ctrl_c_regs",
+        "//hw/ip/otp_ctrl/data:otp_ctrl_c_regs",
         "//sw/device/lib/base:bitfield",
         "//sw/device/lib/base:hardened",
         "//sw/device/silicon_creator/lib:manifest",
@@ -254,7 +254,7 @@ cc_test(
     srcs = ["flash_exec_unittest.cc"],
     deps = [
         ":flash_exec",
-        "//hw/top:flash_ctrl_c_regs",
+        "//hw/top_earlgrey/ip_autogen/flash_ctrl:flash_ctrl_c_regs",
         "//sw/device/silicon_creator/testing:rom_test",
         "@googletest//:gtest_main",
     ],

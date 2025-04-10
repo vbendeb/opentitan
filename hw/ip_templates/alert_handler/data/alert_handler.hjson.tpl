@@ -2,19 +2,19 @@
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 //
-# ${(module_instance_name).upper()} register template
+# ALERT_HANDLER register template
 <%
 import math
 chars = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
 %>
 {
-  name:               "${module_instance_name}",
+  name:               "alert_handler",
   // Unique comportable IP identifier defined under KNOWN_CIP_IDS in the regtool.
   cip_id:             "32",
   design_spec:        "../doc",
   dv_doc:             "../doc/dv",
   hw_checklist:       "../doc/checklist",
-  sw_checklist:       "/sw/device/lib/dif/dif_${module_instance_name.lower()}"
+  sw_checklist:       "/sw/device/lib/dif/dif_alert_handler"
   version:            "1.0.1",
   life_stage:         "L1",
   design_stage:       "D3",
@@ -26,30 +26,21 @@ chars = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
     {clock: "clk_edn_i", reset: "rst_edn_ni"}
   ]
   bus_interfaces: [
-  % if racl_support:
-    { protocol: "tlul", direction: "device", hier_path: "u_reg_wrap.u_reg", racl_support: true }
-  % else:
     { protocol: "tlul", direction: "device", hier_path: "u_reg_wrap.u_reg" }
-  % endif
   ],
   regwidth: "32",
 ##############################################################################
-  # The number of escalation severities and ping count width parameters
-  # have a local and non-local varieties instantiated with the same value.
-  # This is to work around the restriction in CSR generation to only allow
-  # local parameters, or the value may become inconsistent when the
-  # parameter gets an override.
   param_list: [
     // Random netlist constants
     { name:      "RndCnstLfsrSeed",
       desc:      "Compile-time random bits for initial LFSR seed",
-      type:      "${module_instance_name}_pkg::lfsr_seed_t"
+      type:      "alert_pkg::lfsr_seed_t"
       randcount: "32",
       randtype:  "data", // randomize randcount databits
     }
     { name:      "RndCnstLfsrPerm",
       desc:      "Compile-time random permutation for LFSR output",
-      type:      "${module_instance_name}_pkg::lfsr_perm_t"
+      type:      "alert_pkg::lfsr_perm_t"
       randcount: "32",
       randtype:  "perm", // random permutation for randcount elements
     }
@@ -127,21 +118,10 @@ chars = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
       default: "${n_classes}",
       local: "true"
     },
-    { name: "EscNumSeverities",
-      desc: "Number of escalation severities as regular parameter",
-      type: "int",
-      # NOTE: If this value is to be changed, pass the exposed parameter as
-      # a regular override to all IPs with prim_esc_receiver
-      default: "${n_esc_sev}",
-      expose: "true",
-      local: "false"
-    },
     { name: "N_ESC_SEV",
       desc: "Number of escalation severities",
       type: "int",
-      # NOTE: If this value is to be changed, ensure all IPs with
-      # prim_esc_receiver get updated as well.
-      default: "${n_esc_sev}",
+      default: "4",
       local: "true"
     },
     { name: "N_PHASES",
@@ -156,21 +136,10 @@ chars = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
       default: "7",
       local: "true"
     },
-    { name: "EscPingCountWidth",
-      desc: "Width of ping counter as regular parameter",
-      type: "int",
-      # NOTE: If this value is to be changed, pass the exposed parameter as
-      # a regular override to all IPs with prim_esc_receiver
-      default: "${ping_cnt_dw}",
-      expose: "true",
-      local: "false"
-    },
     { name: "PING_CNT_DW",
       desc: "Width of ping counter",
       type: "int",
-      # NOTE: If this value is to be changed, ensure all IPs with
-      # prim_esc_receiver get updated as well.
-      default: "${ping_cnt_dw}",
+      default: "16",
       local: "true"
     },
     { name: "PHASE_DW",
@@ -240,7 +209,7 @@ chars = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
       type:    "uni",
       name:    "crashdump",
       act:     "req",
-      package: "${module_instance_name}_pkg"
+      package: "alert_pkg"
     },
     { struct:  "edn"
       type:    "req_rsp"
@@ -263,28 +232,6 @@ chars = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
       width:   "4", // N_ESC_SEV
       package: "prim_esc_pkg"
     },
-  % if racl_support:
-    { struct:  "racl_policy_vec",
-      type:    "uni",
-      name:    "racl_policies",
-      act:     "rcv",
-      package: "top_racl_pkg",
-      desc:    '''
-        Incoming RACL policy vector from a racl_ctrl instance.
-        The policy selection vector (parameter) selects the policy for each register.
-      '''
-    }
-    { struct:  "racl_error_log",
-      type:    "uni",
-      name:    "racl_error",
-      act:     "req",
-      width:   "1"
-      package: "top_racl_pkg",
-      desc:    '''
-        RACL error log information of this module.
-      '''
-    }
-  % endif
   ]
 
   features: [

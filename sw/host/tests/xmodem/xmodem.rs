@@ -86,6 +86,7 @@ impl XmodemFirmware {
                     io,
                     frame,
                     buf.as_mut_ptr(),
+                    buf.len(),
                     &mut rxlen as *mut usize,
                     &mut unknown_rx as *mut u8,
                 ))
@@ -125,7 +126,7 @@ impl XmodemFirmware {
 ///
 /// * `iohandle` must be a valid reference to a `dyn Uart` trait object.
 /// * `data` must be valid for `len` bytes.
-#[unsafe(no_mangle)]
+#[no_mangle]
 unsafe extern "C" fn xmodem_read(
     iohandle: *mut c_void,
     data: *mut u8,
@@ -155,7 +156,7 @@ unsafe extern "C" fn xmodem_read(
 ///
 /// * `iohandle` must be a valid reference to a `dyn Uart` trait object.
 /// * `data` must be valid for `len` bytes.
-#[unsafe(no_mangle)]
+#[no_mangle]
 unsafe extern "C" fn xmodem_write(iohandle: *mut c_void, data: *const u8, len: usize) {
     // SAFETY:
     // We know that the `iohandle` pointer is a valid reference to a `Uart`

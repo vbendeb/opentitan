@@ -73,7 +73,7 @@
               model.
             '''
       stage: V3
-      si_stage: SV3
+      si_stage: NA
       features: [
         "SPI_DEVICE.MODE.PASSTHROUGH",
         "SPI_DEVICE.HW.LANES",
@@ -100,7 +100,7 @@
                 - Clears the busy bit to allow the upstream SPI host to proceed to the next command.
             '''
       stage: V2
-      si_stage: SV3
+      si_stage: NA
       lc_states: [ "PROD" ]
       features: [
         "SPI_DEVICE.MODE.PASSTHROUGH",

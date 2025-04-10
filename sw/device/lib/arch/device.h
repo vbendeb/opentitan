@@ -194,7 +194,7 @@ extern const uint32_t kAstCheckPollCpuCycles;
  *
  * @see #test_status_set
  */
-uintptr_t device_test_status_address(void);
+extern const uintptr_t kDeviceTestStatusAddress;
 
 /**
  * An address to write use for UART logging bypass
@@ -203,7 +203,7 @@ uintptr_t device_test_status_address(void);
  *
  * @see #LOG
  */
-uintptr_t device_log_bypass_uart_address(void);
+extern const uintptr_t kDeviceLogBypassUartAddress;
 
 /**
  * A platform-specific function to convert microseconds to cpu cycles.

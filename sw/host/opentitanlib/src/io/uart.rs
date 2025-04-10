@@ -18,7 +18,7 @@ use crate::impl_serializable_error;
 use crate::io::console::ConsoleDevice;
 use crate::transport::TransportError;
 
-#[derive(Clone, Debug, Args, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Args, Serialize, Deserialize)]
 pub struct UartParams {
     /// UART instance.
     #[arg(long, default_value = "CONSOLE")]
@@ -70,12 +70,6 @@ pub trait Uart {
             unimplemented!();
         }
         Ok(())
-    }
-
-    /// Returns `"/dev/ttyUSBn"` or similar OS device path usable by external programs for
-    /// directly accessing the serial port.
-    fn get_device_path(&self) -> Result<String> {
-        Err(TransportError::UnsupportedOperation.into())
     }
 
     /// Reads UART receive data into `buf`, returning the number of bytes read.

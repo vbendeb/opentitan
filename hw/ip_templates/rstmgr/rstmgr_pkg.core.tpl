@@ -4,13 +4,16 @@ CAPI=2:
 # SPDX-License-Identifier: Apache-2.0
 name: ${instance_vlnv("lowrisc:ip:rstmgr_pkg:0.1")}
 description: "Reset manager package"
+virtual:
+  - lowrisc:ip_interfaces:rstmgr_pkg
 
 filesets:
   files_rtl:
     depend:
-      - ${instance_vlnv("lowrisc:ip:pwrmgr_pkg")}
+      - lowrisc:ip_interfaces:alert_handler_reg
+      - lowrisc:ip_interfaces:pwrmgr_pkg
+      - ${instance_vlnv("lowrisc:ip:rstmgr_reg")}
     files:
-      - rtl/rstmgr_reg_pkg.sv
       - rtl/rstmgr_pkg.sv
     file_type: systemVerilogSource
 

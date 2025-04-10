@@ -207,27 +207,8 @@ class cip_base_scoreboard #(type RAL_T = dv_base_reg_block,
 
     if (!cfg.en_scb) return;
 
-    if (!item.is_write()) begin
-      uvm_reg csr = cfg.ral_models[ral_name].default_map.get_reg_by_offset(item.a_addr);
-      if (csr != null) begin
-        dv_base_reg dv_reg;
-        `downcast(dv_reg, csr)
-        do_read_check(dv_reg, item);
-      end
-    end
     process_tl_access(item, DataChannel, ral_name);
   endtask
-
-  // This function implements the generic read checks, any TB can override this method to
-  // expand the checks further
-  virtual function void do_read_check(dv_base_reg dv_reg, tl_seq_item item);
-    uvm_reg_data_t pred_mask = dv_reg.get_predicted_mask();
-    `DV_CHECK_EQ(dv_reg.get_mirrored_value() & pred_mask,
-                 item.d_data & pred_mask,
-                 $sformatf("Register read data for %0s (qualified by prediction mask %0h)",
-                           dv_reg.get_full_name(),
-                           pred_mask))
-  endfunction
 
   virtual task process_alert_fifos();
     foreach (alert_fifos[i]) begin
@@ -236,8 +217,6 @@ class cip_base_scoreboard #(type RAL_T = dv_base_reg_block,
         forever begin
           alert_esc_seq_item item;
           alert_fifos[alert_name].get(item);
-          `uvm_info(`gfn, $sformatf("[cfg.en_scb=%0d] - Received alert_esc_item: \n%0s",
-                                    cfg.en_scb, item.sprint), UVM_DEBUG)
           if (!cfg.en_scb) continue;
           if (item.alert_esc_type == AlertEscSigTrans && !item.ping_timeout &&
               item.alert_handshake_sta inside {AlertReceived, AlertAckComplete}) begin
@@ -314,19 +293,11 @@ class cip_base_scoreboard #(type RAL_T = dv_base_reg_block,
   endtask
 
   virtual task check_alert_triggered(string alert_name);
-    int unsigned ping_count = cfg.m_alert_agent_cfgs[alert_name].ping_count;
-    // If the alert happens when we are in the middle of ping handshake phases then wait until we
-    // are out of ping.
-    wait(!cfg.m_alert_agent_cfgs[alert_name].under_ping_handshake &&
-         !cfg.m_alert_agent_cfgs[alert_name].under_ping_handshake_ph_2);
     // Add 1 extra negedge edge clock to make sure no race condition.
     repeat(alert_esc_agent_pkg::ALERT_B2B_DELAY + 1 + expected_alert[alert_name].max_delay) begin
       cfg.clk_rst_vif.wait_n_clks(1);
       if (under_alert_handshake[alert_name] || cfg.under_reset) return;
     end
-    // Ignore the alert if it's due to a ping by checking if there's been a ping since the
-    // check started
-    if (ping_count != cfg.m_alert_agent_cfgs[alert_name].ping_count) return;
     // Ignore the alert if the scoreboard is disabled or if the alert is not fatal and the ignore
     // alert bit is set.
     if (!cfg.en_scb || (ignore_exp_alert && !expected_alert[alert_name].is_fatal)) return;
@@ -346,8 +317,6 @@ class cip_base_scoreboard #(type RAL_T = dv_base_reg_block,
     if (!(alert_name inside {cfg.list_of_alerts})) begin
       `uvm_fatal(`gfn, $sformatf("alert_name %0s is not in cfg.list_of_alerts!", alert_name))
     end
-    `uvm_info(`gfn, $sformatf("Pushing expected alert with: is_fatal=%0d | max_delay=%0d",
-                              is_fatal, max_delay), UVM_DEBUG)
     exp_alert_q[alert_name].push_back(expected_alert_t'{1, is_fatal, max_delay});
     // Notify process_set_exp_alerts there is work to do.
     ->new_exp_alert;
@@ -417,16 +386,6 @@ class cip_base_scoreboard #(type RAL_T = dv_base_reg_block,
     return 0;
   endfunction
 
-  // Check if the tl_mapped address is a csr
-  virtual function bit is_csr_fetch(tl_seq_item item, string ral_name);
-    cip_tl_seq_item cip_item;
-    `downcast(cip_item, item)
-    return (item.a_opcode == tlul_pkg::Get &&
-            cip_item.get_instr_type() == MuBi4True &&
-            is_tl_access_mapped_addr(item, ral_name) &&
-            !is_mem_addr(item, ral_name));
-  endfunction
-
   // Checks if the TL access is valid.
   //
   // On the Addr channel, returns 1 if the item should cause a TL error.
@@ -446,8 +405,8 @@ class cip_base_scoreboard #(type RAL_T = dv_base_reg_block,
   //  - register write size is less than actual register width
   //  - TL protocol violation
   //
-  // Returns true if invalid access, else false. Caller processes the packet further if the access
-  // is valid.
+  // Returns true if invalid access, else false. Caller proceses the packet further if the access is
+  // valid.
   virtual function bit predict_tl_err(tl_seq_item item, tl_channels_e channel, string ral_name);
     bit invalid_access;
     bit exp_d_error;
@@ -457,9 +416,8 @@ class cip_base_scoreboard #(type RAL_T = dv_base_reg_block,
 
     cip_tl_seq_item cip_item;
     tl_intg_err_e tl_intg_err_type;
-    logic cmd_intg_err, data_intg_err;
-
-    bit write_w_instr_type_err, instr_type_err, csr_read_err;
+    uint num_cmd_err_bits, num_data_err_bits;
+    bit write_w_instr_type_err, instr_type_err;
 
     unmapped_err = !is_tl_access_mapped_addr(item, ral_name);
     if (unmapped_err) begin
@@ -486,22 +444,19 @@ class cip_base_scoreboard #(type RAL_T = dv_base_reg_block,
     byte_wr_err = is_tl_access_unsupported_byte_wr(item, ral_name);
     csr_size_err = !is_tl_csr_write_size_gte_csr_width(item, ral_name);
     tl_item_err = item.get_exp_d_error();
-    csr_read_err = is_csr_fetch(item, ral_name);
 
     // For flash, address has to be 8byte aligned.
     ecc_err = ecc_error_addr.exists({item.a_addr[AddrWidth-1:3],3'b0});
 
     `downcast(cip_item, item)
-    cip_item.get_a_chan_err_info(tl_intg_err_type, cmd_intg_err, data_intg_err,
+    cip_item.get_a_chan_err_info(tl_intg_err_type, num_cmd_err_bits, num_data_err_bits,
                                  write_w_instr_type_err, instr_type_err);
-
     exp_d_error |= byte_wr_err | bus_intg_err | csr_size_err | tl_item_err |
                    write_w_instr_type_err | instr_type_err |
-                   ecc_err | csr_read_err;
+                   ecc_err;
 
     invalid_access = unmapped_err | mem_access_err | bus_intg_err | csr_size_err | tl_item_err |
-                     write_w_instr_type_err | instr_type_err | cfg.tl_mem_access_gated |
-                     csr_read_err;
+                     write_w_instr_type_err | instr_type_err | cfg.tl_mem_access_gated;
 
     if (channel == DataChannel) begin
       // integrity at d_user is from DUT, which should be always correct, except data integrity for
@@ -513,7 +468,7 @@ class cip_base_scoreboard #(type RAL_T = dv_base_reg_block,
 
       // sample covergroup
       if (cfg.en_tl_intg_err_cov) begin
-        tl_intg_err_cgs_wrap[ral_name].sample(tl_intg_err_type, cmd_intg_err, data_intg_err,
+        tl_intg_err_cgs_wrap[ral_name].sample(tl_intg_err_type, num_cmd_err_bits, num_data_err_bits,
                                               is_mem_addr(item, ral_name));
 
         if (tl_intg_err_mem_subword_cgs_wrap.exists(ral_name)) begin

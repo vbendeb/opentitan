@@ -7,10 +7,13 @@ description: "Technology-independent English Breakfast toplevel"
 filesets:
   files_rtl_generic:
     depend:
-      - lowrisc:englishbreakfast_ip:pwrmgr_pkg
-      - lowrisc:earlgrey_ip:alert_handler_pkg
+      - lowrisc:systems:topgen
+      - lowrisc:constants:top_pkg
+      - lowrisc:tlul:headers
       # Manually instantiated
+      - lowrisc:ip:rv_core_ibex
       - lowrisc:ip:rv_dm
+      - lowrisc:opentitan:top_englishbreakfast_rv_plic
       - lowrisc:ip:tlul
       - lowrisc:prim:all
       - lowrisc:prim:ram_1p_adv
@@ -19,6 +22,8 @@ filesets:
       - lowrisc:ip:sram_ctrl
       # Instantiated by topgen
       - lowrisc:ip:uart:0.1
+      - lowrisc:ip:gpio
+      - lowrisc:ip:pinmux_component
       - lowrisc:ip:rv_timer
       - lowrisc:ip:spi_device
       - lowrisc:ip:spi_host
@@ -27,26 +32,17 @@ filesets:
       - lowrisc:ip:hmac
       - lowrisc:ip:kmac
       - lowrisc:ip:keymgr
+      - lowrisc:ip:otp_ctrl
       - lowrisc:ip:lc_ctrl
       - lowrisc:ip:usbdev
       - lowrisc:top_englishbreakfast:xbar_main
       - lowrisc:top_englishbreakfast:xbar_peri
-      - lowrisc:englishbreakfast_ip:clkmgr
-      - lowrisc:englishbreakfast_ip:flash_ctrl
-      - lowrisc:englishbreakfast_ip:pinmux
-      - lowrisc:englishbreakfast_ip:pwrmgr
-      - lowrisc:englishbreakfast_ip:rstmgr
-      - lowrisc:englishbreakfast_ip:rv_plic
-      - lowrisc:englishbreakfast_ip:gpio
-      - lowrisc:englishbreakfast_ip:rv_core_ibex
+      - lowrisc:opentitan:top_englishbreakfast_clkmgr
+      - lowrisc:opentitan:top_englishbreakfast_flash_ctrl
+      - lowrisc:opentitan:top_englishbreakfast_pwrmgr
+      - lowrisc:opentitan:top_englishbreakfast_rstmgr
       - lowrisc:ip:rom_ctrl
       - lowrisc:ip:aon_timer
-      - lowrisc:tlul:headers
-      - lowrisc:systems:top_englishbreakfast_pkg
-    files:
-      - rtl/autogen/top_englishbreakfast_rnd_cnst_pkg.sv
-      - rtl/autogen/top_englishbreakfast.sv
-    file_type: systemVerilogSource
 
   files_verilator_waiver:
     depend:
@@ -71,9 +67,6 @@ filesets:
       # common waivers
       - lowrisc:lint:common
       - lowrisc:lint:comportable
-    files:
-      - lint/top_englishbreakfast.vbl
-    file_type: veribleLintWaiver
 
 
 parameters:

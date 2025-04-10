@@ -5,14 +5,14 @@
 use anyhow::Result;
 use sha2::{Digest, Sha256};
 use std::time::Duration;
-use zerocopy::{Immutable, IntoBytes};
+use zerocopy::AsBytes;
 
 use crate::app::TransportWrapper;
 use crate::bootstrap::{Bootstrap, BootstrapOptions, UpdateProtocol};
 use crate::io::spi::Transfer;
 use crate::transport::{Capability, ProgressIndicator};
 
-#[derive(Immutable, IntoBytes, Debug, Default)]
+#[derive(AsBytes, Debug, Default)]
 #[repr(C)]
 struct FrameHeader {
     hash: [u8; Frame::HASH_LEN],
@@ -20,7 +20,7 @@ struct FrameHeader {
     flash_offset: u32,
 }
 
-#[derive(Immutable, IntoBytes, Debug)]
+#[derive(AsBytes, Debug)]
 #[repr(C)]
 struct Frame {
     header: FrameHeader,
@@ -63,7 +63,7 @@ impl Frame {
     /// Creates a sequence of frames based on a `payload` binary.
     fn from_payload(payload: &[u8]) -> Vec<Frame> {
         let mut frames = Vec::new();
-        let last_frame = payload.len().div_ceil(Frame::DATA_LEN) - 1;
+        let last_frame = (payload.len() + Frame::DATA_LEN - 1) / Frame::DATA_LEN - 1;
         for (i, chunk) in payload.chunks(Frame::DATA_LEN).enumerate() {
             let mut frame = Frame {
                 header: FrameHeader {

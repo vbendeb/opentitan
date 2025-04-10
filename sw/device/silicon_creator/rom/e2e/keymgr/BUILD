@@ -16,7 +16,6 @@ load(
 )
 load(
     "//rules/opentitan:defs.bzl",
-    "cw310_params",
     "dv_params",
     "fpga_params",
     "opentitan_test",
@@ -58,7 +57,7 @@ rom_e2e_keymgr_init_configs = [
 [
     otp_image(
         name = "otp_img_keymgr_{}".format(config["name"]),
-        src = "//hw/top_earlgrey/data/otp:otp_json_rma",
+        src = "//hw/ip/otp_ctrl/data:otp_json_rma",
         overlays = STD_OTP_OVERLAYS + [":otp_json_keymgr_{}".format(config["name"])],
         visibility = ["//visibility:private"],
     )
@@ -90,7 +89,11 @@ rom_e2e_keymgr_init_configs = [
         ),
         deps = [
             "//sw/device/lib/dif:keymgr",
+            "//sw/device/lib/dif:otp_ctrl",
+            "//sw/device/lib/dif:rstmgr",
             "//sw/device/lib/testing:keymgr_testutils",
+            "//sw/device/lib/testing:otp_ctrl_testutils",
+            "//sw/device/lib/testing:rstmgr_testutils",
             "//sw/device/lib/testing/test_framework:ottf_ld_silicon_creator_slot_a",
             "//sw/device/lib/testing/test_framework:ottf_main",
             "//sw/device/silicon_creator/lib/drivers:hmac",

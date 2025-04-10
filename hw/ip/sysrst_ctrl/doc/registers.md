@@ -501,7 +501,6 @@ If no keys are configured for the pre-condition, the pre-condition always evalua
 The debounce timing is defined via [`KEY_INTR_DEBOUNCE_CTL`](#key_intr_debounce_ctl) whereas the pre-condition pressed timing is defined via [`COM_PRE_DET_CTL.`](#com_pre_det_ctl)
 - Reset default: `0x0`
 - Reset mask: `0x1f`
-- Register enable: [`REGWEN`](#regwen)
 
 ### Instances
 
@@ -533,7 +532,6 @@ To define the duration that the combo pre-condition should be pressed
 0-60s, each step is 5us(200KHz clock)
 - Reset default: `0x0`
 - Reset mask: `0xffffffff`
-- Register enable: [`REGWEN`](#regwen)
 
 ### Instances
 
@@ -571,7 +569,6 @@ If no keys are configured for the combo, the combo detection is disabled.
 The debounce timing is defined via [`KEY_INTR_DEBOUNCE_CTL`](#key_intr_debounce_ctl) whereas the key-pressed timing is defined via [`COM_DET_CTL.`](#com_det_ctl)
 - Reset default: `0x0`
 - Reset mask: `0x1f`
-- Register enable: [`REGWEN`](#regwen)
 
 ### Instances
 
@@ -603,7 +600,6 @@ To define the duration that the combo should be pressed
 0-60s, each step is 5us(200KHz clock)
 - Reset default: `0x0`
 - Reset mask: `0xffffffff`
-- Register enable: [`REGWEN`](#regwen)
 
 ### Instances
 
@@ -633,7 +629,6 @@ To define the actions once the combo is detected
 [3]: rst_req (to OpenTitan reset manager)
 - Reset default: `0x0`
 - Reset mask: `0xf`
-- Register enable: [`REGWEN`](#regwen)
 
 ### Instances
 

@@ -13,11 +13,6 @@
       en_build_modes: ["{tool}_gui"]
     }
     {
-      name: gui_debug
-      is_sim_mode: 1
-      en_build_modes: ["{tool}_gui_debug"]
-    }
-    {
       name: waves
       is_sim_mode: 1
       en_build_modes: ["{tool}_waves"]

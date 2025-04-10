@@ -20,6 +20,10 @@ class chip_env_cfg #(type RAL_T = chip_ral_pkg::chip_reg_block) extends cip_base
   // skip ROM backdoor loading (when using ROM macro block)
   bit                 skip_rom_bkdr_load = 0;
 
+  // skip flash backdoor loading (when using mask ROM with SPI bootstrap, e.g.,
+  // for ATE sims)
+  bit                 skip_flash_bkdr_load = 0;
+
   // chip top interfaces
   virtual chip_if       chip_vif;
 
@@ -455,7 +459,7 @@ class chip_env_cfg #(type RAL_T = chip_ral_pkg::chip_reg_block) extends cip_base
           // A flash image could be signed, and if it is, Bazel will attach a
           // suffix to the image name.
           if ("signed" inside {sw_image_flags[i]}) begin
-            // Options match DEFAULT_SIGNING_KEYS in `rules/opentitan/keyutils.bzl`.
+            // Options match DEFAULT_SIGNING_KEYS in `rules/opentitan.bzl`.
             if ("fake_ecdsa_dev_key_0" inside {sw_image_flags[i]}) begin
               sw_images[i] = $sformatf("%0s.fake_ecdsa_dev_key_0.signed", sw_images[i]);
             end else if ("fake_ecdsa_prod_key_0" inside {sw_image_flags[i]}) begin

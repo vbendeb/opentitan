@@ -12,6 +12,7 @@ load(
     "silicon_params",
     "verilator_params",
 )
+load("//rules:splice.bzl", "bitstream_splice")
 load(
     "//rules/opentitan:defs.bzl",
     "DEFAULT_TEST_FAILURE_MSG",
@@ -27,7 +28,7 @@ package(default_visibility = ["//visibility:public"])
 # & interface for the CW310 as opposed to the hyperdebug variants, due to the
 # PMOD tests requiring the PMOD pins that are not available with hyperdebug.
 fpga_cw310(
-    name = "top_earlgrey_fpga_cw310_sival_rom_ext_no_hyper",
+    name = "fpga_cw310_sival_rom_ext_no_hyper",
     testonly = True,
     base = "//hw/top_earlgrey:fpga_cw310_sival_rom_ext",
     # Override the hyperdebug bitstream, interface, and OTP & ROM MMIs.
@@ -57,7 +58,7 @@ opentitan_test(
             "//hw/top_earlgrey:fpga_cw310_test_rom": None,
             # Custom execution environment must be used for SiVal ROM EXT
             # to ensure that all the PMOD pins are available.
-            ":top_earlgrey_fpga_cw310_sival_rom_ext_no_hyper": "sival_rom_ext_no_hyper",
+            ":fpga_cw310_sival_rom_ext_no_hyper": "sival_rom_ext_no_hyper",
         },
     ),
     fpga = fpga_params(
@@ -79,7 +80,6 @@ opentitan_test(
         ],  # Requires the PMOD::BoB.
     ),
     deps = [
-        "//hw/top:dt",
         "//hw/top_earlgrey/sw/autogen:top_earlgrey",
         "//sw/device/lib/arch:device",
         "//sw/device/lib/base:memory",
@@ -110,7 +110,6 @@ opentitan_test(
         ],  # Requires the PMOD::BoB.
     ),
     deps = [
-        "//hw/top:dt",
         "//hw/top_earlgrey/sw/autogen:top_earlgrey",
         "//sw/device/lib/arch:device",
         "//sw/device/lib/base:memory",
@@ -141,7 +140,6 @@ opentitan_test(
         ],  # Requires the PMOD::BoB.
     ),
     deps = [
-        "//hw/top:dt",
         "//hw/top_earlgrey/sw/autogen:top_earlgrey",
         "//sw/device/lib/arch:device",
         "//sw/device/lib/base:memory",
@@ -173,7 +171,6 @@ opentitan_test(
         ],  # Requires the PMOD::BoB.
     ),
     deps = [
-        "//hw/top:dt",
         "//hw/top_earlgrey/sw/autogen:top_earlgrey",
         "//sw/device/lib/arch:device",
         "//sw/device/lib/base:memory",
@@ -205,7 +202,6 @@ opentitan_test(
         ],  # Requires the PMOD::BoB.
     ),
     deps = [
-        "//hw/top:dt",
         "//hw/top_earlgrey/sw/autogen:top_earlgrey",
         "//sw/device/lib/arch:device",
         "//sw/device/lib/base:memory",
@@ -237,7 +233,6 @@ opentitan_test(
         ],  # Requires the PMOD::BoB.
     ),
     deps = [
-        "//hw/top:dt",
         "//hw/top_earlgrey/sw/autogen:top_earlgrey",
         "//sw/device/lib/arch:device",
         "//sw/device/lib/base:memory",
@@ -269,7 +264,6 @@ opentitan_test(
         ],  # Requires the PMOD::BoB.
     ),
     deps = [
-        "//hw/top:dt",
         "//hw/top_earlgrey/sw/autogen:top_earlgrey",
         "//sw/device/lib/arch:device",
         "//sw/device/lib/base:memory",

@@ -5,16 +5,21 @@
 package(default_visibility = ["//visibility:public"])
 
 exports_files([
-    "MODULE.bazel",
+    "WORKSPACE",
     "python-requirements.txt",
+    "tool_requirements.py",
 ])
+
+filegroup(
+    name = "cores",
+    srcs = [
+        "check_tool_requirements.core",
+        "topgen.core",
+        "topgen-reg-only.core",
+    ],
+)
 
 alias(
     name = "gen_rust_project",
     actual = "@rules_rust//tools/rust_analyzer:gen_rust_project",
-)
-
-alias(
-    name = "format",
-    actual = "//quality:format",
 )

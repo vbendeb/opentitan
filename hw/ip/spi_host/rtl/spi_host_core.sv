@@ -6,14 +6,12 @@
 //
 
 module spi_host_core #(
-  parameter  int NumCS = 1,
-  localparam int CSW   = prim_util_pkg::vbits(NumCS)
+  parameter  int NumCS     = 1
 ) (
   input                             clk_i,
   input                             rst_ni,
 
   input spi_host_cmd_pkg::command_t command_i,
-  input logic [CSW-1:0]             command_csid_i,
   input                             command_valid_i,
   output                            command_ready_o,
   input                             en_i,
@@ -130,7 +128,6 @@ module spi_host_core #(
     .rst_ni,
     .en_i,
     .command_i,
-    .command_csid_i,
     .command_valid_i,
     .command_ready_o,
     .sck_o,

@@ -271,13 +271,6 @@
       run_opts: ["-gui", "-l {run_dir}/simv.log"]
     }
     {
-      name: vcs_gui_debug
-      // TODO as done for Xcelium see PR #24156
-      is_sim_mode: 1
-      build_opts: ["-debug_access+all+reverse"]
-      run_opts: ["-gui", "-l {run_dir}/simv.log"]
-    }
-    {
       name: vcs_waves
       is_sim_mode: 1
       build_opts: [// Enable generating Verdi Knowledge Database
@@ -288,7 +281,7 @@
       name: vcs_waves_off
       is_sim_mode: 1
       build_opts: [// disable dumping assertion failures to improve runtime performance
-                   "-assert dbgopt"]
+                   "-assert novpi+dbgopt"]
     }
     {
       name: vcs_cov
@@ -303,7 +296,7 @@
                    // Dump toggle coverage on mdas, array of structs and on ports only
                    "-cm_tgl mda+structarr+portsonly",
                    // Report condition coverage within tasks, functions and for loops.
-                   "-cm_cond for",
+                   "-cm_cond for+tf",
                    // Ignore initial blocks for coverage
                    "-cm_report noinitial",
                    // Filter unreachable/statically constant blocks. seqnoconst does a more

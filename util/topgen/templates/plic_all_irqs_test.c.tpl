@@ -4,16 +4,6 @@
 // clang-format off
 ${gencmd}
 <%
-
-## TODO: Darjeeling contains peripherals which expose IRQs/Alerts to the RV
-## PLIC and Alert Handler respectively, but are not accessible from the hart
-## address space and thus cannot be tested directly (via the IRQ_TEST and
-## ALERT_TEST registers). While this issue remains, we specifically hard-code
-## for excluding these IRQs from the test.
-IGNORE_PERIPHERALS = [("ac_range_check", "darjeeling"), ("racl_ctrl", "darjeeling")]
-irq_peripherals = [p for p in helper.irq_peripherals[addr_space]
-                   if (p.inst_name, top["name"]) not in IGNORE_PERIPHERALS]
-
 ## Get unique module names (not instance names) and the associated masks
 ## determining interrupt type and default behavior. The helper list is
 ## already sorted, so no need to sort it again here.
@@ -21,12 +11,15 @@ known_names = {}
 irq_peripheral_names = []
 status_default_masks = []
 status_type_masks = []
-for p in irq_peripherals:
+for p in helper.irq_peripherals:
   if p.name not in known_names:
     known_names.update({p.name: 1})
     irq_peripheral_names.append(p.name)
     status_default_masks.append(p.status_default_mask)
     status_type_masks.append(p.status_type_mask)
+
+has_csrng = "csrng" in irq_peripheral_names
+csrng_index = irq_peripheral_names.index("csrng") if has_csrng else None
 
 # For some rv_timer DIFs, tha hart argument follows the instance handle.
 def args(p):
@@ -55,25 +48,30 @@ def args(p):
 #include "sw/device/lib/base/csr.h"
 #include "sw/device/lib/base/mmio.h"
 % for n in sorted(irq_peripheral_names + ["rv_plic"]):
-#include "sw/device/lib/dif/autogen/dif_${n}_autogen.h"
+#include "sw/device/lib/dif/dif_${n}.h"
 % endfor
 #include "sw/device/lib/runtime/ibex.h"
 #include "sw/device/lib/runtime/irq.h"
 #include "sw/device/lib/runtime/log.h"
-#include "sw/device/lib/testing/rv_plic_testutils.h"
 #include "sw/device/lib/testing/test_framework/check.h"
+#include "sw/device/lib/testing/rv_plic_testutils.h"
 #include "sw/device/lib/testing/test_framework/ottf_main.h"
 #include "sw/device/lib/testing/test_framework/status.h"
-
 #include "hw/top_${top["name"]}/sw/autogen/top_${top["name"]}.h"
 
-% for p in irq_peripherals:
+% for p in helper.irq_peripherals:
 <%
   i = irq_peripheral_names.index(p.name)
 %>\
+% if i == csrng_index:
+// TODO(lowrisc/opentitan#20747) Adjust csrng special handling once this is
+// fixed.
+static dif_${p.name}_t ${p.inst_name};
+% else:
 #if TEST_MIN_IRQ_PERIPHERAL <= ${i} && ${i} < TEST_MAX_IRQ_PERIPHERAL
 static dif_${p.name}_t ${p.inst_name};
 #endif
+% endif
 
 % endfor
 static dif_rv_plic_t plic;
@@ -102,6 +100,15 @@ static volatile dif_${n}_irq_t ${n}_irq_serviced;
 #endif
 
 % endfor
+
+% if has_csrng:
+#if TEST_MIN_IRQ_PERIPHERAL <= ${csrng_index} < TEST_MAX_IRQ_PERIPHERAL
+static volatile bool allow_csrng_irq = true;
+#else
+static volatile bool allow_csrng_irq = false;
+#endif
+% endif
+
 /**
  * Provides external IRQ handling for this test.
  *
@@ -121,69 +128,96 @@ void ottf_external_isr(uint32_t *exc_info) {
 
   top_${top["name"]}_plic_peripheral_t peripheral = (top_${top["name"]}_plic_peripheral_t)
       top_${top["name"]}_plic_interrupt_for_peripheral[plic_irq_id];
-  CHECK(peripheral == peripheral_expected,
-        "Interrupt from incorrect peripheral: exp = %d, obs = %d",
-        peripheral_expected, peripheral);
+% if has_csrng:
+  // TODO(lowrisc/opentitan#20747) Adjust code once this issue is fixed.
+  if (allow_csrng_irq && kBootStage == kBootStageOwner &&
+      peripheral != peripheral_expected &&
+      peripheral == kTop${top["name"].capitalize()}PlicPeripheralCsrng) {
+    dif_csrng_irq_t irq = (dif_csrng_irq_t)(
+        plic_irq_id -
+        (dif_rv_plic_irq_id_t)kTop${top["name"].capitalize()}PlicIrqIdCsrngCsCmdReqDone);
 
-  switch (peripheral) {
-% for p in irq_peripherals:
+    dif_csrng_irq_state_snapshot_t snapshot;
+    CHECK_DIF_OK(dif_csrng_irq_get_state(&csrng, &snapshot));
+    CHECK(snapshot == (dif_csrng_irq_state_snapshot_t)(1 << irq),
+          "Only csrng IRQ %d expected to fire. Actual interrupt status = %x",
+          irq, snapshot);
+    CHECK_DIF_OK(dif_csrng_irq_acknowledge(&csrng, irq));
+% else:
+  if (false) {
+% endif
+  } else {
+    CHECK(peripheral == peripheral_expected,
+          "Interrupt from incorrect peripheral: exp = %d, obs = %d",
+          peripheral_expected, peripheral);
+
+    switch (peripheral) {
+    % for p in helper.irq_peripherals:
 <%
   i = irq_peripheral_names.index(p.name)
-  indent = " " * len(p.name)
 %>\
 #if TEST_MIN_IRQ_PERIPHERAL <= ${i} && ${i} < TEST_MAX_IRQ_PERIPHERAL
-    case ${p.plic_name}: {
-      dif_${p.name}_irq_t irq =
-          (dif_${p.name}_irq_t)(plic_irq_id -
-${indent}                       (dif_rv_plic_irq_id_t)
-${indent}                           ${p.plic_start_irq});
-      CHECK(irq == ${p.name}_irq_expected,
-            "Incorrect ${p.inst_name} IRQ triggered: exp = %d, obs = %d",
-            ${p.name}_irq_expected, irq);
-      ${p.name}_irq_serviced = irq;
-
-      dif_${p.name}_irq_state_snapshot_t snapshot;
-      CHECK_DIF_OK(dif_${p.name}_irq_get_state(${args(p)}, &snapshot));
-  ## In case we have status type interrupts that are asserted by default,
-  ## we have to account for them in this check.
-  % if p.status_default_mask != 0:
-      CHECK(snapshot == (dif_${p.name}_irq_state_snapshot_t)((1 << irq) | ${"0x{:x}".format(p.status_default_mask)}),
-            "Expected ${p.inst_name} interrupt status %x. Actual interrupt "
-            "status = %x",
-            (1 << irq) | ${"0x{:x}".format(p.status_default_mask)}, snapshot);
-  % else:
-      CHECK(snapshot == (dif_${p.name}_irq_state_snapshot_t)(1 << irq),
-            "Only ${p.inst_name} IRQ %d expected to fire. Actual interrupt "
-            "status = %x",
-            irq, snapshot);
-  % endif
-
-  % if p.status_type_mask != 0:
-      if (${"0x{:x}".format(p.status_type_mask)} & (1 << irq)) {
-        // We do not acknowledge status type interrupt at the IP side, but we
-        // need to clear the test force register.
-        CHECK_DIF_OK(dif_${p.name}_irq_force(&${p.inst_name}, irq, false));
-        // In case this status interrupt is asserted by default, we also
-        // disable it at this point so that it does not interfere with the
-        // rest of the test.
-        if ((${"0x{:x}".format(p.status_default_mask)} & (1 << irq))) {
-          CHECK_DIF_OK(dif_${p.name}_irq_set_enabled(&${p.inst_name}, irq, false));
+      case ${p.plic_name}: {
+        dif_${p.name}_irq_t irq = (dif_${p.name}_irq_t)(
+            plic_irq_id -
+            (dif_rv_plic_irq_id_t)${p.plic_start_irq});
+      % if i == csrng_index:
+        // This special handling of CSRNG is because it is configured
+        // to constantly generate interrupts. There may be better ways
+        // to configure the entropy complex so it is less noisy.
+        // TODO(lowrisc/opentitan#20747) Adjust code once this is fixed.
+        if (kBootStage != kBootStageOwner) {
+          CHECK(irq == ${p.name}_irq_expected,
+                "Incorrect ${p.inst_name} IRQ triggered: exp = %d, obs = %d",
+                ${p.name}_irq_expected, irq);
         }
-      } else {
-        // We acknowledge event type interrupt.
+      % else:
+        CHECK(irq == ${p.name}_irq_expected,
+              "Incorrect ${p.inst_name} IRQ triggered: exp = %d, obs = %d",
+              ${p.name}_irq_expected, irq);
+      % endif
+        ${p.name}_irq_serviced = irq;
+
+        dif_${p.name}_irq_state_snapshot_t snapshot;
+        CHECK_DIF_OK(dif_${p.name}_irq_get_state(${args(p)}, &snapshot));
+      ## In case we have status type interrupts that are asserted by default,
+      ## we have to account for them in this check.
+      % if p.status_default_mask != 0:
+        CHECK(snapshot == (dif_${p.name}_irq_state_snapshot_t)((1 << irq) | ${"0x{:x}".format(p.status_default_mask)}),
+              "Expected ${p.inst_name} interrupt status %x. Actual interrupt "
+              "status = %x", (1 << irq) | ${"0x{:x}".format(p.status_default_mask)}, snapshot);
+      % else:
+        CHECK(snapshot == (dif_${p.name}_irq_state_snapshot_t)(1 << irq),
+              "Only ${p.inst_name} IRQ %d expected to fire. Actual interrupt "
+              "status = %x", irq, snapshot);
+      % endif
+
+      % if p.status_type_mask != 0:
+        // If this is a status type interrupt, we do not have to acknowledge the interrupt at
+        // the IP side, but we need to clear the test force register.
+        if (${"0x{:x}".format(p.status_type_mask)} & (1 << irq)) {
+          CHECK_DIF_OK(dif_${p.name}_irq_force(&${p.inst_name}, irq, false));
+          // In case this status interrupt is asserted by default, we also disable it at
+          // this point so that it does not interfere with the rest of the test.
+          if ((${"0x{:x}".format(p.status_default_mask)} & (1 << irq))) {
+            CHECK_DIF_OK(dif_${p.name}_irq_set_enabled(&${p.inst_name}, irq, false));
+          }
+        // If this is a regular event type interrupt, we acknowledge it at this point.
+        } else {
+          CHECK_DIF_OK(dif_${p.name}_irq_acknowledge(&${p.inst_name}, irq));
+        }
+      % else:
         CHECK_DIF_OK(dif_${p.name}_irq_acknowledge(&${p.inst_name}, irq));
+      % endif
+        break;
       }
-  % else:
-      CHECK_DIF_OK(dif_${p.name}_irq_acknowledge(&${p.inst_name}, irq));
-  % endif
-      break;
-    }
 #endif
 
-% endfor
-    default:
-      LOG_FATAL("ISR is not implemented!");
-      test_status_set(kTestStatusFailed);
+    % endfor
+      default:
+        LOG_FATAL("ISR is not implemented!");
+        test_status_set(kTestStatusFailed);
+    }
   }
   // Complete the IRQ at PLIC.
   CHECK_DIF_OK(dif_rv_plic_irq_complete(&plic, kHart, plic_irq_id));
@@ -195,7 +229,7 @@ ${indent}                           ${p.plic_start_irq});
 static void peripherals_init(void) {
   mmio_region_t base_addr;
 
-  % for p in irq_peripherals:
+  % for p in helper.irq_peripherals:
 <%
   i = irq_peripheral_names.index(p.name)
 %>\
@@ -213,7 +247,7 @@ static void peripherals_init(void) {
  * Clears pending IRQs in all peripherals.
  */
 static void peripheral_irqs_clear(void) {
-  % for p in irq_peripherals:
+  % for p in helper.irq_peripherals:
 <%
   indent = ""
   i = irq_peripheral_names.index(p.name)
@@ -254,7 +288,7 @@ static void peripheral_irqs_enable(void) {
 #endif
 
   % endfor
-  % for p in irq_peripherals:
+  % for p in helper.irq_peripherals:
 <%
   if p.name == "aon_timer": continue
   i = irq_peripheral_names.index(p.name)
@@ -277,7 +311,8 @@ static void peripheral_irqs_enable(void) {
 %>\
   if (kBootStage != kBootStageOwner) {
   % endif
-  ${indent}CHECK_DIF_OK(dif_${p.name}_irq_restore_all(${args(p)}, &${p.name}_irqs));
+  ${indent}CHECK_DIF_OK(
+  ${indent}    dif_${p.name}_irq_restore_all(${args(p)}, &${p.name}_irqs));
   % if p.inst_name == "uart0" or p.inst_name == "otp_ctrl":
   }
   % endif
@@ -299,9 +334,9 @@ static void peripheral_irqs_trigger(void) {
   unsigned int status_default_mask;
   // Depending on the build configuration, this variable may show up as unused
   // in the clang linter. This statement waives that error.
-  (void)status_default_mask;
+  (void) status_default_mask;
 
-  % for p in irq_peripherals:
+  % for p in helper.irq_peripherals:
 <%
   i = irq_peripheral_names.index(p.name)
 %>\
@@ -332,8 +367,9 @@ static void peripheral_irqs_trigger(void) {
 % if p.status_type_mask != 0:
   ${indent}status_default_mask = ${"0x{:x}".format(p.status_default_mask)};
 % endif
-  ${indent}for (dif_${p.name}_irq_t irq = ${p.start_irq}; irq <= ${p.end_irq};
-  ${indent}     ++irq) {
+  ${indent}for (dif_${p.name}_irq_t irq = ${p.start_irq};
+  ${indent}     irq <= ${p.end_irq}; ++irq) {
+
   ${indent}  ${p.name}_irq_expected = irq;
   ${indent}  LOG_INFO("Triggering ${p.inst_name} IRQ %d.", irq);
   ${indent}  CHECK_DIF_OK(dif_${p.name}_irq_force(&${p.inst_name}, irq, true));
@@ -343,7 +379,7 @@ static void peripheral_irqs_trigger(void) {
   ${indent}  // interfere with testing other interrupts. We enable it here and let the
   ${indent}  // interrupt handler disable it again.
   ${indent}  if ((status_default_mask & 0x1)) {
-  ${indent}    CHECK_DIF_OK(dif_${p.name}_irq_set_enabled(&${p.inst_name}, irq, true));
+  ${indent}     CHECK_DIF_OK(dif_${p.name}_irq_set_enabled(&${p.inst_name}, irq, true));
   ${indent}  }
   ${indent}  status_default_mask >>= 1;
 

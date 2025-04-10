@@ -13,7 +13,6 @@
 #include "sw/device/lib/dif/dif_rstmgr.h"
 #include "sw/device/lib/runtime/log.h"
 #include "sw/device/lib/testing/csrng_testutils.h"
-#include "sw/device/lib/testing/entropy_src_testutils.h"
 #include "sw/device/lib/testing/entropy_testutils.h"
 #include "sw/device/lib/testing/flash_ctrl_testutils.h"
 #include "sw/device/lib/testing/otp_ctrl_testutils.h"
@@ -106,7 +105,7 @@ static void peripherals_init(void) {
   CHECK_DIF_OK(dif_csrng_init(
       mmio_region_from_addr(TOP_EARLGREY_CSRNG_BASE_ADDR), &csrng));
   CHECK_DIF_OK(dif_lc_ctrl_init(
-      mmio_region_from_addr(TOP_EARLGREY_LC_CTRL_REGS_BASE_ADDR), &lc_ctrl));
+      mmio_region_from_addr(TOP_EARLGREY_LC_CTRL_BASE_ADDR), &lc_ctrl));
   CHECK_DIF_OK(dif_entropy_src_init(
       mmio_region_from_addr(TOP_EARLGREY_ENTROPY_SRC_BASE_ADDR), &entropy_src));
   CHECK_DIF_OK(dif_otp_ctrl_init(
@@ -267,10 +266,10 @@ static void csrng_static_generate_run(uint32_t *output, size_t output_len) {
   CHECK_STATUS_OK(entropy_testutils_stop_all());
   // TODO: May need to flush the output buffers before enabling enabling
   // firmware override connected to csrng.
-  CHECK_STATUS_OK(entropy_src_testutils_fw_override_enable(
-      &entropy_src, kEntropyFifoBufferSize,
-      /*firmware_override_enable=*/false,
-      /*bypass_conditioner=*/false));
+  CHECK_STATUS_OK(
+      entropy_testutils_fw_override_enable(&entropy_src, kEntropyFifoBufferSize,
+                                           /*firmware_override_enable=*/false,
+                                           /*bypass_conditioner=*/false));
   CHECK_DIF_OK(dif_csrng_configure(&csrng));
   fw_override_conditioner_write(&entropy_src);
 

@@ -14,6 +14,11 @@ load(
     "manifest",
 )
 load(
+    "//rules:opentitan_test.bzl",
+    "OTTF_SUCCESS_MSG",
+    "ROM_BOOT_FAILURE_MSG",
+)
+load(
     "//rules:otp.bzl",
     "STD_OTP_OVERLAYS",
     "otp_image",
@@ -26,8 +31,6 @@ load(
 )
 load(
     "//rules/opentitan:defs.bzl",
-    "OTTF_SUCCESS_MSG",
-    "ROM_BOOT_FAILURE_MSG",
     "cw310_params",
     "fpga_params",
     "opentitan_test",
@@ -206,7 +209,7 @@ BOOT_POLICY_BAD_MANIFEST_CASES = [
             lc_state,
             sec_ver,
         ),
-        src = "//hw/top_earlgrey/data/otp:otp_json_{}".format(lc_state),
+        src = "//hw/ip/otp_ctrl/data:otp_json_{}".format(lc_state),
         overlays = STD_OTP_OVERLAYS + [":otp_json_sec_ver_{}".format(sec_ver)],
         visibility = ["//visibility:private"],
     )

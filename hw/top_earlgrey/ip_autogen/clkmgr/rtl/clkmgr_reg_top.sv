@@ -863,9 +863,6 @@ module clkmgr_reg_top (
 
 
   // R[jitter_enable]: V(False)
-  // Create REGWEN-gated WE signal
-  logic jitter_enable_gated_we;
-  assign jitter_enable_gated_we = jitter_enable_we & jitter_regwen_qs;
   prim_subreg #(
     .DW      (4),
     .SwAccess(prim_subreg_pkg::SwAccessRW),
@@ -876,8 +873,8 @@ module clkmgr_reg_top (
     .rst_ni  (rst_ni),
 
     // from register interface
-    .we     (jitter_enable_gated_we),
-    .wd     (jitter_enable_wd),
+    .we     (jitter_enable_we),
+    .wd     (prim_mubi_pkg::MuBi4True),
 
     // from internal hardware
     .de     (1'b0),
@@ -1766,6 +1763,18 @@ module clkmgr_reg_top (
   //   F[hi]: 9:0
   logic async_main_meas_ctrl_shadowed_hi_err_update;
   logic async_main_meas_ctrl_shadowed_hi_err_storage;
+  logic deglitched_main_meas_ctrl_shadowed_hi_err_storage;
+
+  // flop storage error to filter combinational glitches before sending it across CDC
+  prim_flop #(
+    .Width(1),
+    .ResetValue('0)
+  ) u_main_meas_ctrl_shadowed_hi_err_storage_deglitch (
+    .clk_i (clk_main_i),
+    .rst_ni(rst_main_ni),
+    .d_i   (async_main_meas_ctrl_shadowed_hi_err_storage),
+    .q_o   (deglitched_main_meas_ctrl_shadowed_hi_err_storage)
+  );
 
   // storage error is persistent and can be sampled at any time
   prim_flop_2sync #(
@@ -1774,7 +1783,7 @@ module clkmgr_reg_top (
   ) u_main_meas_ctrl_shadowed_hi_err_storage_sync (
     .clk_i,
     .rst_ni,
-    .d_i(async_main_meas_ctrl_shadowed_hi_err_storage),
+    .d_i(deglitched_main_meas_ctrl_shadowed_hi_err_storage),
     .q_o(main_meas_ctrl_shadowed_hi_storage_err)
   );
 
@@ -1825,6 +1834,18 @@ module clkmgr_reg_top (
   //   F[lo]: 19:10
   logic async_main_meas_ctrl_shadowed_lo_err_update;
   logic async_main_meas_ctrl_shadowed_lo_err_storage;
+  logic deglitched_main_meas_ctrl_shadowed_lo_err_storage;
+
+  // flop storage error to filter combinational glitches before sending it across CDC
+  prim_flop #(
+    .Width(1),
+    .ResetValue('0)
+  ) u_main_meas_ctrl_shadowed_lo_err_storage_deglitch (
+    .clk_i (clk_main_i),
+    .rst_ni(rst_main_ni),
+    .d_i   (async_main_meas_ctrl_shadowed_lo_err_storage),
+    .q_o   (deglitched_main_meas_ctrl_shadowed_lo_err_storage)
+  );
 
   // storage error is persistent and can be sampled at any time
   prim_flop_2sync #(
@@ -1833,7 +1854,7 @@ module clkmgr_reg_top (
   ) u_main_meas_ctrl_shadowed_lo_err_storage_sync (
     .clk_i,
     .rst_ni,
-    .d_i(async_main_meas_ctrl_shadowed_lo_err_storage),
+    .d_i(deglitched_main_meas_ctrl_shadowed_lo_err_storage),
     .q_o(main_meas_ctrl_shadowed_lo_storage_err)
   );
 
@@ -2582,7 +2603,7 @@ module clkmgr_reg_top (
     reg_we_check[2] = extclk_ctrl_gated_we;
     reg_we_check[3] = 1'b0;
     reg_we_check[4] = jitter_regwen_we;
-    reg_we_check[5] = jitter_enable_gated_we;
+    reg_we_check[5] = jitter_enable_we;
     reg_we_check[6] = clk_enables_we;
     reg_we_check[7] = clk_hints_we;
     reg_we_check[8] = 1'b0;
@@ -2763,7 +2784,7 @@ module clkmgr_reg_top (
 
   // register busy
   logic reg_busy_sel;
-  assign reg_busy = (reg_busy_sel | shadow_busy) & tl_i.a_valid;
+  assign reg_busy = reg_busy_sel | shadow_busy;
   always_comb begin
     reg_busy_sel = '0;
     unique case (1'b1)
@@ -2805,6 +2826,11 @@ module clkmgr_reg_top (
 
 
   // Unused signal tieoff
+
+  // Any write to the jitter_enable CSR writes MuBi4True.
+  // The actual write data is ignored.
+  logic unused_jitter_enable_wd;
+  assign unused_jitter_enable_wd = ^jitter_enable_wd;
 
   // wdata / byte enable are not always fully used
   // add a blanket unused statement to handle lint waivers

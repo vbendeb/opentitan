@@ -6,22 +6,12 @@
 
 `include "prim_assert.sv"
 
-module sram_ctrl_ram_reg_top
-  # (
-    parameter bit          EnableRacl           = 1'b0,
-    parameter bit          RaclErrorRsp         = 1'b1,
-    parameter top_racl_pkg::racl_policy_sel_t RaclPolicySelVec[sram_ctrl_reg_pkg::NumRegsRam] =
-      '{sram_ctrl_reg_pkg::NumRegsRam{0}}
-  ) (
+module sram_ctrl_ram_reg_top (
   input clk_i,
   input rst_ni,
   input  tlul_pkg::tl_h2d_t tl_i,
   output tlul_pkg::tl_d2h_t tl_o,
   // To HW
-
-  // RACL interface
-  input  top_racl_pkg::racl_policy_vec_t racl_policies_i,
-  output top_racl_pkg::racl_error_log_t  racl_error_o,
 
   // Integrity check errors
   output logic intg_err_o
@@ -49,6 +39,4 @@ module sram_ctrl_ram_reg_top
   assign tl_o_pre   = tl_reg_d2h;
 
   // Unused signal tieoff
-  logic unused_policy_sel;
-  assign unused_policy_sel = ^racl_policies_i;
 endmodule

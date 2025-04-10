@@ -14,7 +14,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "dt/dt_rstmgr.h"  // Generated.
 #include "sw/device/lib/base/macros.h"
 #include "sw/device/lib/base/mmio.h"
 #include "sw/device/lib/dif/dif_base.h"
@@ -84,7 +83,6 @@ typedef enum dif_rstmgr_reset_info {
    * escalation, watchdog or anything else.
    */
   kDifRstmgrResetInfoHwReq = (0x1f << 3),
-#if defined(OPENTITAN_IS_EARLGREY)
   /**
    * Device has reset due to the peripheral system reset control request.
    */
@@ -93,18 +91,6 @@ typedef enum dif_rstmgr_reset_info {
    * Device has reset due to watchdog bite.
    */
   kDifRstmgrResetInfoWatchdog = (1 << 4),
-#elif defined(OPENTITAN_IS_DARJEELING)
-  /**
-   * Device has reset due to watchdog bite.
-   */
-  kDifRstmgrResetInfoWatchdog = (1 << 3),
-  /**
-   * Device has reset due to an external reset request via soc_proxy.
-   */
-  kDifRstmgrResetInfoExternalRst = (1 << 4),
-#else
-#error "dif_rstmgr does not support this top"
-#endif
   /**
    * Device has reset due to power unstable.
    */
@@ -379,20 +365,6 @@ dif_result_t dif_rstmgr_software_reset_is_held(
  */
 OT_WARN_UNUSED_RESULT
 dif_result_t dif_rstmgr_software_device_reset(const dif_rstmgr_t *handle);
-
-/**
- * Get the software reset index corresponding to a given DT rstmgr reset.
- *
- * Retrieved via a short linear search, due to the small number of sw resets.
- *
- * @param dt The rstmgr DT instance index
- * @param reset The rstmgr DT reset index.
- * @param[out] sw_rst_idx The corresponding software reset index.
- * @return The result of the operation.
- */
-OT_WARN_UNUSED_RESULT
-dif_result_t dif_rstmgr_get_sw_reset_index(dt_rstmgr_t dt, dt_reset_t reset,
-                                           size_t *sw_rst_idx);
 
 /**
  * Read the fatal error codes.

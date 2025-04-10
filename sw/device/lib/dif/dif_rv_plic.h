@@ -20,7 +20,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "dt/dt_api.h"  // Generated
 #include "sw/device/lib/base/macros.h"
 #include "sw/device/lib/base/mmio.h"
 #include "sw/device/lib/dif/dif_base.h"
@@ -52,7 +51,7 @@ extern const uint32_t kDifRvPlicMaxPriority;
  *
  * The value 0 corresponds to "No Interrupt".
  */
-typedef dt_plic_irq_id_t dif_rv_plic_irq_id_t;
+typedef uint32_t dif_rv_plic_irq_id_t;
 
 /**
  * A PLIC interrupt target.

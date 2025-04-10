@@ -16,9 +16,6 @@ package sensor_ctrl_reg_pkg;
   // Address widths within the block
   parameter int BlockAw = 7;
 
-  // Number of registers for every interface
-  parameter int NumRegs = 29;
-
   ////////////////////////////
   // Typedefs for registers //
   ////////////////////////////

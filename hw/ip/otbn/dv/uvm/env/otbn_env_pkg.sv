@@ -15,7 +15,7 @@ package otbn_env_pkg;
   import push_pull_agent_pkg::*;
   import otbn_model_agent_pkg::*;
   import otbn_memutil_pkg::*;
-  import sram_ctrl_bkdr_util_pkg::sram_ctrl_bkdr_util;
+  import mem_bkdr_util_pkg::mem_bkdr_util;
   import prim_util_pkg::vbits;
   import prim_mubi_pkg::*;
   import key_sideload_agent_pkg::*;
@@ -53,7 +53,6 @@ package otbn_env_pkg;
   parameter int KEY_RSP_DATA_SIZE = $bits(otp_ctrl_pkg::otbn_otp_key_rsp_t);
 
   // typedefs
-  typedef virtual otbn_ssctrl_if   ssctrl_vif;
   typedef virtual otbn_escalate_if escalate_vif;
   typedef logic [TL_AIW-1:0]       tl_source_t;
   typedef key_sideload_agent#(keymgr_pkg::otbn_key_req_t) otbn_sideload_agent;

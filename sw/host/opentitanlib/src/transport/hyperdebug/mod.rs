@@ -5,7 +5,6 @@
 use anyhow::{bail, ensure, Context, Result};
 use once_cell::sync::Lazy;
 use regex::Regex;
-use serde_annotate::Annotate;
 use serialport::TTYPort;
 use std::any::Any;
 use std::cell::Cell;
@@ -17,8 +16,7 @@ use std::io::Read;
 use std::io::Write;
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
-use std::rc::{Rc, Weak};
-use std::time::Duration;
+use std::rc::Rc;
 
 use crate::debug::openocd::OpenOcdJtagChain;
 use crate::io::gpio::{GpioBitbanging, GpioMonitoring, GpioPin};
@@ -30,7 +28,6 @@ use crate::transport::chip_whisperer::board::Board;
 use crate::transport::chip_whisperer::ChipWhisperer;
 use crate::transport::common::fpga::{ClearBitstream, FpgaProgram};
 use crate::transport::common::uart::flock_serial;
-use crate::transport::MaintainConnection;
 use crate::transport::{
     Capabilities, Capability, SetJtagPins, Transport, TransportError, TransportInterfaceType,
     UpdateFirmware,
@@ -138,7 +135,6 @@ impl<T: Flavor> Hyperdebug<T> {
     const GOOGLE_CAP_GPIO_MONITORING: u16 = 0x0004;
     const GOOGLE_CAP_GPIO_BITBANGING: u16 = 0x0008;
     const GOOGLE_CAP_UART_QUEUE_CLEAR: u16 = 0x0010;
-    const GOOGLE_CAP_TPM_POLL: u16 = 0x0020;
 
     /// Establish connection with a particular HyperDebug.
     pub fn open(
@@ -146,7 +142,7 @@ impl<T: Flavor> Hyperdebug<T> {
         usb_pid: Option<u16>,
         usb_serial: Option<&str>,
     ) -> Result<Self> {
-        let mut device = UsbBackend::new(
+        let device = UsbBackend::new(
             usb_vid.unwrap_or_else(T::get_default_usb_vid),
             usb_pid.unwrap_or_else(T::get_default_usb_pid),
             usb_serial,
@@ -218,7 +214,7 @@ impl<T: Flavor> Hyperdebug<T> {
                     if !device.kernel_driver_active(interface.number())? {
                         device.attach_kernel_driver(interface.number())?;
                         // Wait for udev rules to apply proper permissions to new device.
-                        std::thread::sleep(Duration::from_millis(100));
+                        std::thread::sleep(std::time::Duration::from_millis(100));
                     }
 
                     if interface_name.ends_with("Shell") {
@@ -303,7 +299,6 @@ impl<T: Flavor> Hyperdebug<T> {
                 console_tty: console_tty.ok_or_else(|| {
                     TransportError::CommunicationError("Missing console interface".to_string())
                 })?,
-                conn: RefCell::new(Weak::new()),
                 usb_device: RefCell::new(device),
                 selected_spi: Cell::new(0),
             }),
@@ -425,7 +420,6 @@ impl<T: Flavor> Hyperdebug<T> {
 /// even if the caller lets the outer Hyperdebug struct run out of scope.
 pub struct Inner {
     console_tty: PathBuf,
-    conn: RefCell<Weak<Conn>>,
     usb_device: RefCell<UsbBackend>,
     selected_spi: Cell<u8>,
 }
@@ -441,52 +435,7 @@ pub struct CachedIo {
     uarts: RefCell<HashMap<PathBuf, Rc<dyn Uart>>>,
 }
 
-pub struct Conn {
-    console_port: RefCell<TTYPort>,
-    first_use: Cell<bool>,
-}
-
-// The way that the HyperDebug allows callers to request optimization for a sequence of operations
-// without other `opentitantool` processes meddling with the USB devices, is to let the caller
-// hold an `Rc`-reference to the `Conn` struct, thereby keeping the USB connection alive.
-impl MaintainConnection for Conn {}
-
 impl Inner {
-    /// General timeout for response on the HyperDebug text-based USB command console.
-    const COMMAND_TIMEOUT: Duration = Duration::from_millis(3000);
-
-    /// Establish connection with HyperDebug console USB interface.
-    pub fn connect(&self) -> Result<Rc<Conn>> {
-        if let Some(conn) = self.conn.borrow().upgrade() {
-            // The driver already has a connection, use it.
-            return Ok(conn);
-        }
-        // Establish a new connection.
-        let port_name = self
-            .console_tty
-            .to_str()
-            .ok_or(TransportError::UnicodePathError)?;
-        let port = TTYPort::open(
-            &serialport::new(port_name, 115_200)
-                .preserve_dtr_on_open()
-                .timeout(Self::COMMAND_TIMEOUT),
-        )
-        .context("Failed to open HyperDebug console")?;
-        flock_serial(&port, port_name)?;
-        let conn = Rc::new(Conn {
-            console_port: RefCell::new(port),
-            first_use: Cell::new(true),
-        });
-        // Return a (strong) reference to the newly opened connection, while keeping a weak
-        // reference to the same in this `Inner` object.  The result is that if the caller keeps
-        // the strong reference alive long enough, the next invocation of `connect()` will be able
-        // to re-use the same instance.  If on the other hand, the caller drops their reference,
-        // then the weak reference will not keep the instance alive, and next time a new
-        // connection will be made.
-        *self.conn.borrow_mut() = Rc::downgrade(&conn);
-        Ok(conn)
-    }
-
     /// Send a command to HyperDebug firmware, expecting to receive no output.  Any output will be
     /// reported through an `Err()` return.
     pub fn cmd_no_output(&self, cmd: &str) -> Result<()> {
@@ -556,29 +505,21 @@ impl Inner {
     }
 
     /// Send a command to HyperDebug firmware, with a callback to receive any output.
-    fn execute_command(&self, cmd: &str, callback: impl FnMut(&str)) -> Result<()> {
-        // Open console device, if not already open.
-        let conn = self.connect()?;
-        // Perform requested command, passing any output to callback.
-        conn.execute_command(cmd, callback)
-    }
-}
-
-impl Conn {
-    /// Send a command to HyperDebug firmware, with a callback to receive any output.
     fn execute_command(&self, cmd: &str, mut callback: impl FnMut(&str)) -> Result<()> {
-        let port: &mut TTYPort = &mut self.console_port.borrow_mut();
+        let port_name = self
+            .console_tty
+            .to_str()
+            .ok_or(TransportError::UnicodePathError)?;
+        let mut port = TTYPort::open(
+            &serialport::new(port_name, 115_200).timeout(std::time::Duration::from_millis(100)),
+        )
+        .context("Failed to open HyperDebug console")?;
+        flock_serial(&port, port_name)?;
 
-        if self.first_use.get() {
-            // Send Ctrl-C, followed by the command, then newline.  This will discard any previous
-            // partial input, before executing our command.
-            port.write(format!("\x03{}\n", cmd).as_bytes())
-                .context("writing to HyperDebug console")?;
-            self.first_use.set(false);
-        } else {
-            port.write(format!("{}\n", cmd).as_bytes())
-                .context("writing to HyperDebug console")?;
-        }
+        // Send Ctrl-C, followed by the command, then newline.  This will discard any previous
+        // partial input, before executing our command.
+        port.write(format!("\x03{}\n", cmd).as_bytes())
+            .context("writing to HyperDebug console")?;
 
         // Now process response from HyperDebug.  First we expect to see the echo of the command
         // we just "typed". Then zero, one or more lines of useful output, which we want to pass
@@ -657,17 +598,7 @@ impl<T: Flavor> Transport for Hyperdebug<T> {
     }
 
     fn apply_default_configuration(&self) -> Result<()> {
-        let mut error: Option<String> = None;
-        self.inner.execute_command("reinit", |line| {
-            log::warn!("Unexpected HyperDebug output: {}", line);
-            if line.starts_with("Error: ") {
-                error = Some(line.to_string());
-            }
-        })?;
-        if let Some(err) = error {
-            bail!(TransportError::CommunicationError(err));
-        }
-        Ok(())
+        self.inner.cmd_no_output("reinit")
     }
 
     // Create SPI Target instance, or return one from a cache of previously created instances.
@@ -681,7 +612,6 @@ impl<T: Flavor> Transport for Hyperdebug<T> {
             &self.spi_interface,
             enable_cmd,
             idx,
-            self.get_cmsis_google_capabilities()? & Self::GOOGLE_CAP_TPM_POLL != 0,
         )?);
         self.cached_io_interfaces
             .spis
@@ -832,12 +762,12 @@ impl<T: Flavor> Transport for Hyperdebug<T> {
         )?))
     }
 
-    fn dispatch(&self, action: &dyn Any) -> Result<Option<Box<dyn Annotate>>> {
+    fn dispatch(&self, action: &dyn Any) -> Result<Option<Box<dyn erased_serde::Serialize>>> {
         if let Some(update_firmware_action) = action.downcast_ref::<UpdateFirmware>() {
             let usb_vid = self.inner.usb_device.borrow().get_vendor_id();
             let usb_pid = self.inner.usb_device.borrow().get_product_id();
             dfu::update_firmware(
-                &mut self.inner.usb_device.borrow_mut(),
+                &self.inner.usb_device.borrow(),
                 self.current_firmware_version.as_deref(),
                 &update_firmware_action.firmware,
                 update_firmware_action.progress.as_ref(),
@@ -899,16 +829,6 @@ impl<T: Flavor> Transport for Hyperdebug<T> {
             opts,
         )?);
         Ok(new_jtag)
-    }
-
-    /// The way that the HyperDebug driver allows callers to request optimization for a sequence
-    /// of operations without other `opentitantool` processes meddling with the USB devices, is to
-    /// let the caller hold an `Rc`-reference to the `Conn` struct, thereby keeping the USB
-    /// connection alive.  Callers should only hold ond to the object as long as they can
-    /// guarantee that no other `opentitantool` processes simultaneously attempt to access the
-    /// same HyperDebug USB device.
-    fn maintain_connection(&self) -> Result<Rc<dyn MaintainConnection>> {
-        Ok(self.inner.connect()?)
     }
 }
 

@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 load("//rules:cross_platform.bzl", "dual_cc_library", "dual_inputs")
-load("//rules/opentitan:defs.bzl", "OPENTITAN_CPU")
+load("//rules:opentitan.bzl", "OPENTITAN_CPU")
 load(
     "//rules/opentitan:defs.bzl",
     "EARLGREY_TEST_ENVS",
@@ -91,20 +91,11 @@ ld_library(
 )
 
 ld_library(
-    name = "ottf_ld_top_config",
-    includes = ["ottf_ld_top_config.ld"],
-    deps = [
-        "//hw/top:top_ld",
-    ],
-)
-
-ld_library(
     name = "ottf_ld_silicon_creator_slot_a",
     script = "ottf_silicon_creator_a.ld",
     deps = [
         ":ottf_ld_common",
-        ":ottf_ld_top_config",
-        "//hw/top:top_ld",
+        "//hw/top_earlgrey/sw/autogen:top_earlgrey_memory",
     ],
 )
 
@@ -113,8 +104,7 @@ ld_library(
     script = "ottf_silicon_creator_b.ld",
     deps = [
         ":ottf_ld_common",
-        ":ottf_ld_top_config",
-        "//hw/top:top_ld",
+        "//hw/top_earlgrey/sw/autogen:top_earlgrey_memory",
     ],
 )
 
@@ -123,8 +113,7 @@ ld_library(
     script = "ottf_silicon_creator_virtual.ld",
     deps = [
         ":ottf_ld_common",
-        ":ottf_ld_top_config",
-        "//hw/top:top_ld",
+        "//hw/top_earlgrey/sw/autogen:top_earlgrey_memory",
     ],
 )
 
@@ -133,8 +122,7 @@ ld_library(
     script = "ottf_silicon_owner_a.ld",
     deps = [
         ":ottf_ld_common",
-        ":ottf_ld_top_config",
-        "//hw/top:top_ld",
+        "//hw/top_earlgrey/sw/autogen:top_earlgrey_memory",
     ],
 )
 
@@ -143,8 +131,7 @@ ld_library(
     script = "ottf_silicon_owner_b.ld",
     deps = [
         ":ottf_ld_common",
-        ":ottf_ld_top_config",
-        "//hw/top:top_ld",
+        "//hw/top_earlgrey/sw/autogen:top_earlgrey_memory",
     ],
 )
 
@@ -153,8 +140,7 @@ ld_library(
     script = "ottf_silicon_owner_virtual.ld",
     deps = [
         ":ottf_ld_common",
-        ":ottf_ld_top_config",
-        "//hw/top:top_ld",
+        "//hw/top_earlgrey/sw/autogen:top_earlgrey_memory",
     ],
 )
 
@@ -197,7 +183,7 @@ cc_library(
     target_compatible_with = [OPENTITAN_CPU],
     deps = [
         ":check",
-        "//hw/top:dt",
+        "//hw/top_earlgrey/sw/autogen:top_earlgrey",
         "//sw/device/lib/base:csr",
         "//sw/device/lib/base:macros",
         "//sw/device/lib/dif:rv_plic",
@@ -227,7 +213,7 @@ cc_library(
         ":check",
         ":ottf_isrs",
         ":test_framework_manifest_def",
-        "//hw/top:top_lib",
+        "//hw/top_earlgrey/sw/autogen:top_earlgrey",
         "//sw/device/lib/base:csr",
         "//sw/device/lib/base:macros",
         "//sw/device/lib/crt",
@@ -334,7 +320,7 @@ dual_cc_library(
             "//sw/device/lib/runtime:ibex",
             "//sw/device/lib/runtime:irq",
             "//sw/device/lib/testing:spi_device_testutils",
-            "//hw/top:top_lib",
+            "//hw/top_earlgrey/sw/autogen:top_earlgrey",
         ],
         shared = [
             "//sw/device/lib/base:status",
@@ -413,7 +399,7 @@ cc_library(
         ":check",
         ":freertos_config",
         ":ottf_start",
-        "//hw/top:dt",
+        "//hw/top_earlgrey/sw/autogen:top_earlgrey",
         "//sw/device/lib/dif:rv_timer",
         "//sw/device/lib/dif:uart",
         "//sw/device/lib/runtime:hart",

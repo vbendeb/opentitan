@@ -4,7 +4,6 @@
 
 use anyhow::{bail, Context, Result};
 use clap::{Args, Subcommand};
-use serde_annotate::Annotate;
 use std::any::Any;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -41,12 +40,11 @@ struct ConsolidateRecord {
 }
 
 impl CommandDispatch for ListCommand {
-    #[allow(clippy::unwrap_or_default)] // or_default cannot be used due to type inference.
     fn run(
         &self,
         _context: &dyn Any,
         _transport: &TransportWrapper,
-    ) -> Result<Option<Box<dyn Annotate>>> {
+    ) -> Result<Option<Box<dyn erased_serde::Serialize>>> {
         let records = load_elf(&self.elf_file)?;
         if self.raw_records {
             return Ok(Some(Box::new(records)));
@@ -91,7 +89,7 @@ impl CommandDispatch for LintCommand {
         &self,
         _context: &dyn Any,
         _transport: &TransportWrapper,
-    ) -> Result<Option<Box<dyn Annotate>>> {
+    ) -> Result<Option<Box<dyn erased_serde::Serialize>>> {
         // We group filenames by Module ID, coming from all ELF files at once
         let mut mod_id_map: HashMap<String, HashSet<ModuleIdProvenance>> = HashMap::new();
 
@@ -105,7 +103,7 @@ impl CommandDispatch for LintCommand {
             for record in records.records {
                 mod_id_map
                     .entry(record.get_module_id()?)
-                    .or_default()
+                    .or_insert_with(HashSet::new)
                     .insert(ModuleIdProvenance {
                         filename: record.filename.into(),
                         overriden: record.module_id.is_some(),
@@ -156,7 +154,7 @@ impl CommandDispatch for DecodeCommand {
         &self,
         _context: &dyn Any,
         _transport: &TransportWrapper,
-    ) -> Result<Option<Box<dyn Annotate>>> {
+    ) -> Result<Option<Box<dyn erased_serde::Serialize>>> {
         // Decode status.
         let status = Status::from_u32(self.raw_status)?;
         // Find filenames

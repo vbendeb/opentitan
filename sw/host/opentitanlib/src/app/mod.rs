@@ -20,13 +20,13 @@ use crate::io::nonblocking_help::NonblockingHelp;
 use crate::io::spi::{Target, TransferMode};
 use crate::io::uart::Uart;
 use crate::transport::{
-    ioexpander, Capability, MaintainConnection, ProgressIndicator, ProxyOps, Transport,
-    TransportError, TransportInterfaceType,
+    ioexpander, Capability, ProgressIndicator, ProxyOps, Transport, TransportError,
+    TransportInterfaceType,
 };
 
 use anyhow::{bail, ensure, Result};
 use indicatif::{ProgressBar, ProgressStyle};
-use serde_annotate::Annotate;
+
 use std::any::Any;
 use std::cell::{Cell, RefCell};
 use std::collections::hash_map::Entry;
@@ -180,7 +180,6 @@ pub struct SpiConfiguration {
     pub host_out_device_in: Option<String>,
     pub host_in_device_out: Option<String>,
     pub chip_select: Option<String>,
-    pub gsc_ready: Option<String>,
     pub bits_per_word: Option<u32>,
     pub bits_per_sec: Option<u32>,
 }
@@ -888,7 +887,7 @@ impl TransportWrapper {
     }
 
     /// Invoke non-standard functionality of some Transport implementations.
-    pub fn dispatch(&self, action: &dyn Any) -> Result<Option<Box<dyn Annotate>>> {
+    pub fn dispatch(&self, action: &dyn Any) -> Result<Option<Box<dyn erased_serde::Serialize>>> {
         self.transport.dispatch(action)
     }
 
@@ -937,11 +936,6 @@ impl TransportWrapper {
     /// Configure all pins as input/output, pullup, etc. as declared in configuration files.
     /// Also configure SPI port mode/speed, and other similar settings.
     pub fn apply_default_configuration(&self, strapping_name: Option<&str>) -> Result<()> {
-        // Telling the transport that this function is the exclusive user of the debugger device
-        // for the duration of this function, will allow the transport to keep USB handles open,
-        // for optimization.  (For transports such as the proxy, which does not have any
-        // such optimization, this is a no-op.)
-        let _maintain_connection = self.transport.maintain_connection()?;
         if let Some(strapping_name) = strapping_name {
             if self.capabilities()?.request(Capability::PROXY).ok().is_ok() {
                 self.proxy_ops()?
@@ -974,11 +968,6 @@ impl TransportWrapper {
     }
 
     pub fn reset_target(&self, reset_delay: Duration, clear_uart_rx: bool) -> Result<()> {
-        // Telling the transport that this function is the exclusive user of the debugger device
-        // for the duration of this function, will allow the transport to keep USB handles open,
-        // for optimization.  (For transports such as the proxy, which does not have any
-        // such optimization, this is a no-op.)
-        let _maintain_connection = self.transport.maintain_connection()?;
         log::info!("Asserting the reset signal");
         if self.disable_dft_on_reset.get() {
             self.pin_strapping("PRERESET_DFT_DISABLE")?.apply()?;
@@ -999,13 +988,6 @@ impl TransportWrapper {
         }
         std::thread::sleep(reset_delay);
         Ok(())
-    }
-
-    /// As long as the returned `MaintainConnection` object is kept by the caller, this driver may
-    /// assume that no other `opentitantool` processes attempt to access the same debugger device.
-    /// This allows for optimzations such as keeping USB handles open across function invocations.
-    pub fn maintain_connection(&self) -> Result<Rc<dyn MaintainConnection>> {
-        self.transport.maintain_connection()
     }
 }
 

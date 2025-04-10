@@ -5,9 +5,8 @@
 '''Script for scrambling a ROM image'''
 
 import argparse
-from enum import Enum
 import sys
-from typing import Dict, IO, Optional, Tuple
+from typing import Dict, List, IO
 
 import hjson  # type: ignore
 from Crypto.Hash import cSHAKE256
@@ -17,134 +16,8 @@ from util.design.prince import prince, sbox  # type: ignore
 from util.design.secded_gen import ecc_encode_some  # type: ignore
 from util.design.secded_gen import load_secded_config
 
-
-class ScramblingMode(Enum):
-    ROM0 = "base-rom"
-    ROM1 = "second-rom"
-    SRAM = "sram"
-
-
-_UDict = Dict[object, object]
-
-
-class MemoryController:
-    def __init__(
-            self, mem_ctrl: _UDict, ctrl_name: str, memory_type: str, mode: str):
-        '''A memory controller constructor
-        @mem_ctrl The memory controller hjson dictionary.
-        @ctrl_name is the memory controller IP block name (e.g. 'rom_ctrl0' for the base ROM)
-        @memory_type is the memory type this memory controller run ('rom' or 'ram')
-        @mode is the memory scrambling mode
-        '''
-
-        memory_type, key_name, nonce_name = {
-            ScramblingMode.ROM0.value: ["rom", "RndCnstScrKey", "RndCnstScrNonce"],
-            ScramblingMode.ROM1.value: ["rom", "RndCnstScrKey", "RndCnstScrNonce"],
-            ScramblingMode.SRAM.value: ["ram", "RndCnstSramKey", "RndCnstSramNonce"],
-        }[mode]
-
-        assert memory_type is not None
-        assert key_name is not None
-        assert nonce_name is not None
-
-        size_words = MemoryController._get_size_words(mem_ctrl, memory_type)
-        base = MemoryController._get_base(mem_ctrl, memory_type)
-        params = MemoryController._get_params(mem_ctrl)
-        nonce, nonce_width = MemoryController._get_param_cnst(params, nonce_name)
-        scr_key, scr_key_width = MemoryController._get_param_cnst(params, key_name)
-
-        self.ctrl_name = ctrl_name
-        self.memory_type = memory_type
-        self.base = base
-        self.size_words = size_words
-        self.scr_key = scr_key
-        self.scr_key_width = scr_key_width
-        self.nonce = nonce
-        self.nonce_width = nonce_width
-
-    @staticmethod
-    def _get_params(module: _UDict) -> Dict[str, _UDict]:
-        params = module.get('param_list')
-        assert isinstance(params, list)
-
-        named_params = {}  # type: Dict[str, _UDict]
-        for param in params:
-            name = param.get('name')
-            assert isinstance(name, str)
-            assert name not in named_params
-            named_params[name] = param
-
-        return named_params
-
-    @staticmethod
-    def _get_param_cnst(params: Dict[str, _UDict], name: str) -> Tuple[int, int]:
-        param = params.get(name)
-        assert isinstance(param, dict)
-
-        default = param.get("default")
-        assert isinstance(default, str)
-        val = int(default, 0)
-
-        width = param.get("randwidth")
-        assert isinstance(width, int)
-
-        assert 0 <= val < (1 << width)
-
-        return val, width
-
-    @staticmethod
-    def _get_size_words(module: _UDict, memory_type: str) -> int:
-        memory = module.get("memory")
-        assert isinstance(memory, dict)
-        memory = memory.get(memory_type)
-        assert isinstance(memory, dict)
-        size_words_bytes_str = memory.get("size")
-        assert isinstance(size_words_bytes_str, str)
-        size_words_bytes = int(size_words_bytes_str, 16)
-        assert size_words_bytes % 4 == 0
-        return size_words_bytes // 4
-
-    @staticmethod
-    def _get_base(module: _UDict, memory_type: str) -> int:
-        base = module.get("base_addrs")
-        assert isinstance(base, dict)
-        base_addr_rom = base.get(memory_type)
-        assert isinstance(base_addr_rom, dict)
-        base_addr = base_addr_rom.get("hart")
-        assert isinstance(base_addr, str)
-        return int(base_addr, 16)
-
-    @staticmethod
-    def from_hjson_path(path: str, mode: str) -> Optional["MemoryController"]:
-        with open(path, "r", encoding='utf-8') as handle:
-            top = hjson.load(handle, use_decimal=True)
-
-        assert isinstance(top, dict)
-        modules = top.get('module')
-        assert isinstance(modules, list)
-
-        for entry in modules:
-            assert isinstance(entry, dict)
-            entry_type = entry.get('type')
-            assert isinstance(entry_type, str)
-            entry_name = entry.get('name')
-            assert isinstance(entry_name, str)
-
-            if mode == ScramblingMode.ROM0.value:
-                # Earlgrey has only one ROM, named `rom_ctrl`, while Darjeeling's
-                # first ROM is named `rom_ctrl0`
-                if entry_name in ("rom_ctrl", "rom_ctrl0"):
-                    if entry_type == "rom_ctrl":
-                        return MemoryController(entry, entry_name, entry_type, mode)
-            elif mode == ScramblingMode.ROM1.value:
-                if entry_name == "rom_ctrl1" and entry_type == "rom_ctrl":
-                    return MemoryController(entry, entry_name, entry_type, mode)
-            elif mode == ScramblingMode.SRAM.value:
-                if entry_name == "sram_ctrl_main" and entry_type == "sram_ctrl":
-                    return MemoryController(entry, entry_name, entry_type, mode)
-
-        return None
-
+ROM_BASE_WORD = 0x8000 // 4
+ROM_SIZE_WORDS = 8192
 
 PRESENT_SBOX4 = [
     0xc, 0x5, 0x6, 0xb,
@@ -159,6 +32,8 @@ PRESENT_SBOX4_INV = [
     0xb, 0x4, 0x6, 0x3,
     0x0, 0x7, 0x9, 0xa
 ]
+
+_UDict = Dict[object, object]
 
 
 def subst_perm_enc(data: int, key: int, width: int, num_rounds: int) -> int:
@@ -235,36 +110,77 @@ class Scrambler:
     subst_perm_rounds = 2
     num_rounds_half = 3
 
-    def __init__(self, nonce: int, nonce_width: int,
-                 key: int, key_width: int,
-                 rom_base: int, rom_size_words: int,
-                 hash_file: IO[str]):
-        assert nonce_width > 0
-        assert key_width > 0
-        assert 0 <= nonce < (1 << nonce_width)
-        assert 0 <= key < (1 << key_width)
+    def __init__(self, nonce: int, key: int, rom_size_words: int, hash_file: IO[str]):
+        assert 0 <= nonce < (1 << 64)
+        assert 0 <= key < (1 << 128)
         assert 0 < rom_size_words < (1 << 64)
 
         self.nonce = nonce
-        self.nonce_width = nonce_width
         self.key = key
-        self.key_width = key_width
         self.rom_size_words = rom_size_words
-        self.rom_base = rom_base
-
         self.config = load_secded_config()
         self.hash_file = hash_file
 
         self._addr_width = (rom_size_words - 1).bit_length()
 
     @staticmethod
-    def from_hjson_path(path: str, mode: str, hash_file: IO[str]) -> 'Scrambler':
-        mem_ctrl = MemoryController.from_hjson_path(path, mode)
-        assert mem_ctrl is not None
+    def _get_rom_ctrl(modules: List[object]) -> _UDict:
+        rom_ctrls = []  # type: List[_UDict]
+        for entry in modules:
+            assert isinstance(entry, dict)
+            entry_type = entry.get('type')
+            assert isinstance(entry_type, str)
 
-        return Scrambler(mem_ctrl.nonce, mem_ctrl.nonce_width,
-                         mem_ctrl.scr_key, mem_ctrl.scr_key_width,
-                         mem_ctrl.base, mem_ctrl.size_words, hash_file)
+            if entry_type == 'rom_ctrl':
+                rom_ctrls.append(entry)
+
+        assert len(rom_ctrls) == 1
+        return rom_ctrls[0]
+
+    @staticmethod
+    def _get_params(module: _UDict) -> Dict[str, _UDict]:
+        params = module.get('param_list')
+        assert isinstance(params, list)
+
+        named_params = {}  # type: Dict[str, _UDict]
+        for param in params:
+            name = param.get('name')
+            assert isinstance(name, str)
+            assert name not in named_params
+            named_params[name] = param
+
+        return named_params
+
+    @staticmethod
+    def _get_param_value(params: Dict[str, _UDict], name: str,
+                         width: int) -> int:
+        param = params.get(name)
+        assert isinstance(param, dict)
+
+        default = param.get('default')
+        assert isinstance(default, str)
+        int_val = int(default, 0)
+        assert 0 <= int_val < (1 << width)
+        return int_val
+
+    @staticmethod
+    def from_hjson_path(path: str, rom_size_words: int, hash_file: IO[str]) -> 'Scrambler':
+        assert 0 < rom_size_words
+
+        with open(path) as handle:
+            top = hjson.load(handle, use_decimal=True)
+
+        assert isinstance(top, dict)
+        modules = top.get('module')
+        assert isinstance(modules, list)
+
+        rom_ctrl = Scrambler._get_rom_ctrl(modules)
+
+        params = Scrambler._get_params(rom_ctrl)
+        nonce = Scrambler._get_param_value(params, 'RndCnstScrNonce', 64)
+        key = Scrambler._get_param_value(params, 'RndCnstScrKey', 128)
+
+        return Scrambler(nonce, key, rom_size_words, hash_file)
 
     def flatten(self, mem: MemFile) -> MemFile:
         '''Flatten and pad mem up to the correct size
@@ -301,16 +217,16 @@ class Scrambler:
         return full_keystream & ((1 << width) - 1)
 
     def addr_sp_enc(self, log_addr: int) -> int:
-        assert self._addr_width < self.nonce_width
-        data_nonce_width = self.nonce_width - self._addr_width
+        assert self._addr_width < 64
+        data_nonce_width = 64 - self._addr_width
         addr_scr_nonce = self.nonce >> data_nonce_width
         return subst_perm_enc(log_addr, addr_scr_nonce, self._addr_width,
                               self.subst_perm_rounds)
 
     def addr_sp_dec(self, phy_addr: int) -> int:
-        assert self._addr_width < self.nonce_width
+        assert self._addr_width < 64
 
-        data_nonce_width = self.nonce_width - self._addr_width
+        data_nonce_width = 64 - self._addr_width
         addr_scr_nonce = self.nonce >> data_nonce_width
         return subst_perm_dec(phy_addr, addr_scr_nonce, self._addr_width,
                               self.subst_perm_rounds)
@@ -439,16 +355,15 @@ class Scrambler:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument('hjson')
-    parser.add_argument('mode')
     parser.add_argument('infile', type=argparse.FileType('rb'))
     parser.add_argument('outfile', type=argparse.FileType('w'))
     parser.add_argument('hashfile', type=argparse.FileType('w'))
 
     args = parser.parse_args()
-    scrambler = Scrambler.from_hjson_path(args.hjson, args.mode, args.hashfile)
+    scrambler = Scrambler.from_hjson_path(args.hjson, ROM_SIZE_WORDS, args.hashfile)
 
     # Load the input ELF file
-    clr_mem = MemFile.load_elf32(args.infile, scrambler.rom_base)
+    clr_mem = MemFile.load_elf32(args.infile, 4 * ROM_BASE_WORD)
 
     # Flatten the file, padding with pseudo-random data and ensuring it's
     # exactly scrambler.rom_size_words words long.

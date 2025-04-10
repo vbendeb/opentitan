@@ -15,7 +15,6 @@ module prim_xilinx_ram_1p import prim_ram_1p_pkg::*; #(
   localparam int Aw              = $clog2(Depth)  // derived parameter
 ) (
   input  logic             clk_i,
-  input  logic             rst_ni,
 
   input  logic             req_i,
   input  logic             write_i,
@@ -23,8 +22,7 @@ module prim_xilinx_ram_1p import prim_ram_1p_pkg::*; #(
   input  logic [Width-1:0] wdata_i,
   input  logic [Width-1:0] wmask_i,
   output logic [Width-1:0] rdata_o, // Read data. Data is returned one cycle after req_i is high.
-  input ram_1p_cfg_t       cfg_i,
-  output ram_1p_cfg_rsp_t  cfg_rsp_o
+  input ram_1p_cfg_t       cfg_i
 );
 
   localparam int PrimMaxWidth = prim_xilinx_pkg::get_ram_max_width(Width, Depth);
@@ -42,17 +40,17 @@ module prim_xilinx_ram_1p import prim_ram_1p_pkg::*; #(
     logic wr_en;
     assign wr_en = write_i & wmask_i[0];
 
-    logic unused_signals;
-    assign unused_signals = ^{rst_ni, cfg_i};
-    assign cfg_rsp_o      = '0;
+    logic unused_cfg_i;
+    assign unused_cfg_i = cfg_i;
 
     for (genvar k = 0; k < Width; k = k + PrimMaxWidth) begin : gen_split
       localparam int PrimWidth = ((Width - k) > PrimMaxWidth) ? PrimMaxWidth : Width - k;
+      localparam string PrimMemoryInitFile = (MemInitFile != "") ? MemInitFile : "none";
 
       xpm_memory_spram #(
         .ADDR_WIDTH_A(Aw),
         .BYTE_WRITE_WIDTH_A(PrimWidth), // Masks are not supported
-        .MEMORY_INIT_FILE((MemInitFile == "") ? "none" : MemInitFile),
+        .MEMORY_INIT_FILE(PrimMemoryInitFile),
         .MEMORY_SIZE(Depth * PrimWidth),
         .READ_DATA_WIDTH_A(PrimWidth),
         .READ_LATENCY_A(1),

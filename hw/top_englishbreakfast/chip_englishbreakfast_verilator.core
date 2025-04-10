@@ -8,6 +8,7 @@ filesets:
   files_sim_verilator:
     depend:
       - lowrisc:systems:top_englishbreakfast:0.1
+      - lowrisc:systems:topgen
       - lowrisc:dv_dpi_c:uartdpi
       - lowrisc:dv_dpi_sv:uartdpi
       - lowrisc:dv_dpi_c:gpiodpi

@@ -5,20 +5,7 @@
 package(default_visibility = ["//visibility:public"])
 
 filegroup(
-    name = "rtl_files",
-    srcs = glob(
-        ["**"],
-        exclude = [
-            "dv/**",
-            "doc/**",
-            "README.md",
-        ],
-    ),
-)
-
-filegroup(
-    name = "verilator_files",
-    srcs = glob(["dv/**"]) + [
-        ":rtl_files",
+    name = "all_files",
+    srcs = glob(["**"]) + [
     ],
 )

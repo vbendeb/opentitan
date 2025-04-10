@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 load("@bazel_skylib//lib:types.bzl", "types")
-load("@lowrisc_opentitan//rules/opentitan:providers.bzl", "OpenTitanBinaryInfo")
+load("@lowrisc_opentitan//rules/opentitan:providers.bzl", "PROVIDER_FIELDS")
 load("@lowrisc_opentitan//rules/opentitan:util.bzl", "get_fallback", "get_files")
 load("//rules/opentitan:toolchain.bzl", "LOCALTOOLS_TOOLCHAIN")
 
@@ -81,7 +81,6 @@ def exec_env_as_dict(ctx):
     tc = ctx.toolchains[LOCALTOOLS_TOOLCHAIN]
     result = {
         "_opentitantool": tc.tools.opentitantool,
-        "_update_manifest_json": tc.tools.update_manifest_json,
     }
     for field, (path, required) in _FIELDS.items():
         val = getattr_path(ctx, path)
@@ -235,8 +234,6 @@ def _do_update(name, file, data_files, param, action_param):
     """Update the files list and param dictionaries."""
     if name in param:
         fail(name, "already exists in the param dictionary")
-    if type(file) != "File":
-        return
     data_files.append(file)
     param[name] = file.short_path
     if action_param != None:
@@ -270,31 +267,32 @@ def update_file_provider(name, provider, data_files, param, action_param = None,
     if not provider:
         # Nothing to do.
         return
-    for field in dir(provider):
+    for field in PROVIDER_FIELDS:
         file = getattr(provider, field, None)
+        if not file:
+            continue
         if field == default:
             _update(name, file, data_files, param, action_param)
         else:
             _update("{}:{}".format(name, field), file, data_files, param, action_param)
 
-def update_file_attr(ctx, name, attr, exec_env, data_files, param, action_param = None, default = "default"):
+def update_file_attr(name, attr, provider, data_files, param, action_param = None, default = "default"):
     """Map available attr files into a file list and param dictionary.
 
     All available Files will be added into the data_files list and param
     dictionary.  Dict keys will be named as `name:fieldname` for all
     non-default items in the provider.
 
-    If the `exec_env` is not present in `attr`, DefaultInfo will be inspected.
+    If the `provider` is not present in `attr`, DefaultInfo will be inspected.
 
     Args:
-      ctx: The rule context for this test.
       name: The name of the item to add to the param dictionary.
       attr: The attribute holding the files.
-      exec_env: The ExecEnvInfo of the exec env to check in `attr`.
+      provider: The provider to check in `attr`.
       data_files: A list of files to append available files into.
       param: A mapping of item names to file short_paths.
       action_param: A mapping of item names to full file paths.
-      default: The element of the exec_env to consider as the default item.
+      default: The element of the provider to consider as the default item.
     Returns:
       None
     """
@@ -309,35 +307,22 @@ def update_file_attr(ctx, name, attr, exec_env, data_files, param, action_param 
             fail("attr must be a single item")
     if type(attr) == "File":
         _update(name, attr, data_files, param, action_param)
-    elif OpenTitanBinaryInfo in attr:
-        # This target was built by opentitan_binary, so make a few sanity check to make
-        # sure that it contains a binary for the right target.
-        if exec_env == None:
-            fail("For target {}, attribute {} is {}, ".format(ctx.label, name, attr) +
-                 "which is an opentitan binary, but no exec_env was provided")
-        provider = exec_env.provider
-        env_name = "{}/{}".format(exec_env.design, exec_env.exec_env)
-        if provider not in attr:
-            built_env_names = [
-                "{}/{}".format(env.design, env.exec_env)
-                for env in attr[OpenTitanBinaryInfo].exec_env.values()
-            ]
-            fail("For target {}, attribute {} is {}, which was built".format(ctx.label, name, attr) +
-                 " for {} and is not compatible with {}".format(", ".join(built_env_names), env_name))
-
-        # NOTE Here is it entirely possible that the exec_env of this target is not the same
-        # as the one for building this target, they just happen to have the same provider. We
-        # assume in this case that they are compatible. This happens for example for a target
-        # that depends on the ROM or ROM_EXT: it will most likely have been built for a different
-        # (but compatible) exec_env.
-        provider = exec_env.provider
-
+    elif provider and provider in attr:
         update_file_provider(name, attr[provider], data_files, param, action_param, default)
     elif DefaultInfo in attr:
-        file = attr[DefaultInfo].files.to_list()
-        if len(file) > 1:
-            fail("Expected to find exactly one file in", attr)
-        _update(name, file[0], data_files, param, action_param)
+        # Filter out disassembly files.
+        file_list = attr[DefaultInfo].files.to_list()
+        file = None
+        num_files = 0
+        for f in file_list:
+            if f.extension == "dis":
+                continue
+            else:
+                file = f
+                num_files += 1
+        if num_files > 1:
+            fail("Expected to find exactly one file in", attr, ", but got", num_files)
+        _update(name, file, data_files, param, action_param)
     else:
         fail("No file providers in", attr)
 
@@ -370,10 +355,10 @@ def common_test_setup(ctx, exec_env, firmware):
     action_param = dict(param)
 
     # Collect all file resource specified in the exec_env or as overrides.
-    update_file_attr(ctx, "bitstream", ctx.attr.bitstream, None, data_files, param, action_param)
+    update_file_attr("bitstream", ctx.attr.bitstream, None, data_files, param, action_param)
 
     otp = get_fallback(ctx, "attr.otp", exec_env)
-    update_file_attr(ctx, "otp", otp, None, data_files, param, action_param)
+    update_file_attr("otp", otp, None, data_files, param, action_param)
 
     if ctx.attr.kind == "rom" and firmware:
         # If its a "rom" test, then the firmware built by the rule should be
@@ -381,15 +366,15 @@ def common_test_setup(ctx, exec_env, firmware):
         update_file_provider("rom", firmware, data_files, param, action_param)
     else:
         rom = get_fallback(ctx, "attr.rom", exec_env)
-        update_file_attr(ctx, "rom", rom, exec_env, data_files, param, action_param, default = "rom")
+        update_file_attr("rom", rom, exec_env.provider, data_files, param, action_param, default = "rom")
 
     rom_ext = get_fallback(ctx, "attr.rom_ext", exec_env)
-    update_file_attr(ctx, "rom_ext", rom_ext, exec_env, data_files, param, action_param)
+    update_file_attr("rom_ext", rom_ext, exec_env.provider, data_files, param, action_param)
 
     # Add the binaries built by the test or added to the test.
     update_file_provider("firmware", firmware, data_files, param, action_param)
     for attr, name in ctx.attr.binaries.items():
-        update_file_attr(ctx, name, attr, exec_env, data_files, param, action_param)
+        update_file_attr(name, attr, exec_env.provider, data_files, param, action_param)
 
     if ctx.attr.needs_jtag:
         openocd = exec_env.openocd

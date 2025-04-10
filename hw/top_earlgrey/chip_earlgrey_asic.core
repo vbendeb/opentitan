@@ -9,11 +9,11 @@ filesets:
     depend:
       - lowrisc:systems:top_earlgrey:0.1
       - lowrisc:systems:top_earlgrey_pkg
-      - lowrisc:systems:top_earlgrey_padring
-      - "fileset_partner ? (partner:systems:top_earlgrey_ast)"
-      - "fileset_partner ? (partner:systems:top_earlgrey_scan_role_pkg)"
-      - "!fileset_partner ? (lowrisc:systems:top_earlgrey_ast)"
-      - "!fileset_partner ? (lowrisc:earlgrey_systems:scan_role_pkg)"
+      - lowrisc:systems:padring
+      - "fileset_partner ? (partner:systems:ast)"
+      - "fileset_partner ? (partner:systems:scan_role_pkg)"
+      - "!fileset_partner ? (lowrisc:systems:ast)"
+      - "!fileset_partner ? (lowrisc:systems:scan_role_pkg)"
     files:
       - rtl/autogen/chip_earlgrey_asic.sv
     file_type: systemVerilogSource
@@ -44,6 +44,10 @@ parameters:
   SYNTHESIS:
     datatype: bool
     paramtype: vlogdefine
+  IBEX_CUSTOM_PMP_RESET_VALUES:
+    datatype: bool
+    default: true
+    paramtype: vlogdefine
 
 targets:
   default: &default_target
@@ -53,6 +57,8 @@ targets:
       - tool_veriblelint ? (files_veriblelint_waiver)
       - files_rtl
     toplevel: chip_earlgrey_asic
+    parameters:
+      - IBEX_CUSTOM_PMP_RESET_VALUES
 
   lint:
     <<: *default_target

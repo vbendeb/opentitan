@@ -427,13 +427,6 @@ otbn_library(
 )
 
 otbn_library(
-    name = "sha3_shake",
-    srcs = [
-        "sha3_shake.s",
-    ],
-)
-
-otbn_library(
     name = "x25519",
     srcs = [
         "x25519.s",

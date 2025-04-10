@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
-load("@rules_rust_bindgen//:defs.bzl", "rust_bindgen_library")
+load("@rules_rust//bindgen:bindgen.bzl", "rust_bindgen_library")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -12,8 +12,8 @@ rust_bindgen_library(
     bindgen_flags = [
         "--allowlist-function=xmodem_.*",
     ],
-    cc_lib = "//sw/device/silicon_creator/lib:xmodem_testlib",
-    header = "//sw/device/silicon_creator/lib:xmodem_testlib.h",
+    cc_lib = "//sw/device/silicon_creator/lib/rescue:xmodem_testlib",
+    header = "//sw/device/silicon_creator/lib/rescue:xmodem_testlib.h",
     rustc_flags = [
         "--allow=non_snake_case",
         "--allow=non_upper_case_globals",

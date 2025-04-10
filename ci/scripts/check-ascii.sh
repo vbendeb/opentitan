@@ -48,6 +48,7 @@ allowed_suffixes=(
     hh
 
     # Signature files are binary files.
+    ecdsa_sig
     rsa_sig
     spx_sig
 )
@@ -85,7 +86,7 @@ git ls-files | \
     grep -v "${suff_re}" | \
     env LC_ALL=C xargs grep -d skip -P '[^\0-\x7f]' >"$TMPFILE" || true
 if [ -s "$TMPFILE" ]; then
-    echo -n ":error::"
+    echo -n "##vso[task.logissue type=error]"
     echo "One or more files have unexpected non-ASCII text:"
     cat "$TMPFILE"
     exit 1

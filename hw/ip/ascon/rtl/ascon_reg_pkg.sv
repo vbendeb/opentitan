@@ -78,46 +78,54 @@ package ascon_reg_pkg;
 
   typedef struct packed {
     struct packed {
-      logic [3:0]  q;
+      logic        q;
+      logic        qe;
     } no_ad;
     struct packed {
-      logic [3:0]  q;
+      logic        q;
+      logic        qe;
     } no_msg;
     struct packed {
       logic        q;
+      logic        qe;
     } masked_msg_input;
     struct packed {
       logic        q;
+      logic        qe;
     } masked_ad_input;
     struct packed {
       logic        q;
+      logic        qe;
     } sideload_key;
     struct packed {
-      logic [1:0]  q;
-    } ascon_variant;
-    struct packed {
       logic [2:0]  q;
+      logic        qe;
     } operation;
   } ascon_reg2hw_ctrl_shadowed_reg_t;
 
   typedef struct packed {
     struct packed {
       logic        q;
+      logic        qe;
     } force_data_overwrite;
     struct packed {
       logic        q;
+      logic        qe;
     } manual_start_trigger;
   } ascon_reg2hw_ctrl_aux_shadowed_reg_t;
 
   typedef struct packed {
     struct packed {
       logic [4:0]  q;
+      logic        qe;
     } valid_bytes;
     struct packed {
       logic [11:0] q;
+      logic        qe;
     } data_type_last;
     struct packed {
       logic [11:0] q;
+      logic        qe;
     } data_type_start;
   } ascon_reg2hw_block_ctrl_shadowed_reg_t;
 
@@ -202,18 +210,22 @@ package ascon_reg_pkg;
     struct packed {
       logic        d;
       logic        de;
+    } alert_recov_ctrl_aux_update_err;
+    struct packed {
+      logic        d;
+      logic        de;
+    } alert_recov_block_ctrl_update_err;
+    struct packed {
+      logic        d;
+      logic        de;
     } alert_fatal_fault;
   } ascon_hw2reg_status_reg_t;
 
   typedef struct packed {
     struct packed {
-      logic        d;
+      logic [2:0]  d;
       logic        de;
-    } msg_valid;
-    struct packed {
-      logic        d;
-      logic        de;
-    } tag_valid;
+    } data_type;
     struct packed {
       logic [1:0]  d;
       logic        de;
@@ -245,35 +257,35 @@ package ascon_reg_pkg;
 
   // Register -> HW type
   typedef struct packed {
-    ascon_reg2hw_alert_test_reg_t alert_test; // [1273:1270]
-    ascon_reg2hw_key_share0_mreg_t [3:0] key_share0; // [1269:1138]
-    ascon_reg2hw_key_share1_mreg_t [3:0] key_share1; // [1137:1006]
-    ascon_reg2hw_nonce_share0_mreg_t [3:0] nonce_share0; // [1005:874]
-    ascon_reg2hw_nonce_share1_mreg_t [3:0] nonce_share1; // [873:742]
-    ascon_reg2hw_data_in_share0_mreg_t [3:0] data_in_share0; // [741:610]
-    ascon_reg2hw_data_in_share1_mreg_t [3:0] data_in_share1; // [609:478]
-    ascon_reg2hw_tag_in_mreg_t [3:0] tag_in; // [477:346]
-    ascon_reg2hw_msg_out_mreg_t [3:0] msg_out; // [345:214]
-    ascon_reg2hw_tag_out_mreg_t [3:0] tag_out; // [213:82]
-    ascon_reg2hw_ctrl_shadowed_reg_t ctrl_shadowed; // [81:66]
-    ascon_reg2hw_ctrl_aux_shadowed_reg_t ctrl_aux_shadowed; // [65:64]
-    ascon_reg2hw_block_ctrl_shadowed_reg_t block_ctrl_shadowed; // [63:35]
+    ascon_reg2hw_alert_test_reg_t alert_test; // [1276:1273]
+    ascon_reg2hw_key_share0_mreg_t [3:0] key_share0; // [1272:1141]
+    ascon_reg2hw_key_share1_mreg_t [3:0] key_share1; // [1140:1009]
+    ascon_reg2hw_nonce_share0_mreg_t [3:0] nonce_share0; // [1008:877]
+    ascon_reg2hw_nonce_share1_mreg_t [3:0] nonce_share1; // [876:745]
+    ascon_reg2hw_data_in_share0_mreg_t [3:0] data_in_share0; // [744:613]
+    ascon_reg2hw_data_in_share1_mreg_t [3:0] data_in_share1; // [612:481]
+    ascon_reg2hw_tag_in_mreg_t [3:0] tag_in; // [480:349]
+    ascon_reg2hw_msg_out_mreg_t [3:0] msg_out; // [348:217]
+    ascon_reg2hw_tag_out_mreg_t [3:0] tag_out; // [216:85]
+    ascon_reg2hw_ctrl_shadowed_reg_t ctrl_shadowed; // [84:71]
+    ascon_reg2hw_ctrl_aux_shadowed_reg_t ctrl_aux_shadowed; // [70:67]
+    ascon_reg2hw_block_ctrl_shadowed_reg_t block_ctrl_shadowed; // [66:35]
     ascon_reg2hw_trigger_reg_t trigger; // [34:33]
     ascon_reg2hw_fsm_state_reg_t fsm_state; // [32:0]
   } ascon_reg2hw_t;
 
   // HW -> register type
   typedef struct packed {
-    ascon_hw2reg_key_share0_mreg_t [3:0] key_share0; // [1086:959]
-    ascon_hw2reg_key_share1_mreg_t [3:0] key_share1; // [958:831]
-    ascon_hw2reg_nonce_share0_mreg_t [3:0] nonce_share0; // [830:703]
-    ascon_hw2reg_nonce_share1_mreg_t [3:0] nonce_share1; // [702:575]
-    ascon_hw2reg_data_in_share0_mreg_t [3:0] data_in_share0; // [574:447]
-    ascon_hw2reg_data_in_share1_mreg_t [3:0] data_in_share1; // [446:319]
-    ascon_hw2reg_msg_out_mreg_t [3:0] msg_out; // [318:191]
-    ascon_hw2reg_tag_out_mreg_t [3:0] tag_out; // [190:63]
-    ascon_hw2reg_trigger_reg_t trigger; // [62:59]
-    ascon_hw2reg_status_reg_t status; // [58:47]
+    ascon_hw2reg_key_share0_mreg_t [3:0] key_share0; // [1090:963]
+    ascon_hw2reg_key_share1_mreg_t [3:0] key_share1; // [962:835]
+    ascon_hw2reg_nonce_share0_mreg_t [3:0] nonce_share0; // [834:707]
+    ascon_hw2reg_nonce_share1_mreg_t [3:0] nonce_share1; // [706:579]
+    ascon_hw2reg_data_in_share0_mreg_t [3:0] data_in_share0; // [578:451]
+    ascon_hw2reg_data_in_share1_mreg_t [3:0] data_in_share1; // [450:323]
+    ascon_hw2reg_msg_out_mreg_t [3:0] msg_out; // [322:195]
+    ascon_hw2reg_tag_out_mreg_t [3:0] tag_out; // [194:67]
+    ascon_hw2reg_trigger_reg_t trigger; // [66:63]
+    ascon_hw2reg_status_reg_t status; // [62:47]
     ascon_hw2reg_output_valid_reg_t output_valid; // [46:40]
     ascon_hw2reg_fsm_state_reg_t fsm_state; // [39:8]
     ascon_hw2reg_error_reg_t error; // [7:0]
@@ -464,7 +476,7 @@ package ascon_reg_pkg;
     4'b 1111, // index[34] ASCON_TAG_OUT_1
     4'b 1111, // index[35] ASCON_TAG_OUT_2
     4'b 1111, // index[36] ASCON_TAG_OUT_3
-    4'b 0011, // index[37] ASCON_CTRL_SHADOWED
+    4'b 0001, // index[37] ASCON_CTRL_SHADOWED
     4'b 0001, // index[38] ASCON_CTRL_AUX_SHADOWED
     4'b 0001, // index[39] ASCON_CTRL_AUX_REGWEN
     4'b 1111, // index[40] ASCON_BLOCK_CTRL_SHADOWED

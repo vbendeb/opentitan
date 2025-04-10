@@ -10,23 +10,15 @@
       default: ""
     }
     {
-      name: "uniquified_modules"
-      desc: "A dictionary mapping template_names to uniquified_names"
+      name: "clks"
+      desc: "List of source clocks, as in 'aon', 'io', 'io_div2'"
       type: "object"
-      default: {"clkmgr": "clkmgr1"}
-    }
-    {
-      name: "clk_freqs"
-      desc: '''A dictionary accessed by source clock containing its clock
-            frequency in Hz, for example {'io': 96000000}}
-	    '''
-      type: "object"
-      default: {"aon": 200000, "io": 96000000}
+      default: ["aon", "io_div4", "main", "io", "io_div2", "usb"]
     }
     {
       name: "reqs"
-      desc: '''A dictionary of reset requests indexed by type, as in
-            'peripheral', 'int', 'debug'.
+      desc: '''A dictionary of reset requests indexed by type, as in 'peripheral', 'int',
+            'debug'.
             '''
       type: "object"
       default: {
@@ -56,13 +48,9 @@
     }
     {
       name: "sw_rsts"
-      desc: '''A list of (device, clk) pairs for software reset targets.
-            The device is the target of the software reset and clk is the
-	    corresponding clock. The clock is needed since clocks and resets
-	    are paired.
-            '''
+      desc: "A list of software reset targets, as in ['spi_device', 'i2c0']"
       type: "object"
-      default: {"spi_device": "io_div4", "spi_host0": "io"}
+      default: ["spi_device", "i2c0"]
     }
     {
       name: "output_rsts"
@@ -122,18 +110,6 @@
       desc: "A dictionary of exported resets"
       type: "object"
       default: {}
-    }
-    {
-      name: "with_alert_handler"
-      desc: "Generate outputs for a rstmgr that would connect to an alert handler"
-      type: "bool"
-      default: "1"
-    }
-    {
-      name: "module_instance_name"
-      desc: "instance name in case there are multiple rstmgr instances. Not yet implemented."
-      type: "string"
-      default: "rstmgr"
     }
   ]
 }

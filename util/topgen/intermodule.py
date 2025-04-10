@@ -10,17 +10,12 @@ from typing import Dict, List, Tuple
 
 from reggen.ip_block import IpBlock
 from reggen.inter_signal import InterSignal
-from reggen.params import Parameter
 from reggen.validate import check_int
 from topgen import lib
 
 IM_TYPES = ['uni', 'req_rsp', 'io']
 IM_ACTS = ['req', 'rsp', 'rcv', 'none']
-IM_VALID_TYPEACT = {
-    'uni': ['req', 'rcv'],
-    'req_rsp': ['req', 'rsp'],
-    'io': ['none']
-}
+IM_VALID_TYPEACT = {'uni': ['req', 'rcv'], 'req_rsp': ['req', 'rsp'], 'io': ['none']}
 IM_CONN_TYPE = ['1-to-1', '1-to-N', 'broadcast']
 
 
@@ -100,7 +95,7 @@ def add_intermodule_connection(obj: OrderedDict, req_m: str, req_s: str,
         # check if rsp has data
         if rsp_key in connect[req_key]:
             return
-        connect[req_key].append(rsp_key)
+        req_key.append(rsp_key)
         return
 
     # req_key is not in connect:
@@ -109,14 +104,15 @@ def add_intermodule_connection(obj: OrderedDict, req_m: str, req_s: str,
         # check if rsp has data
         if req_key in connect[rsp_key]:
             return
-        connect[rsp_key].append(req_key)
+        rsp_key.append(req_key)
         return
 
     # Add new key and connect
     connect[req_key] = [rsp_key]
 
 
-def autoconnect_xbar(topcfg: OrderedDict, name_to_block: Dict[str, IpBlock],
+def autoconnect_xbar(topcfg: OrderedDict,
+                     name_to_block: Dict[str, IpBlock],
                      xbar: OrderedDict) -> None:
     # The crossbar is connecting to modules and memories in topcfg, plus
     # possible external connections. Make indices for the modules and memories
@@ -153,8 +149,9 @@ def autoconnect_xbar(topcfg: OrderedDict, name_to_block: Dict[str, IpBlock],
 
         if port["xbar"]:
             if port_iname is not None:
-                log.error('A crossbar connection may not have a target of the '
-                          f'form MOD.INAME (saw {port["name"]})')
+                log.error('A crossbar connection may not '
+                          'have a target of the form MOD.INAME (saw {!r})'
+                          .format(port['name']))
                 continue
 
             if port["type"] == "host":
@@ -183,10 +180,10 @@ def autoconnect_xbar(topcfg: OrderedDict, name_to_block: Dict[str, IpBlock],
             continue
 
         if port_iname is not None and port_mem is not None:
-            log.error(
-                f'Cannot make connection for {port["name"]}: the base of the '
-                'name points to a memory but memories do not support '
-                'interface names.'.format(port['name']))
+            log.error('Cannot make connection for {!r}: the base of the name '
+                      'points to a memory but memories do not support '
+                      'interface names.'
+                      .format(port['name']))
 
         is_host = port['type'] == 'host'
 
@@ -199,27 +196,29 @@ def autoconnect_xbar(topcfg: OrderedDict, name_to_block: Dict[str, IpBlock],
         if port_mod is not None:
             block = name_to_block[port_mod['type']]
             try:
-                sig_name = block.bus_interfaces.find_port_name(
-                    is_host, port_iname)
+                sig_name = block.bus_interfaces.find_port_name(is_host,
+                                                               port_iname)
             except KeyError:
-                log.error(
-                    'Cannot make {} connection for {!r}: the base of the '
-                    'target module has no matching bus interface.'.format(
-                        'host' if is_host else 'device', port['name']))
+                log.error('Cannot make {} connection for {!r}: the base of '
+                          'the target module has no matching bus interface.'
+                          .format('host' if is_host else 'device',
+                                  port['name']))
                 continue
         else:
             inter_signal_list = port_mem['inter_signal_list']
             act = 'req' if is_host else 'rsp'
             matches = [
                 x for x in inter_signal_list
-                if (x.get('package') == 'tlul_pkg' and x['struct'] == 'tl' and
+                if (x.get('package') == 'tlul_pkg' and
+                    x['struct'] == 'tl' and
                     x['act'] == act)
             ]
             if not matches:
-                log.error(
-                    'Cannot make {} connection for {!r}: the memory has no '
-                    'signal with an action of {}.'.format(
-                        'host' if is_host else 'device', port['name'], act))
+                log.error('Cannot make {} connection for {!r}: the memory '
+                          'has no signal with an action of {}.'
+                          .format('host' if is_host else 'device',
+                                  port['name'],
+                                  act))
                 continue
 
             assert len(matches) == 1
@@ -248,29 +247,6 @@ def autoconnect(topcfg: OrderedDict, name_to_block: Dict[str, IpBlock]):
     for xbar in topcfg["xbar"]:
         autoconnect_xbar(topcfg, name_to_block, xbar)
 
-    # Auto connect RACL subscribing IPs to the associated racl_ctrl IP
-    if 'racl' in topcfg:
-        # Find the RACL control of the defined group. This currently only works for the default
-        # RACL ctrl module when there is a single instance. This limitation currently comes from
-        # ipgen and is tracked in #25673
-        racl_ctrl = lib.find_module(topcfg['module'], 'racl_ctrl')
-        if not racl_ctrl:
-            raise ValueError('No RACL Control module found')
-
-        # Determine all subscribing RACL modules
-        for m in topcfg['module']:
-            for racl_group in m.get('racl_mappings', {}).keys():
-                add_intermodule_connection(obj=topcfg,
-                                           req_m=racl_ctrl['name'],
-                                           req_s="racl_policies",
-                                           rsp_m=m['name'],
-                                           rsp_s="racl_policies")
-                add_intermodule_connection(obj=topcfg,
-                                           req_m=racl_ctrl['name'],
-                                           req_s="racl_error",
-                                           rsp_m=m['name'],
-                                           rsp_s="racl_error")
-
 
 def _get_default_name(sig, suffix):
     """Generate default for a net if one does not already exist.
@@ -282,8 +258,7 @@ def _get_default_name(sig, suffix):
     if sig['default']:
         return sig['default']
     elif sig['package']:
-        return "{}::{}_DEFAULT".format(sig['package'],
-                                       (sig["struct"] + suffix).upper())
+        return "{}::{}_DEFAULT".format(sig['package'], (sig["struct"] + suffix).upper())
     else:
         return "'0"
 
@@ -315,7 +290,8 @@ def elab_intermodule(topcfg: OrderedDict):
         for entry in old_isl:
             # Convert any InterSignal objects to the expected dictionary format.
             sig = (entry.as_dict()
-                   if isinstance(entry, InterSignal) else entry.copy())
+                   if isinstance(entry, InterSignal)
+                   else entry.copy())
 
             # Add instance name to the entry and add to list_of_intersignals
             sig["inst_name"] = x["name"]
@@ -358,7 +334,7 @@ def elab_intermodule(topcfg: OrderedDict):
         log.info("{req} --> {rsps}".format(req=req, rsps=rsps))
 
         # Split index
-        req_module, req_signal, _req_index = filter_index(req)
+        req_module, req_signal, req_index = filter_index(req)
 
         # get the module signal
         req_struct = find_intermodule_signal(list_of_intersignals, req_module,
@@ -373,7 +349,7 @@ def elab_intermodule(topcfg: OrderedDict):
             package = req_struct["package"]
         else:
             for rsp in rsps:
-                rsp_module, rsp_signal, _rsp_index = filter_index(rsp)
+                rsp_module, rsp_signal, rsp_index = filter_index(rsp)
                 rsp_struct = find_intermodule_signal(list_of_intersignals,
                                                      rsp_module, rsp_signal)
                 if "package" in rsp_struct:
@@ -434,7 +410,7 @@ def elab_intermodule(topcfg: OrderedDict):
 
         for i, rsp in enumerate(rsps):
             # Split index
-            rsp_module, rsp_signal, _rsp_index = filter_index(rsp)
+            rsp_module, rsp_signal, rsp_index = filter_index(rsp)
 
             rsp_struct = find_intermodule_signal(list_of_intersignals,
                                                  rsp_module, rsp_signal)
@@ -665,21 +641,20 @@ def check_intermodule_field(sig: OrderedDict,
                                 name=sig['name']))
             error += 1
     # Check 'width' field
-    raw_width = sig.get("width", 1)
-    raw_width_value = raw_width
-    if isinstance(raw_width, Parameter):
-        raw_width_value = raw_width.default
-
-    width, err = check_int(raw_width_value, sig["name"])
-    if err:
-        log.error(
-            f"{prefix} Inter-module {sig['inst_name']}.{sig['name']} 'width' "
-            "should be int type.")
-        error += 1
-
-    # We leave parameters as they are. If it's an int, use the converted value
-    if not isinstance(raw_width, Parameter):
-        sig["width"] = width
+    width = 1
+    if "width" not in sig:
+        sig["width"] = 1
+    elif not isinstance(sig["width"], int):
+        width, err = check_int(sig["width"], sig["name"])
+        if err:
+            log.error("{prefix} Inter-module {inst}.{sig} 'width' "
+                      "should be int type.".format(prefix=prefix,
+                                                   inst=sig["inst_name"],
+                                                   sig=sig["name"]))
+            error += 1
+        else:
+            # convert to int value
+            sig["width"] = width
 
     # Add empty string if no explicit default for dangling pins is given.
     # In that case, dangling pins of type struct will be tied to the default
@@ -700,9 +675,7 @@ def find_otherside_modules(topcfg: OrderedDict, m,
     """
     # TODO: handle special cases
     special_inst_names = {
-        ('peri', 'tl_ast'): ('ast', 'tl'),
-        ('dbg', 'tl_dbg'): ('dbg', 'tl'),
-        ('mbx', 'tl_mbx'): ('mbx', 'tl')
+        ('peri', 'tl_ast'): ('ast', 'tl')
     }
     special_result = special_inst_names.get((m, s))
     if special_result is not None:
@@ -714,13 +687,13 @@ def find_otherside_modules(topcfg: OrderedDict, m,
             # return rsps after splitting module instance name and the port
             result = []
             for rsp in rsps:
-                rsp_m, rsp_s, _rsp_i = filter_index(rsp)
+                rsp_m, rsp_s, rsp_i = filter_index(rsp)
                 result.append(('connect', rsp_m, rsp_s))
             return result
 
         for rsp in rsps:
             if signame == rsp:
-                req_m, req_s, _req_i = filter_index(req)
+                req_m, req_s, req_i = filter_index(req)
                 return [('connect', req_m, req_s)]
 
     # if reaches here, it means either the format is wrong, or floating port.
@@ -802,22 +775,8 @@ def check_intermodule(topcfg: Dict, prefix: str) -> int:
             err, rsp_struct = check_intermodule_field(rsp_struct)
             error += err
 
-            if isinstance(rsp_struct["width"], Parameter):
-                param = rsp_struct["width"]
-                if param.expose:
-                    # If it's a top-level exposed parameter, we need to find
-                    # definition from there
-                    module = lib.get_module_by_name(topcfg, req_m)
-                    width = int(module['param_decl'].get(
-                        param.name, param.default))
-                else:
-                    width = int(rsp_struct["width"].default)
-            else:
-                width = rsp_struct["width"]
-                assert isinstance(rsp_struct["width"], int)
-
-            total_width += width
-            widths.append(width)
+            total_width += rsp_struct["width"]
+            widths.append(rsp_struct["width"])
 
             # Type check
             # If no package was declared, it is declared with an empty string
@@ -854,41 +813,26 @@ def check_intermodule(topcfg: Dict, prefix: str) -> int:
                 elif rsp_i != -1:
                     # If rsp has index, req should be width 1
                     log.error(
-                        f"If rsp {rsp} has an array index, only one-to-one "
-                        "map is allowed.")
+                        "If rsp {rsp} has an array index, only one-to-one map is allowed."
+                        .format(rsp=rsp))
                     error += 1
 
         # Determine if broadcast or one-to-N
-        log.debug("Handling inter-sig {} {}".format(req_struct['name'],
-                                                    total_width))
-
-        if isinstance(req_struct["width"], Parameter):
-            param = req_struct["width"]
-            if param.expose:
-                # If it's a top-level exposed parameter, we need to find
-                # definition from there
-                module = lib.get_module_by_name(topcfg, req_m)
-                width = int(module['param_decl'].get(param.name,
-                                                     param.default))
-            else:
-                width = int(req_struct["width"].default)
-        else:
-            width = req_struct["width"]
-
+        log.debug("Handling inter-sig {} {}".format(req_struct['name'], total_width))
         req_struct["end_idx"] = -1
-        if width > 1 or len(rsps) != 1:
+        if req_struct["width"] > 1 or len(rsps) != 1:
             # If req width is same to the every width of rsps ==> broadcast
-            if len(rsps) * [width] == widths:
+            if len(rsps) * [req_struct["width"]] == widths:
                 log.debug("broadcast type")
                 req_struct["top_type"] = "broadcast"
 
             # If req width is same as total width of rsps ==> one-to-N
-            elif width == total_width:
+            elif req_struct["width"] == total_width:
                 log.debug("one-to-N type")
                 req_struct["top_type"] = "one-to-N"
 
             # one-to-N connection is not fully populated
-            elif width > total_width:
+            elif req_struct["width"] > total_width:
                 log.debug("partial one-to-N type")
                 req_struct["top_type"] = "partial-one-to-N"
                 req_struct["end_idx"] = len(rsps)
@@ -954,7 +898,8 @@ def im_defname(obj: OrderedDict) -> str:
                                           struct=obj["struct"])
 
 
-def im_netname(sig: OrderedDict, suffix: str = "", default_name=False) -> str:
+def im_netname(sig: OrderedDict,
+               suffix: str = "", default_name=False) -> str:
     """return top signal name with index
 
     It also adds suffix for external signal.
@@ -1003,14 +948,8 @@ def im_netname(sig: OrderedDict, suffix: str = "", default_name=False) -> str:
             # custom default has been specified
             if obj["default"]:
                 return obj["default"]
-            if isinstance(sig["width"], Parameter):
-                return "{{{param}{{{package}::{struct}_DEFAULT}}}}".format(
-                    param=sig["width"].name_top,
-                    package=obj["package"],
-                    struct=obj["struct"].upper())
-            else:
-                return "{package}::{struct}_DEFAULT".format(
-                    package=obj["package"], struct=obj["struct"].upper())
+            return "{package}::{struct}_DEFAULT".format(
+                package=obj["package"], struct=obj["struct"].upper())
 
         return ""
 
@@ -1021,8 +960,7 @@ def im_netname(sig: OrderedDict, suffix: str = "", default_name=False) -> str:
     if suffix == "io":
         suffix_s = ""
     else:
-        suffix_s = "_{suffix}".format(
-            suffix=suffix) if suffix != "" else suffix
+        suffix_s = "_{suffix}".format(suffix=suffix) if suffix != "" else suffix
 
     # External signal handling
     if "external" in obj and obj["external"]:
@@ -1102,15 +1040,11 @@ def get_dangling_im_def(objs: OrderedDict) -> str:
     unused.
 
     """
-    unused_def = [
-        obj for obj in objs
-        if obj['end_idx'] > 0 and obj['act'] == obj['suffix']
-    ]
+    unused_def = [obj for obj in objs if obj['end_idx'] > 0 and
+                  obj['act'] == obj['suffix']]
 
-    undriven_def = [
-        obj for obj in objs if obj['end_idx'] > 0 and
-        (obj['act'] == 'req' and obj['suffix'] == 'rsp' or
-         obj['act'] == 'rsp' and obj['suffix'] == 'req' or obj['act'] == 'rcv')
-    ]
+    undriven_def = [obj for obj in objs if obj['end_idx'] > 0 and
+                    (obj['act'] == 'req' and obj['suffix'] == 'rsp' or
+                     obj['act'] == 'rsp' and obj['suffix'] == 'req')]
 
     return unused_def, undriven_def

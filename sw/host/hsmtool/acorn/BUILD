@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
-load("@rules_rust_bindgen//:defs.bzl", "rust_bindgen_library")
+load("@rules_rust//bindgen:bindgen.bzl", "rust_bindgen_library")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -17,6 +17,7 @@ rust_library(
     crate_root = "lib.rs",
     deps = [
         "//sw/host/hsmtool/acorn/vendor:acorn_bindgen",
+        "//sw/host/sphincsplus",
         "@crate_index//:anyhow",
         "@crate_index//:bitflags",
         "@crate_index//:libloading",

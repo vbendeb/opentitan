@@ -150,10 +150,6 @@ Formal Property Verification.
 
 Final Test.
 
-#### GCM
-
-Galois/Counter Mode.
-
 #### GF2
 
 Galois Field of order 2.
@@ -190,14 +186,6 @@ The 32-bit RISC-V core used in OpenTitan chips.
 
 Intellectual Property.
 
-#### IRQ
-
-Interrupt.
-
-#### IV
-
-Initialisation vector.
-
 #### KMAC
 
 Keccak Message Authentication Code.
@@ -206,7 +194,7 @@ Keccak Message Authentication Code.
 
 Life-Cycle (controller).
 
-#### LCV
+### LCV
 
 Life Cycle Value.
 
@@ -225,10 +213,6 @@ Multiplexer.
 #### Netlist
 
 A list of connections between nodes of a circuit.
-
-#### NMI
-
-Non-Maskable Interrupt.
 
 #### OTBN
 
@@ -249,10 +233,6 @@ Pin Multiplexer.
 #### PKI
 
 Public Key Infrastructure.
-
-#### PLIC
-
-Platform Level Interrupt Controller.
 
 #### PMP
 

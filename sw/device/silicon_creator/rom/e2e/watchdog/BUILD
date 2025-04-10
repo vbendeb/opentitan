@@ -11,8 +11,14 @@ load(
     "opentitan_test",
     "verilator_params",
 )
-load("@//rules/opentitan:keyutils.bzl", "ECDSA_ONLY_KEY_STRUCTS")
-load("//rules:const.bzl", "get_lc_items")
+load(
+    "@//rules:opentitan.bzl",
+    "ECDSA_ONLY_KEY_STRUCTS",
+)
+load(
+    "//rules:const.bzl",
+    "get_lc_items",
+)
 load(
     "//rules:otp.bzl",
     "STD_OTP_OVERLAYS",
@@ -20,7 +26,10 @@ load(
     "otp_json",
     "otp_partition",
 )
-load("//rules:rom_e2e.bzl", "maybe_skip_in_ci")
+load(
+    "//rules:rom_e2e.bzl",
+    "maybe_skip_in_ci",
+)
 
 package(default_visibility = ["//visibility:public"])
 
@@ -50,7 +59,7 @@ otp_json(
 [
     otp_image(
         name = "otp_img_watchdog_enable_{}".format(lc_state),
-        src = "//hw/top_earlgrey/data/otp:otp_json_{}".format(lc_state),
+        src = "//hw/ip/otp_ctrl/data:otp_json_{}".format(lc_state),
         overlays = STD_OTP_OVERLAYS + [":otp_json_watchdog_enable"],
     )
     for lc_state, _ in get_lc_items()
@@ -94,7 +103,7 @@ WATCHDOG_TEST_CASES = {
         ],
         manifest = "//sw/device/silicon_creator/rom_ext:manifest",
         deps = [
-            "//hw/top:aon_timer_c_regs",
+            "//hw/ip/aon_timer/data:aon_timer_c_regs",
             "//hw/top_earlgrey/sw/autogen:top_earlgrey",
             "//sw/device/lib/base:abs_mmio",
             "//sw/device/lib/testing/test_framework:ottf_ld_silicon_creator_slot_a",
@@ -109,7 +118,7 @@ WATCHDOG_TEST_CASES = {
 ]
 
 WATCHDOG_OTP = {
-    "disable": "//hw/top_earlgrey/data/otp:img_{}",
+    "disable": "//hw/ip/otp_ctrl/data:img_{}",
     "enable": ":otp_img_watchdog_enable_{}",
 }
 

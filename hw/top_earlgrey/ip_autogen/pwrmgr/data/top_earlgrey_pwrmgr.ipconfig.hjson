@@ -39,9 +39,23 @@
         module: sensor_ctrl_aon
       }
     ]
-    NumRstReqs: 2
     rst_reqs:
     {
+      peripheral:
+      [
+        {
+          name: rst_req
+          width: "1"
+          module: sysrst_ctrl_aon
+          desc: OpenTitan reset request to `rstmgr` (running on AON clock).
+        }
+        {
+          name: aon_timer_rst_req
+          width: "1"
+          module: aon_timer_aon
+          desc: watchdog reset requestt
+        }
+      ]
       int:
       [
         {
@@ -63,32 +77,8 @@
           module: rv_dm
         }
       ]
-      peripheral:
-      [
-        {
-          name: rst_req
-          width: "1"
-          module: sysrst_ctrl_aon
-          desc: OpenTitan reset request to `rstmgr` (running on AON clock).
-        }
-        {
-          name: aon_timer_rst_req
-          width: "1"
-          module: aon_timer_aon
-          desc: watchdog reset request
-        }
-      ]
     }
-    wait_for_external_reset: false
-    NumRomInputs: 1
-    has_aon_clk: true
-    src_clks:
-    [
-      main
-      io
-      usb
-    ]
+    NumRstReqs: 2
     topname: earlgrey
-    uniquified_modules: {}
   }
 }

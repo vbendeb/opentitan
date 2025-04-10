@@ -1,4 +1,4 @@
-# Ipgen: Generate IP Blocks From IP Templates
+# Ipgen: Generate IP blocks from IP templates
 
 Ipgen is a tool to produce IP blocks from IP templates.
 
@@ -10,6 +10,7 @@ Ipgen is a command-line tool and a library.
 Users wishing to instantiate an IP template or query it for template parameters will find the command-line application useful.
 For use in higher-level scripting, e.g. within [topgen](../topgen/README.md) using ipgen as Python library is recommended.
 
+
 ## Anatomy of an IP template
 
 An IP template is a directory with a well-defined directory layout, which mostly mirrors the standard layout of IP blocks.
@@ -17,25 +18,26 @@ An IP template is a directory with a well-defined directory layout, which mostly
 An IP template directory has a well-defined structure:
 
 * The IP template name (`<templatename>`) equals the directory name.
-* The directory contains a template description file `data/<templatename>.tpldesc.hjson` containing descriptions of the configurable parameters.
-  The "default" field of these descriptions are expected to be overriden via the actual configuration parameters.
-* The directory also contains some files ending in `.tpl`.
-  These files are Mako templates and are rendered into a file in the same relative location without the `.tpl` file extension.
+* The directory contains a file `data/<templatename>.tpldesc.hjson` containing all configuration information related to the template.
+* The directory also contains zero or more files ending in `.tpl`.
+  These files are Mako templates and rendered into a file in the same relative location without the `.tpl` file extension.
 
 ### The template description file
 
 Each IP template comes with a description itself.
-This description is contained in the hjson file `data/<templatename>.tpldesc.hjson` in the template directory.
+This description is contained in the `data/<templatename>.tpldesc.hjson` file in the template directory.
+The file is written in Hjson.
 
-It contains a list of parameter objects.
-These objects are dictionaries with the following required keys:
+It contains a top-level dictionary, the keys of which are documented next.
+
+#### List of template parameters: `template_param_list`
+
+Keys within `template_param_list`:
 
 * `name` (string): Name of the template parameter.
 * `desc` (string): Human-readable description of the template parameter.
-* `type` (string): Data type of the parameter. Valid values: `bool`, `int`, `str`, `object`.
-* `default` (bool|string|int|dict): The default value of the parameter.
-  The type of this should match the `type` argument.
-  For convenience, strings are converted into integers on demand (if possible).
+* `type` (string): Data type of the parameter. Valid values: `int`, `str`
+* `default` (string|int|object): The default value of the parameter. The data type should match the `type` argument. As convenience, strings are converted into integers on demand (if possible).
 
 #### Example template description file
 
@@ -67,42 +69,17 @@ Templates are written in the [Mako templating language](https://www.makotemplate
 All template parameters are available in the rendering context.
 For example, a template parameter `src` can be used in the template as `${src}`.
 
-### Ipgen Uniquification
+Furthermore, the following functions are available:
 
-FuseSoC core files should be written in a way that upholds the principle "same name, same public interface".
-This means if a FuseSoC core has the same name as another one containing code that became different after template processing, and will be part of the same device, it must also provide the same public interface.
+* `instance_vlnv(vlnv)`: Transform a FuseSoC core name, expressed as VLNV string, into an instance-specific name.
+  The `vendor` is set to `lowrisc`, the `library` is set to `opentitan`, and the `name` is prefixed with the instance name.
+  The optional version segment is retained.
+  Use this function on the `name` of all FuseSoC cores which contain sources generated from templates and which export symbols into the global namespace.
 
-Since SystemVerilog does not provide strong control over which symbols become part of the public API, developers must carefully evaluate their source code.
-At least, the public interface is comprised of
-- module header(s), e.g. parameter names, ports (names, data types),
-- package names, and all identifiers within it, including enum values (but not the values assigned to them),
-- defines
+### Templating FuseSoC core files
 
-If any of those aspects of a source file are templated differently within the same device, the core name referencing the files, the file name itself, and the name of the contained SystemVerilog construct must be made instance-specific.
-For example, if file `rtl/flash_ctrl.sv` contained within core `flash_ctrl.core` has two instances that diverge then the following should happen:
-- the core files for the two IPs will be renamed
-- the rtl files in question will be renamed
-- the module within the flash_ctrl.sv files will be renamed
-
-This is typically implemented via an extra parameter that holds the new name for the template objects, is named `module_instance_name`, and is passed to the template expansion.
-This uniquification also needs to be handled by VLNV renaming as explained below.
-
-### VLNV Renaming
-
-The `instance_vlnv` function is available to process VLNV strings, which is useful for template core files.
-It modifies the vlnv so it becomes top-specific, and also supports uniquification.
-A VLNV string has the form vendor:library:name[:version] where the version is optional.
-The `instance_vlnv` function is given a vlnv and has handles to objects that provide the `topname` and a dictionary holding new names for templates needing uniquification.
-Notice if the `module_instance_name` parameter is given, it should also be contained in the uniquification dictionary.
-The given vlnv is transformed as follows:
-
-- The vendor string is unchanged.
-- The library string gets `topname` as a prefix.
-- The name is processed as follows:
-  - If the name is a key in the uniquification dictionary it is replaced by the corresponding value.
-  - If the name starts with a string matching a key in the uniquification dictionary followed by `_`, the string is replaced by the corresponding value.
-  - Otherwise the name stays the same.
-- The optional version is preserved.
+FuseSoC core files can be templated just like any other file.
+Especially handy is the `instance_vlnv()` template function, which transforms a placeholder VLNV (a string in the form `vendor:library:name:version`) into a instance-specific one.
 
 For example, a `rv_plic.core.tpl` file could look like this:
 
@@ -111,14 +88,25 @@ CAPI=2:
 name: ${instance_vlnv("lowrisc:ip:rv_plic")}
 ```
 
-If `topname` was `earlgrey` and the uniquified names dictionary was `{'rv_plic': 'rv_plic_1'}`, the VLNV will become `lowrisc:earlgrey_ip:rv_plic_1`.
-Similarly, the VLNV `lowrisc:dv:rv_plic_sim` will become `lowrisc:earlgrey_dv:rv_plic_1_sim`.
+After processing, the `name` key is set to e.g. `lowrisc:opentitan:top_earlgrey_rv_plic`.
 
 The following rules should be applied when creating IP templates:
 
 * Template and use an instance-specific name for all FuseSoC cores which reference templated source files (e.g. SystemVerilog files).
 * Template and use an instance-specific name at least the top-level FuseSoC core.
-* Avoid having generic IPs depend on top-specific core files, since that would require using virtual cores, which can be very problematic.
+* If a FuseSoC core with an instance-specific name exposes a well-defined public interface (see below), add a `provides: lowrisc:ip_interfaces:<name>` line to the core file to allow other cores to refer to it without knowing the actual core name.
+
+#### Templating core files to uphold the "same name, same interface" principle
+
+FuseSoC core files should be written in a way that upholds the principle "same name, same public interface", i.e. if a FuseSoC core has the same name as another one, it must also provide the same public interface.
+
+Since SystemVerilog does not provide strong control over which symbols become part of the public API, developers must carefully evaluate their source code.
+At least, the public interface is comprised of
+- module header(s), e.g. parameter names, ports (names, data types),
+- package names, and all identifiers within it, including enum values (but not the values assigned to them),
+- defines
+
+If any of those aspects of a source file are templated, the core name referencing the files must be made instance-specific.
 
 ## Library usage
 
@@ -224,7 +212,7 @@ What is supported and required for most IP templates is the modification of the 
 
 Each template may be used to generate only once IP block for each top-level design.
 The generated IP block can still be instantiated multiple times from SystemVerilog, including with different SystemVerilog parameters passed to it.
-However, it is not possible to use one IP block template to produce two different flash controllers with different template parameters.
+It is not possible, however, to, for example, use one IP block template to produce two different flash controllers with different template parameters.
 
 IP templates generally contain code which exports symbols into the global namespace of the design: names of SystemVerilog modules and packages, defines, names of FuseSoC cores, etc.
 Such names need to be unique for each design, i.e. we cannot have multiple SystemVerilog modules with the same name in one design.

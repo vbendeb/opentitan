@@ -27,7 +27,6 @@ class TestGenerateChipInfoCSource(unittest.TestCase):
 
 #include "sw/device/lib/base/macros.h"
 
-OT_USED
 OT_SECTION(".chip_info")
 const chip_info_t kChipInfo = {
   .scm_revision = (chip_info_scm_revision_t){
@@ -53,7 +52,6 @@ const chip_info_t kChipInfo = {
 
 #include "sw/device/lib/base/macros.h"
 
-OT_USED
 OT_SECTION(".chip_info")
 const chip_info_t kChipInfo = {
   .scm_revision = (chip_info_scm_revision_t){

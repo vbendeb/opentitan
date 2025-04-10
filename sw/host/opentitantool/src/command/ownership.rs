@@ -2,9 +2,8 @@
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 
-use anyhow::Result;
+use anyhow::{anyhow, ensure, Result};
 use clap::{Args, Subcommand, ValueEnum};
-use serde_annotate::Annotate;
 use std::any::Any;
 use std::fs::{File, OpenOptions};
 use std::path::PathBuf;
@@ -12,8 +11,9 @@ use std::path::PathBuf;
 use opentitanlib::app::command::CommandDispatch;
 use opentitanlib::app::TransportWrapper;
 use opentitanlib::chip::helper::{OwnershipActivateParams, OwnershipUnlockParams};
-use opentitanlib::crypto::ecdsa::{EcdsaPrivateKey, EcdsaRawSignature};
-use opentitanlib::ownership::{GlobalFlags, OwnerBlock, TlvHeader};
+use opentitanlib::crypto::ecdsa::{EcdsaPrivateKey, EcdsaPublicKey, EcdsaRawSignature};
+use opentitanlib::crypto::sha256::Sha256Digest;
+use opentitanlib::ownership::{GlobalFlags, KeyMaterial, OwnerBlock, OwnershipKeyAlg, TlvHeader};
 
 #[derive(ValueEnum, Debug, Clone, Copy, PartialEq)]
 enum Format {
@@ -51,7 +51,7 @@ impl CommandDispatch for OwnershipConfigCommand {
         &self,
         _context: &dyn Any,
         _transport: &TransportWrapper,
-    ) -> Result<Option<Box<dyn Annotate>>> {
+    ) -> Result<Option<Box<dyn erased_serde::Serialize>>> {
         GlobalFlags::set_debug(self.debug);
         let mut config = if self.basic {
             OwnerBlock::basic()
@@ -88,11 +88,7 @@ impl CommandDispatch for OwnershipConfigCommand {
         }
 
         if let Some(output) = &self.output {
-            let mut f = OpenOptions::new()
-                .write(true)
-                .create(true)
-                .truncate(true)
-                .open(output)?;
+            let mut f = OpenOptions::new().write(true).create(true).open(output)?;
             config.write(&mut f)?;
             Ok(None)
         } else {
@@ -105,6 +101,8 @@ impl CommandDispatch for OwnershipConfigCommand {
 pub struct OwnershipUnlockCommand {
     #[command(flatten)]
     params: OwnershipUnlockParams,
+    #[arg(short, long, help = "Filename to write the detached signature")]
+    detached: Option<PathBuf>,
     #[arg(short, long, help = "A file containing a binary unlock request")]
     input: Option<PathBuf>,
     #[arg(
@@ -119,8 +117,8 @@ impl CommandDispatch for OwnershipUnlockCommand {
         &self,
         _context: &dyn Any,
         _transport: &TransportWrapper,
-    ) -> Result<Option<Box<dyn Annotate>>> {
-        let unlock = self
+    ) -> Result<Option<Box<dyn erased_serde::Serialize>>> {
+        let (unlock, signature) = self
             .params
             .apply_to(self.input.as_ref().map(File::open).transpose()?.as_mut())?;
         if let Some(output) = &self.output {
@@ -129,8 +127,27 @@ impl CommandDispatch for OwnershipUnlockCommand {
                 .create(true)
                 .truncate(true)
                 .open(output)?;
+
             unlock.write(&mut f)?;
         }
+        if self.params.algorithm.is_detached() && signature.is_some() && self.detached.is_none() {
+            log::warn!("The algorithm {} requires a detached signature, but no detach signature file was specified.", self.params.algorithm);
+        }
+        if let Some(detached) = &self.detached {
+            ensure!(
+                signature.is_some(),
+                anyhow!(
+                    "Requested to save the detached signature, but there is no detached signature."
+                )
+            );
+            let mut f = OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .open(detached)?;
+            signature.unwrap().write(&mut f)?;
+        }
+
         Ok(Some(Box::new(unlock)))
     }
 }
@@ -139,6 +156,8 @@ impl CommandDispatch for OwnershipUnlockCommand {
 pub struct OwnershipActivateCommand {
     #[command(flatten)]
     params: OwnershipActivateParams,
+    #[arg(short, long, help = "Filename to write the detached signature")]
+    detached: Option<PathBuf>,
     #[arg(short, long, help = "A file containing a binary unlock request")]
     input: Option<PathBuf>,
     #[arg(
@@ -153,8 +172,8 @@ impl CommandDispatch for OwnershipActivateCommand {
         &self,
         _context: &dyn Any,
         _transport: &TransportWrapper,
-    ) -> Result<Option<Box<dyn Annotate>>> {
-        let activate = self
+    ) -> Result<Option<Box<dyn erased_serde::Serialize>>> {
+        let (activate, signature) = self
             .params
             .apply_to(self.input.as_ref().map(File::open).transpose()?.as_mut())?;
         if let Some(output) = &self.output {
@@ -165,7 +184,74 @@ impl CommandDispatch for OwnershipActivateCommand {
                 .open(output)?;
             activate.write(&mut f)?;
         }
+        if self.params.algorithm.is_detached() && signature.is_some() && self.detached.is_none() {
+            log::warn!("The algorithm {} requires a detached signature, but no detach signature file was specified.", self.params.algorithm);
+        }
+        if let Some(detached) = &self.detached {
+            ensure!(
+                signature.is_some(),
+                anyhow!(
+                    "Requested to save the detached signature, but there is no detached signature."
+                )
+            );
+            let mut f = OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .open(detached)?;
+            signature.unwrap().write(&mut f)?;
+        }
         Ok(Some(Box::new(activate)))
+    }
+}
+
+#[derive(Debug, Args)]
+pub struct OwnershipVerifyCommand {
+    #[arg(help = "A file containing a binary ownership config block")]
+    input: PathBuf,
+    #[arg(
+        short,
+        long,
+        help = "File containing the public key to verfify against"
+    )]
+    signer_pub_key: Option<PathBuf>,
+}
+
+impl CommandDispatch for OwnershipVerifyCommand {
+    fn run(
+        &self,
+        _context: &dyn Any,
+        _transport: &TransportWrapper,
+    ) -> Result<Option<Box<dyn erased_serde::Serialize>>> {
+        let input = std::fs::read(&self.input)?;
+        let mut cursor = std::io::Cursor::new(&input);
+        let header = TlvHeader::read(&mut cursor)?;
+        let parsed_config = OwnerBlock::read(&mut cursor, header)?;
+
+        match parsed_config.ownership_key_alg {
+            OwnershipKeyAlg::EcdsaP256 => (),
+            _ => {
+                return Err(anyhow!(
+                    "The only supported verification algorithm is ECDSA"
+                ))
+            }
+        };
+
+        let ecdsa_key: EcdsaPublicKey = if let Some(key_file) = &self.signer_pub_key {
+            EcdsaPublicKey::load(key_file)?
+        } else {
+            // Retrieve the ECDSA key.
+            let pubk = match parsed_config.owner_key {
+                KeyMaterial::Ecdsa(ref raw_key) => raw_key,
+                _ => return Err(anyhow!("Owner key material does not match key algorithm!")),
+            };
+            pubk.try_into()?
+        };
+        // Digest over the TBS section of the config.
+        let digest = Sha256Digest::hash(&input[..OwnerBlock::SIGNATURE_OFFSET]);
+
+        ecdsa_key.verify(&digest, &parsed_config.signature)?;
+        Ok(None)
     }
 }
 
@@ -174,4 +260,5 @@ pub enum OwnershipCommand {
     Config(OwnershipConfigCommand),
     Activate(OwnershipActivateCommand),
     Unlock(OwnershipUnlockCommand),
+    Verify(OwnershipVerifyCommand),
 }

@@ -34,7 +34,6 @@ static_assert(kDifPwrmgrDomainOptionIoClockInLowPower ==
                           PWRMGR_CONTROL_CORE_CLK_EN_BIT)),
               "Layout of control register changed.");
 
-#if defined(OPENTITAN_IS_EARLGREY)
 static_assert(kDifPwrmgrDomainOptionUsbClockInLowPower ==
                   (1u << (PWRMGR_CONTROL_USB_CLK_EN_LP_BIT -
                           PWRMGR_CONTROL_CORE_CLK_EN_BIT)),
@@ -44,7 +43,6 @@ static_assert(kDifPwrmgrDomainOptionUsbClockInActivePower ==
                   (1u << (PWRMGR_CONTROL_USB_CLK_EN_ACTIVE_BIT -
                           PWRMGR_CONTROL_CORE_CLK_EN_BIT)),
               "Layout of control register changed.");
-#endif /* OPENTITAN_IS */
 
 static_assert(kDifPwrmgrDomainOptionMainPowerInLowPower ==
                   (1u << (PWRMGR_CONTROL_MAIN_PD_N_BIT -
@@ -58,14 +56,8 @@ static_assert(kDifPwrmgrDomainOptionMainPowerInLowPower ==
 static const bitfield_field32_t kDomainConfigBitfield = {
     .mask = kDifPwrmgrDomainOptionCoreClockInLowPower |
             kDifPwrmgrDomainOptionIoClockInLowPower |
-#if defined(OPENTITAN_IS_EARLGREY)
             kDifPwrmgrDomainOptionUsbClockInLowPower |
             kDifPwrmgrDomainOptionUsbClockInActivePower |
-#elif defined(OPENTITAN_IS_DARJEELING)
-/* Darjeeling has no USB clock. */
-#else
-#error "dif_pwrmgr does not support this top"
-#endif
             kDifPwrmgrDomainOptionMainPowerInLowPower,
     .index = PWRMGR_CONTROL_CORE_CLK_EN_BIT,
 };
@@ -74,7 +66,6 @@ static const bitfield_field32_t kDomainConfigBitfield = {
  * Relevant bits of the WAKEUP_EN and WAKE_INFO registers must start at `0` and
  * be in the same order as `dif_pwrmgr_wakeup_request_source_t` constants.
  */
-#if defined(OPENTITAN_IS_EARLGREY)
 static_assert(kDifPwrmgrWakeupRequestSourceOne ==
                   (1u << PWRMGR_WAKEUP_EN_EN_0_BIT),
               "Layout of WAKEUP_EN register changed.");
@@ -96,22 +87,6 @@ static_assert(kDifPwrmgrWakeupRequestSourceFive ==
 static_assert(kDifPwrmgrWakeupRequestSourceSix ==
                   (1u << PWRMGR_PARAM_SENSOR_CTRL_AON_WKUP_REQ_IDX),
               "Layout of WAKE_INFO register changed.");
-#elif defined(OPENTITAN_IS_DARJEELING)
-static_assert(kDifPwrmgrWakeupRequestSourceOne ==
-                  (1u << PWRMGR_PARAM_PINMUX_AON_PIN_WKUP_REQ_IDX),
-              "Layout of WAKE_INFO register changed.");
-static_assert(kDifPwrmgrWakeupRequestSourceTwo ==
-                  (1u << PWRMGR_PARAM_AON_TIMER_AON_WKUP_REQ_IDX),
-              "Layout of WAKE_INFO register changed.");
-static_assert(kDifPwrmgrWakeupRequestSourceThree ==
-                  (1u << PWRMGR_PARAM_SOC_PROXY_WKUP_INTERNAL_REQ_IDX),
-              "Layout of WAKE_INFO register changed.");
-static_assert(kDifPwrmgrWakeupRequestSourceFour ==
-                  (1u << PWRMGR_PARAM_SOC_PROXY_WKUP_EXTERNAL_REQ_IDX),
-              "Layout of WAKE_INFO register changed.");
-#else
-#error "dif_pwrmgr does not support this top"
-#endif
 
 /**
  * Relevant bits of the RESET_EN register must start at `0` and be in the same
@@ -160,15 +135,9 @@ static const request_reg_info_t request_reg_infos[2] = {
                     .mask = kDifPwrmgrWakeupRequestSourceOne |
                             kDifPwrmgrWakeupRequestSourceTwo |
                             kDifPwrmgrWakeupRequestSourceThree |
-#if defined(OPENTITAN_IS_EARLGREY)
                             kDifPwrmgrWakeupRequestSourceFour |
                             kDifPwrmgrWakeupRequestSourceFive |
                             kDifPwrmgrWakeupRequestSourceSix,
-#elif defined(OPENTITAN_IS_DARJEELING)
-                            kDifPwrmgrWakeupRequestSourceFour,
-#else
-#error "dif_pwrmgr does not support this top"
-#endif
                     .index = 0,
                 },
         },
@@ -186,42 +155,6 @@ static const request_reg_info_t request_reg_infos[2] = {
                 },
         },
 };
-
-dif_result_t dif_pwrmgr_find_request_source(
-    const dif_pwrmgr_t *pwrmgr, dif_pwrmgr_req_type_t req_type,
-    dt_instance_id_t inst_id, size_t sig_idx,
-    dif_pwrmgr_request_sources_t *sources) {
-  if (pwrmgr == NULL || sources == NULL) {
-    return kDifBadArg;
-  }
-  dt_pwrmgr_t dt;
-  dif_result_t res = dif_pwrmgr_get_dt(pwrmgr, &dt);
-  if (res != kDifOk) {
-    return res;
-  }
-  // Query the DT to find the information.
-  if (req_type == kDifPwrmgrReqTypeWakeup) {
-    for (size_t i = 0; i < dt_pwrmgr_wakeup_src_count(dt); i++) {
-      dt_pwrmgr_wakeup_src_t src = dt_pwrmgr_wakeup_src(dt, i);
-      if (src.inst_id == inst_id && src.wakeup == sig_idx) {
-        *sources = 1u << i;
-        return kDifOk;
-      }
-    }
-    return kDifError;
-  } else if (req_type == kDifPwrmgrReqTypeReset) {
-    for (size_t i = 0; i < dt_pwrmgr_reset_request_src_count(dt); i++) {
-      dt_pwrmgr_reset_req_src_t src = dt_pwrmgr_reset_request_src(dt, i);
-      if (src.inst_id == inst_id && src.reset_req == sig_idx) {
-        *sources = 1u << i;
-        return kDifOk;
-      }
-    }
-    return kDifError;
-  } else {
-    return kDifBadArg;
-  }
-}
 
 /**
  * Checks if a value is a valid `dif_pwrmgr_req_type_t`.
@@ -340,7 +273,7 @@ dif_result_t dif_pwrmgr_set_domain_config(const dif_pwrmgr_t *pwrmgr,
   reg_val = bitfield_field32_write(reg_val, kDomainConfigBitfield, config);
   mmio_region_write32(pwrmgr->base_addr, PWRMGR_CONTROL_REG_OFFSET, reg_val);
 
-  // Slow clock domain must be synced for changes to take effect.
+  // Slow clock domain may be synced for changes to take effect.
   if (sync_state == kDifToggleEnabled)
     sync_slow_clock_domain_polled(pwrmgr);
 

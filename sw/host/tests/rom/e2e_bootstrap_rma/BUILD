@@ -13,11 +13,12 @@ rust_binary(
     ],
     deps = [
         "//sw/host/opentitanlib",
-        "@crate_index//:anyhow",
-        "@crate_index//:clap",
-        "@crate_index//:humantime",
-        "@crate_index//:log",
-        "@crate_index//:regex",
+        "//third_party/rust/crates:anyhow",
+        "//third_party/rust/crates:clap",
+        "//third_party/rust/crates:humantime",
+        "//third_party/rust/crates:log",
+        "//third_party/rust/crates:num_enum",
+        "//third_party/rust/crates:regex",
     ],
 )
 
@@ -28,11 +29,12 @@ rust_test(
     ],
     deps = [
         "//sw/host/opentitanlib",
-        "@crate_index//:anyhow",
-        "@crate_index//:clap",
-        "@crate_index//:humantime",
-        "@crate_index//:log",
-        "@crate_index//:regex",
+        "//third_party/rust/crates:anyhow",
+        "//third_party/rust/crates:clap",
+        "//third_party/rust/crates:humantime",
+        "//third_party/rust/crates:log",
+        "//third_party/rust/crates:num_enum",
+        "//third_party/rust/crates:regex",
     ],
 )
 

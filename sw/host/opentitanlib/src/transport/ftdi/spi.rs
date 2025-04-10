@@ -47,8 +47,6 @@ impl<T: gpio::GpioPin> Spi<T> {
                 Transfer::Read(buf) => self.spi.borrow_mut().read(buf)?,
                 Transfer::Write(buf) => self.spi.borrow_mut().write(buf)?,
                 Transfer::Both(wbuf, rbuf) => self.spi.borrow_mut().transfer(rbuf, wbuf)?,
-                Transfer::TpmPoll => (),
-                Transfer::GscReady => (),
             }
         }
         Ok(())
@@ -92,18 +90,12 @@ impl<T: gpio::GpioPin> Target for Spi<T> {
         Ok(true)
     }
 
-    /// Indicates whether `Transfer::TpmPoll` is supported.
-    fn supports_tpm_poll(&self) -> Result<bool> {
-        Ok(false)
-    }
-
     fn set_pins(
         &self,
         _serial_clock: Option<&Rc<dyn gpio::GpioPin>>,
         _host_out_device_in: Option<&Rc<dyn gpio::GpioPin>>,
         _host_in_device_out: Option<&Rc<dyn gpio::GpioPin>>,
         _chip_select: Option<&Rc<dyn gpio::GpioPin>>,
-        _gsc_ready: Option<&Rc<dyn gpio::GpioPin>>,
     ) -> Result<()> {
         Err(TransportError::UnsupportedOperation.into())
     }

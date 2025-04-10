@@ -2,7 +2,10 @@
 # Licensed under the Apache License, Version 2.0, see LICENSE for details.
 # SPDX-License-Identifier: Apache-2.0
 
-load("//rules/opentitan:keyutils.bzl", "ECDSA_ONLY_KEY_STRUCTS")
+load(
+    "//rules:opentitan.bzl",
+    "ECDSA_ONLY_KEY_STRUCTS",
+)
 load(
     "//rules:const.bzl",
     "CONST",
@@ -30,7 +33,10 @@ load(
     "otp_per_class_ints",
     "otp_per_class_lists",
 )
-load("//rules:rom_e2e.bzl", "maybe_skip_in_ci")
+load(
+    "//rules:rom_e2e.bzl",
+    "maybe_skip_in_ci",
+)
 
 package(default_visibility = ["//visibility:public"])
 
@@ -59,14 +65,14 @@ ALERT_LC_STATES = get_lc_items(
             "//hw/top_earlgrey:fpga_cw310_rom_with_fake_keys": None,
         },
         fpga = fpga_params(
-            otp = "//hw/top_earlgrey/data/otp:img_{}".format(lc_state),
+            otp = "//hw/ip/otp_ctrl/data:img_{}".format(lc_state),
             tags = maybe_skip_in_ci(lc_state_val),
         ),
         local_defines = [
             "OTP_ALERT_DIGEST=OTP_CTRL_PARAM_OWNER_SW_CFG_ROM_ALERT_DIGEST_{}_OFFSET".format(lc_state.upper()),
         ],
         deps = [
-            "//hw/top:otp_ctrl_c_regs",
+            "//hw/ip/otp_ctrl/data:otp_ctrl_c_regs",
             "//sw/device/lib/testing/test_framework:ottf_ld_silicon_creator_slot_a",
             "//sw/device/lib/testing/test_framework:ottf_main",
             "//sw/device/silicon_creator/lib/drivers:alert",
@@ -156,7 +162,7 @@ otp_alert_digest(
 [
     otp_image(
         name = "otp_img_shutdown_alert_{}".format(lc_state),
-        src = "//hw/top_earlgrey/data/otp:otp_json_{}".format(lc_state),
+        src = "//hw/ip/otp_ctrl/data:otp_json_{}".format(lc_state),
         overlays = STD_OTP_OVERLAYS + [
             ":shutdown_alert_owner_sw_cfg",
             ":shutdown_alert_digest_cfg",
@@ -181,7 +187,7 @@ otp_alert_digest(
             tags = maybe_skip_in_ci(lc_state_val),
         ),
         deps = [
-            "//hw/top:uart_c_regs",
+            "//hw/ip/uart/data:uart_c_regs",
             "//sw/device/lib/base:abs_mmio",
             "//sw/device/lib/testing/test_framework:ottf_ld_silicon_creator_slot_a",
             "//sw/device/lib/testing/test_framework:ottf_main",

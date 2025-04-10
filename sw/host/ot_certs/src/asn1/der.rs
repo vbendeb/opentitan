@@ -57,9 +57,9 @@ impl Der {
         Der { output: Vec::new() }
     }
 
-    pub fn generate(build: impl FnOnce(&mut Self) -> Result<()>) -> Result<Vec<u8>> {
+    pub fn generate(gen: impl FnOnce(&mut Self) -> Result<()>) -> Result<Vec<u8>> {
         let mut der = Der::new();
-        build(&mut der)?;
+        gen(&mut der)?;
         Ok(der.output)
     }
 
@@ -205,10 +205,10 @@ impl Builder for Der {
         &mut self,
         _name_hint: Option<String>,
         tag: &Tag,
-        build: impl FnOnce(&mut Self) -> Result<()>,
+        gen: impl FnOnce(&mut Self) -> Result<()>,
     ) -> Result<()> {
         let mut content = Der::new();
-        build(&mut content)?;
+        gen(&mut content)?;
         // Push identifier octets.
         self.push_bytes(&tag.to_der()?)?;
         // Push length, see X.690 section 8.1.3.

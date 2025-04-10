@@ -21,7 +21,7 @@
   version:            "2.0.0",
   life_stage:         "L1",
   design_stage:       "D2S",
-  verification_stage: "V2S",
+  verification_stage: "V1",
   dif_stage:          "S2",
   clocking: [
     // clk_i must be 48 MHz
@@ -165,12 +165,6 @@
       type:    "uni",
       name:    "ram_cfg",
       act:     "rcv"
-    }
-    { struct:  "ram_1p_cfg_rsp",
-      package: "prim_ram_1p_pkg",
-      type:    "uni",
-      name:    "ram_cfg_rsp",
-      act:     "req"
     }
   ]
   param_list: [

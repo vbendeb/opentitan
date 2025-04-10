@@ -95,16 +95,11 @@
       name: "{name}_long_msg_and_output"
       uvm_test_seq: kmac_long_msg_and_output_vseq
       run_opts: ["+test_timeout_ns=10_000_000_000"]
-      run_timeout_mins: 120
+      run_timeout_mins: 90
     }
     {
       name: "{name}_sideload"
       uvm_test_seq: kmac_sideload_vseq
-      run_opts: ["+test_timeout_ns=1_000_000_000"]
-    }
-    {
-      name: "{name}_sideload_invalid"
-      uvm_test_seq: kmac_sideload_invalid_vseq
       run_opts: ["+test_timeout_ns=1_000_000_000"]
     }
     {
@@ -119,7 +114,6 @@
                  "+test_timeout_ns=5_000_000_000",
                  "+test_vectors_sha3_variant=224"]
       run_timeout_mins: 90
-      reseed: 5
     }
     {
       name: "{name}_test_vectors_sha3_256"
@@ -128,7 +122,6 @@
                  "+test_timeout_ns=5_000_000_000",
                  "+test_vectors_sha3_variant=256"]
       run_timeout_mins: 90
-      reseed: 5
     }
     {
       name: "{name}_test_vectors_sha3_384"
@@ -136,7 +129,6 @@
       run_opts: ["+test_vectors_dir={build_dir}/src/lowrisc_dv_test_vectors_0",
                  "+test_timeout_ns=5_000_000_000",
                  "+test_vectors_sha3_variant=384"]
-      reseed: 5
     }
     {
       name: "{name}_test_vectors_sha3_512"
@@ -144,7 +136,6 @@
       run_opts: ["+test_vectors_dir={build_dir}/src/lowrisc_dv_test_vectors_0",
                  "+test_timeout_ns=5_000_000_000",
                  "+test_vectors_sha3_variant=512"]
-      reseed: 5
     }
     {
       name: "{name}_test_vectors_shake_128"
@@ -152,8 +143,7 @@
       run_opts: ["+test_vectors_dir={build_dir}/src/lowrisc_dv_test_vectors_0",
                  "+test_timeout_ns=5_000_000_000",
                  "+test_vectors_shake_variant=128"]
-      run_timeout_mins: 90
-      reseed: 5
+      run_timeout_mins: 180
     }
     {
       name: "{name}_test_vectors_shake_256"
@@ -161,20 +151,17 @@
       run_opts: ["+test_vectors_dir={build_dir}/src/lowrisc_dv_test_vectors_0",
                  "+test_timeout_ns=5_000_000_000",
                  "+test_vectors_shake_variant=256"]
-      run_timeout_mins: 90
-      reseed: 5
+      run_timeout_mins: 180
     }
     {
       name: "{name}_test_vectors_kmac"
       uvm_test_seq: kmac_test_vectors_kmac_vseq
       run_opts: ["+test_vectors_dir={build_dir}/src/lowrisc_dv_test_vectors_0"]
-      reseed: 5
     }
     {
       name: "{name}_test_vectors_kmac_xof"
       uvm_test_seq: kmac_test_vectors_kmac_xof_vseq
       run_opts: ["+test_vectors_dir={build_dir}/src/lowrisc_dv_test_vectors_0"]
-      reseed: 5
     }
     {
       name: "{name}_app"

@@ -27,20 +27,15 @@ Referring to the [Comportable guideline for peripheral device functionality](htt
 
 ## [Inter-Module Signals](https://opentitan.org/book/doc/contributing/hw/comportability/index.html#inter-signal-handling)
 
-| Port Name                  | Package::Struct                 | Type    | Act   | Width                     | Description                                                                                                                          |
-|:---------------------------|:--------------------------------|:--------|:------|:--------------------------|:-------------------------------------------------------------------------------------------------------------------------------------|
-| sram_otp_key               | otp_ctrl_pkg::sram_otp_key      | req_rsp | req   | 1                         |                                                                                                                                      |
-| cfg                        | prim_ram_1p_pkg::ram_1p_cfg     | uni     | rcv   | NumRamInst                |                                                                                                                                      |
-| cfg_rsp                    | prim_ram_1p_pkg::ram_1p_cfg_rsp | uni     | req   | NumRamInst                |                                                                                                                                      |
-| lc_escalate_en             | lc_ctrl_pkg::lc_tx              | uni     | rcv   | 1                         |                                                                                                                                      |
-| lc_hw_debug_en             | lc_ctrl_pkg::lc_tx              | uni     | rcv   | 1                         |                                                                                                                                      |
-| otp_en_sram_ifetch         | prim_mubi_pkg::mubi8            | uni     | rcv   | 1                         |                                                                                                                                      |
-| racl_policies              | top_racl_pkg::racl_policy_vec   | uni     | rcv   | 1                         | Incoming RACL policy vector from a racl_ctrl instance. The policy selection vector (parameter) selects the policy for each register. |
-| racl_error                 | top_racl_pkg::racl_error_log    | uni     | req   | 1                         | RACL error log information of this module.                                                                                           |
-| racl_policy_sel_ranges_ram | top_racl_pkg::racl_range_t      | uni     | rcv   | RaclPolicySelRangesRamNum | Incoming array of RACL policy ranges.                                                                                                |
-| sram_rerror                | sram_ctrl_pkg::sram_error_t     | uni     | req   | 1                         | SRAM read error indicating correctable and uncorrectable ECC errors.                                                                 |
-| regs_tl                    | tlul_pkg::tl                    | req_rsp | rsp   | 1                         |                                                                                                                                      |
-| ram_tl                     | tlul_pkg::tl                    | req_rsp | rsp   | 1                         |                                                                                                                                      |
+| Port Name          | Package::Struct             | Type    | Act   |   Width | Description   |
+|:-------------------|:----------------------------|:--------|:------|--------:|:--------------|
+| sram_otp_key       | otp_ctrl_pkg::sram_otp_key  | req_rsp | req   |       1 |               |
+| cfg                | prim_ram_1p_pkg::ram_1p_cfg | uni     | rcv   |       1 |               |
+| lc_escalate_en     | lc_ctrl_pkg::lc_tx          | uni     | rcv   |       1 |               |
+| lc_hw_debug_en     | lc_ctrl_pkg::lc_tx          | uni     | rcv   |       1 |               |
+| otp_en_sram_ifetch | prim_mubi_pkg::mubi8        | uni     | rcv   |       1 |               |
+| regs_tl            | tlul_pkg::tl                | req_rsp | rsp   |       1 |               |
+| ram_tl             | tlul_pkg::tl                | req_rsp | rsp   |       1 |               |
 
 ## Security Alerts
 
@@ -55,12 +50,10 @@ Referring to the [Comportable guideline for peripheral device functionality](htt
 | SRAM_CTRL.BUS.INTEGRITY                | End-to-end bus integrity scheme.                                                                                                                                            |
 | SRAM_CTRL.CTRL.CONFIG.REGWEN           | The SRAM control register is protected by a REGWEN.                                                                                                                         |
 | SRAM_CTRL.EXEC.CONFIG.REGWEN           | The SRAM execution enable register is protected by a REGWEN.                                                                                                                |
-| SRAM_CTRL.READBACK.CONFIG.REGWEN       | The SRAM readback enable register is protected by a REGWEN.                                                                                                                 |
 | SRAM_CTRL.EXEC.CONFIG.MUBI             | The SRAM execution enable register is multibit encoded.                                                                                                                     |
 | SRAM_CTRL.EXEC.INTERSIG.MUBI           | The SRAM execution enable signal coming from OTP is multibit encoded.                                                                                                       |
 | SRAM_CTRL.LC_ESCALATE_EN.INTERSIG.MUBI | The life cycle escalation enable signal is multibit encoded.                                                                                                                |
 | SRAM_CTRL.LC_HW_DEBUG_EN.INTERSIG.MUBI | The life cycle hardware debug enable signal is multibit encoded.                                                                                                            |
-| SRAM_CTRL.PRIM_RAM.CTRL.MUBI           | The control signals inside prim_ram are multibit encoded.                                                                                                                   |
 | SRAM_CTRL.MEM.INTEGRITY                | End-to-end data/memory integrity scheme.                                                                                                                                    |
 | SRAM_CTRL.MEM.READBACK                 | Each read and write is checked with a readback.                                                                                                                             |
 | SRAM_CTRL.MEM.SCRAMBLE                 | Data is scrambled with a keyed reduced-round PRINCE cipher in CTR mode.                                                                                                     |
@@ -84,13 +77,13 @@ Signal                     | Direction        | Type                            
 `lc_escalate_en_i`         | `input`          | `lc_ctrl_pkg::lc_tx_t`             | Multibit life cycle escalation enable signal coming from life cycle controller, asserted if an escalation has occurred.
 `sram_otp_key_o`           | `output`         | `otp_ctrl_pkg::sram_otp_key_req_t` | Key derivation request going to the key derivation interface of the OTP controller.
 `sram_otp_key_i`           | `input`          | `otp_ctrl_pkg::sram_otp_key_rsp_t` | Ephemeral scrambling key coming back from the key derivation interface of the OTP controller.
-`otp_en_sram_ifetch_i`     | `input`          | `otp_ctrl_pkg::mubi8_t`            | Multibit value coming from the OTP HW_CFG partition EN_SRAM_IFETCH, set to kMuBi8True in order to enable the [`EXEC`](../data/sram_ctrl.hjson#exec) CSR. For example, see earlgrey's [OTP Field Descriptions](../../../top_earlgrey/ip_autogen/otp_ctrl/doc/programmers_guide.md#otp-field-descriptions))
+`otp_en_sram_ifetch_i`     | `input`          | `otp_ctrl_pkg::mubi8_t`            | Multibit value coming from the OTP HW_CFG partition ([EN_SRAM_IFETCH](../../otp_ctrl/README.md#direct-access-memory-map)), set to kMuBi8True in order to enable the [`EXEC`](../data/sram_ctrl.hjson#exec) CSR.
 `cfg_i`                    | `input`          | `logic [CfgWidth-1:0]`             | Attributes for physical memory macro.
 
 ### Interfaces to OTP and the SRAM Scrambling Primitive
 
 The interface to the key derivation interface inside the OTP controller follows a simple req / ack protocol, where the SRAM controller first requests an updated ephemeral key by asserting the `sram_otp_key_i.req`.
-The OTP controller then fetches entropy from CSRNG and derives an ephemeral key using the SRAM_DATA_KEY_SEED and the PRESENT scrambling data path as described in the earlgrey's [OTP controller spec](../../../top_earlgrey/ip_autogen/otp_ctrl/README.md#scrambling-datapath) for example.
+The OTP controller then fetches entropy from CSRNG and derives an ephemeral key using the SRAM_DATA_KEY_SEED and the PRESENT scrambling data path as described in the [OTP controller spec](../../otp_ctrl/README.md#scrambling-datapath).
 Finally, the OTP controller returns a fresh ephemeral key via the response channels (`sram_otp_key_o[*]`, `otbn_otp_key_o`), which complete the req / ack handshake.
 The key and nonce are made available to the scrambling primitive in the subsequent cycle.
 The wave diagram below illustrates this process.
@@ -118,7 +111,7 @@ It should be noted that this mechanism requires the CSRNG and entropy distributi
 Note that the req/ack protocol runs on `clk_otp_i`.
 The SRAM controller synchronizes the data over via a req/ack handshake primitive `prim_sync_reqack.sv` primitive as shown below.
 
-![OTP Key Req Ack](../../../top_earlgrey/ip_autogen/otp_ctrl/doc/otp_ctrl_key_req_ack.svg)
+![OTP Key Req Ack](../../otp_ctrl/doc/otp_ctrl_key_req_ack.svg)
 
 Note that the key and nonce output signals on the OTP controller side are guaranteed to remain stable for at least 62 OTP clock cycles after the `ack` signal is pulsed high, because the derivation of a 64bit half-key takes at least two passes through the 31-cycle PRESENT primitive.
 Hence, if the SRAM controller clock `clk_i` is faster or in the same order of magnitude as `clk_otp_i`, the data can be directly sampled upon assertion of `src_ack_o`.

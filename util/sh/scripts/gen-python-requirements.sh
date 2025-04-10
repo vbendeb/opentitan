@@ -13,6 +13,7 @@ PYTHON_REQS_OUT_FILE="$REPO_TOP/python-requirements.txt"
 # The below shellcode autogenerates the `python-requirements.txt`, with hashes,
 # and prepends the license and auto-generated banners at the top of the file.
 uv pip compile \
+  --allow-unsafe \
   --generate-hashes \
   --no-annotate \
   --no-header \

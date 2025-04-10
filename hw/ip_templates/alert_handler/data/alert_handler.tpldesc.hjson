@@ -10,12 +10,6 @@
       default: ""
     }
     {
-      name: "uniquified_modules"
-      desc: "A dictionary mapping template_names to uniquified_names"
-      type: "object"
-      default: {"clkmgr": "clkmgr1"}
-    }
-    {
       name: "n_alerts"
       desc: "Number of alert sources"
       type: "int"
@@ -46,18 +40,6 @@
       default: "4"
     }
     {
-      name: "n_esc_sev"
-      desc: "Number of escalation severities"
-      type: "int"
-      default: "4"
-    }
-    {
-      name: "ping_cnt_dw"
-      desc: "Width of ping timeout counter"
-      type: "int"
-      default: "4"
-    }
-    {
       name: "n_lpg"
       desc: "Number of low-power groups (LPGs)"
       type: "int"
@@ -68,18 +50,6 @@
       desc: "Defines a mapping from alerts to LPGs"
       type: "object"
       default: []
-    }
-    {
-      name: "module_instance_name"
-      desc: "instance name in case there are multiple alert_handler instances"
-      type: "string"
-      default: "alert_handler"
-    }
-    {
-      name: "racl_support"
-      desc: "Enable RACL support"
-      type: "bool"
-      default: false
     }
   ]
 }

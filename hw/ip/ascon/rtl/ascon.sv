@@ -78,14 +78,10 @@ module ascon
     .alert_recov_o(ascon_recov_alert),
     .alert_fatal_o(ascon_fatal_alert),
 
-    .error_recov_i(shadowed_update_err),
-    .error_fatal_i(alert[1]),
-
     .keymgr_key_i,
 
     .reg2hw(reg2hw),
-    .hw2reg(hw2reg),
-    .idle_o(idle_o)
+    .hw2reg(hw2reg)
   );
 
   // Synchronize EDN interface
@@ -118,7 +114,13 @@ module ascon
   assign unused_edn_ack = edn_ack;
 
 
-  // Alerts
+  // TODO
+  assign idle_o = prim_mubi_pkg::MuBi4False;
+
+  ////////////
+  // Alerts //
+  ////////////
+
   assign alert[1] = ascon_fatal_alert | intg_err_alert |shadowed_storage_err;
   assign alert[0] = ascon_recov_alert | shadowed_update_err;
 

@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 load("@rules_python//python:defs.bzl", "py_library")
-load("@ot_python_deps//:requirements.bzl", "requirement")
+load("//third_party/python:requirements.bzl", "requirement")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -59,12 +59,6 @@ py_library(
 )
 
 py_library(
-    name = "feature",
-    srcs = ["feature.py"],
-    deps = [":lib"],
-)
-
-py_library(
     name = "enum_entry",
     srcs = ["enum_entry.py"],
     deps = [":lib"],
@@ -112,7 +106,6 @@ py_library(
         ":bus_interfaces",
         ":clocking",
         ":countermeasure",
-        ":feature",
         ":inter_signal",
         ":interrupt",
         ":lib",
@@ -224,6 +217,7 @@ py_library(
         ":window",
         requirement("mako"),
         requirement("pyyaml"),
+        requirement("importlib_resources"),
     ],
 )
 
@@ -234,6 +228,7 @@ py_library(
         ":ip_block",
         requirement("mako"),
         requirement("pyyaml"),
+        requirement("importlib_resources"),
     ],
 )
 
@@ -267,6 +262,7 @@ py_library(
         ":reg_base",
         ":register",
         requirement("mako"),
+        requirement("importlib_resources"),
     ],
 )
 
@@ -305,6 +301,7 @@ py_library(
         ":ip_block",
         requirement("hjson"),
         requirement("mako"),
+        requirement("importlib_resources"),
     ],
 )
 
@@ -320,14 +317,6 @@ py_library(
         ":register",
         ":validate",
         ":window",
-    ],
-)
-
-py_library(
-    name = "md_helpers",
-    srcs = ["md_helpers.py"],
-    deps = [
-        ":signal",
     ],
 )
 

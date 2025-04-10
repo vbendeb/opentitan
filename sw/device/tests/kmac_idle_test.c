@@ -2,8 +2,7 @@
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 
-#include "dt/dt_clkmgr.h"  // Generated
-#include "dt/dt_kmac.h"    // Generated
+#include "sw/device/lib/base/mmio.h"
 #include "sw/device/lib/dif/dif_clkmgr.h"
 #include "sw/device/lib/dif/dif_kmac.h"
 #include "sw/device/lib/runtime/ibex.h"
@@ -11,15 +10,15 @@
 #include "sw/device/lib/testing/test_framework/check.h"
 #include "sw/device/lib/testing/test_framework/ottf_main.h"
 
-static_assert(kDtKmacCount >= 1, "this test requires at least one kmac");
-const dt_kmac_t kKmacDt = (dt_kmac_t)0;
+#include "hw/top_earlgrey/sw/autogen/top_earlgrey.h"
 
 static dif_clkmgr_t clkmgr;
 static dif_kmac_t kmac;
 
 OTTF_DEFINE_TEST_CONFIG();
 
-dif_clkmgr_hintable_clock_t kmac_clock;
+const dif_clkmgr_hintable_clock_t kmac_clock =
+    kTopEarlgreyHintableClocksMainKmac;
 
 #define TIMEOUT (1000 * 1000)
 
@@ -111,9 +110,8 @@ static void do_sha3_test(void) {
 }
 
 bool test_main(void) {
-  CHECK_DIF_OK(dif_clkmgr_init_from_dt(kDtClkmgrAon, &clkmgr));
-  CHECK_DIF_OK(dif_clkmgr_find_hintable_clock(
-      &clkmgr, dt_kmac_instance_id(kKmacDt), &kmac_clock));
+  CHECK_DIF_OK(dif_clkmgr_init(
+      mmio_region_from_addr(TOP_EARLGREY_CLKMGR_AON_BASE_ADDR), &clkmgr));
 
   // Get initial hint and enable for KMAC clock and check both are enabled.
   dif_toggle_t clock_hint_state;
@@ -133,8 +131,8 @@ bool test_main(void) {
   check_clock_state(kDifToggleEnabled);
 
   // Initialize KMAC hardware.
-  static_assert(kDtKmacCount > 0, "This test requires a KMAC instance");
-  CHECK_DIF_OK(dif_kmac_init_from_dt(kKmacDt, &kmac));
+  CHECK_DIF_OK(
+      dif_kmac_init(mmio_region_from_addr(TOP_EARLGREY_KMAC_BASE_ADDR), &kmac));
 
   // Configure KMAC hardware using software entropy.
   dif_kmac_config_t config = (dif_kmac_config_t){

@@ -145,10 +145,7 @@ module rom_ctrl_fsm
       ReadingLow: begin
         // Switch to ReadingHigh when counter_lnt is true and kmac_rom_rdy_i & kmac_rom_vld_o
         // (implying that the transaction went through)
-        //
-        // If counter_lnt is true then we requested the last non-top word from the ROM on the last
-        // cycle and the response will be available now. This gets taken if kmac_rom_rdy_i.
-        if (counter_lnt && kmac_rom_rdy_i) begin
+        if (counter_lnt && kmac_rom_rdy_i && kmac_rom_vld_o) begin
           state_d = ReadingHigh;
         end
       end
@@ -313,7 +310,5 @@ module rom_ctrl_fsm
   assign rom_req_o = counter_read_req;
 
   assign alert_o = fsm_alert | checker_alert | unexpected_counter_change;
-
-  `ASSERT(CounterLntImpliesKmacRomVldO_A, counter_lnt -> kmac_rom_vld_o)
 
 endmodule

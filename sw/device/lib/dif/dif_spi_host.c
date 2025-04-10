@@ -77,23 +77,24 @@ dif_result_t dif_spi_host_configure(const dif_spi_host_t *spi_host,
 
   uint32_t divider =
       ((config.peripheral_clock_freq_hz / config.spi_clock) / 2) - 1;
-  if (divider & ~(uint32_t)SPI_HOST_CONFIGOPTS_CLKDIV_MASK) {
+  if (divider & ~(uint32_t)SPI_HOST_CONFIGOPTS_CLKDIV_0_MASK) {
     return kDifBadArg;
   }
 
   spi_host_reset(spi_host);
   uint32_t reg = 0;
-  reg = bitfield_field32_write(reg, SPI_HOST_CONFIGOPTS_CLKDIV_FIELD, divider);
-  reg = bitfield_field32_write(reg, SPI_HOST_CONFIGOPTS_CSNIDLE_FIELD,
+  reg =
+      bitfield_field32_write(reg, SPI_HOST_CONFIGOPTS_CLKDIV_0_FIELD, divider);
+  reg = bitfield_field32_write(reg, SPI_HOST_CONFIGOPTS_CSNIDLE_0_FIELD,
                                config.chip_select.idle);
-  reg = bitfield_field32_write(reg, SPI_HOST_CONFIGOPTS_CSNTRAIL_FIELD,
+  reg = bitfield_field32_write(reg, SPI_HOST_CONFIGOPTS_CSNTRAIL_0_FIELD,
                                config.chip_select.trail);
-  reg = bitfield_field32_write(reg, SPI_HOST_CONFIGOPTS_CSNLEAD_FIELD,
+  reg = bitfield_field32_write(reg, SPI_HOST_CONFIGOPTS_CSNLEAD_0_FIELD,
                                config.chip_select.lead);
-  reg = bitfield_bit32_write(reg, SPI_HOST_CONFIGOPTS_FULLCYC_BIT,
+  reg = bitfield_bit32_write(reg, SPI_HOST_CONFIGOPTS_FULLCYC_0_BIT,
                              config.full_cycle);
-  reg = bitfield_bit32_write(reg, SPI_HOST_CONFIGOPTS_CPHA_BIT, config.cpha);
-  reg = bitfield_bit32_write(reg, SPI_HOST_CONFIGOPTS_CPOL_BIT, config.cpol);
+  reg = bitfield_bit32_write(reg, SPI_HOST_CONFIGOPTS_CPHA_0_BIT, config.cpha);
+  reg = bitfield_bit32_write(reg, SPI_HOST_CONFIGOPTS_CPOL_0_BIT, config.cpol);
   mmio_region_write32(spi_host->base_addr, SPI_HOST_CONFIGOPTS_REG_OFFSET, reg);
 
   reg = mmio_region_read32(spi_host->base_addr, SPI_HOST_CONTROL_REG_OFFSET);
@@ -369,14 +370,10 @@ static dif_result_t issue_data_phase(const dif_spi_host_t *spi_host,
   return kDifOk;
 }
 
-dif_result_t dif_spi_host_start_transaction(const dif_spi_host_t *spi_host,
-                                            uint32_t csid,
-                                            dif_spi_host_segment_t *segments,
-                                            size_t length) {
-  if (spi_host == NULL || segments == NULL) {
-    return kDifBadArg;
-  }
-
+dif_result_t dif_spi_host_transaction(const dif_spi_host_t *spi_host,
+                                      uint32_t csid,
+                                      dif_spi_host_segment_t *segments,
+                                      size_t length) {
   // Write to chip select ID.
   mmio_region_write32(spi_host->base_addr, SPI_HOST_CSID_REG_OFFSET, csid);
 
@@ -409,15 +406,6 @@ dif_result_t dif_spi_host_start_transaction(const dif_spi_host_t *spi_host,
         return kDifBadArg;
     }
   }
-  return kDifOk;
-}
-
-dif_result_t dif_spi_host_transaction(const dif_spi_host_t *spi_host,
-                                      uint32_t csid,
-                                      dif_spi_host_segment_t *segments,
-                                      size_t length) {
-  DIF_RETURN_IF_ERROR(
-      dif_spi_host_start_transaction(spi_host, csid, segments, length));
 
   // For each segment which receives data, read from the receive FIFO.
   for (size_t i = 0; i < length; ++i) {

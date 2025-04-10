@@ -936,7 +936,14 @@ module chip_earlgrey_asic #(
 
   prim_mubi_pkg::mubi4_t ast_init_done;
 
-  ast u_ast (
+  ast #(
+    .EntropyStreams(ast_pkg::EntropyStreams),
+    .AdcChannels(ast_pkg::AdcChannels),
+    .AdcDataWidth(ast_pkg::AdcDataWidth),
+    .UsbCalibWidth(ast_pkg::UsbCalibWidth),
+    .Ast2PadOutWidth(ast_pkg::Ast2PadOutWidth),
+    .Pad2AstInWidth(ast_pkg::Pad2AstInWidth)
+  ) u_ast (
     // external POR
     .por_ni                ( manual_in_por_n ),
 
@@ -1233,8 +1240,6 @@ module chip_earlgrey_asic #(
 
     // Memory attributes
     .ram_1p_cfg_i                 ( ram_1p_cfg                 ),
-    .sram_ctrl_main_cfg_i         ( '{ram_1p_cfg}              ),
-    .sram_ctrl_ret_aon_cfg_i      ( '{ram_1p_cfg}              ),
     .spi_ram_2p_cfg_i             ( spi_ram_2p_cfg             ),
     .usb_ram_1p_cfg_i             ( usb_ram_1p_cfg             ),
 

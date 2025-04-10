@@ -7,7 +7,6 @@ r"""Converts mubi mako templates
 from mako.template import Template  # type: ignore
 
 MUBI_PKG_TPL_PATH = "util/design/data/prim_mubi_pkg.sv.tpl"
-MUBI_PKG_CORE_TPL_PATH = "util/design/data/prim_mubi_pkg.core.tpl"
 MUBI_CORE_TPL_PATH = "util/design/data/prim_mubi.core.tpl"
 MUBI_SENDER_TPL_PATH = "util/design/data/prim_mubi_sender.sv.tpl"
 MUBI_SYNC_TPL_PATH = "util/design/data/prim_mubi_sync.sv.tpl"
@@ -16,7 +15,6 @@ MUBI_SW_TPL_PATH = "util/design/data/multibits.h.tpl"
 MUBI_SW_ASM_TPL_PATH = "util/design/data/multibits_asm.h.tpl"
 
 MUBI_PKG_OUT_PATH = "hw/ip/prim/rtl/prim_mubi_pkg.sv"
-MUBI_PKG_CORE_OUT_PATH = "hw/ip/prim/prim_mubi_pkg.core"
 MUBI_CORE_OUT_PATH = "hw/ip/prim/prim_mubi.core"
 MUBI_SENDER_OUT_PATH = "hw/ip/prim/rtl/prim_mubi{}_sender.sv"
 MUBI_SYNC_OUT_PATH = "hw/ip/prim/rtl/prim_mubi{}_sync.sv"
@@ -62,7 +60,6 @@ def gen() -> None:
 
     tpls = [
         (MUBI_PKG_TPL_PATH, MUBI_PKG_OUT_PATH),
-        (MUBI_PKG_CORE_TPL_PATH, MUBI_PKG_CORE_OUT_PATH),
         (MUBI_CORE_TPL_PATH, MUBI_CORE_OUT_PATH),
         (MUBI_SW_TPL_PATH, MUBI_SW_OUT_PATH),
         (MUBI_SW_ASM_TPL_PATH, MUBI_SW_ASM_OUT_PATH),

@@ -25,6 +25,10 @@ load(
     "maybe_skip_in_ci",
 )
 load(
+    "//rules:splice.bzl",
+    "bitstream_splice",
+)
+load(
     "//sw/device/silicon_creator/rom/e2e:defs.bzl",
     "MSG_PASS",
     "MSG_TEMPLATE_BFV",
@@ -47,8 +51,21 @@ BOOT_POLICY_VALID_CASES = [
 [
     otp_image(
         name = "otp_img_boot_policy_valid_{}".format(lc_state),
-        src = "//hw/top_earlgrey/data/otp:otp_json_{}".format(lc_state),
+        src = "//hw/ip/otp_ctrl/data:otp_json_{}".format(lc_state),
         overlays = STD_OTP_OVERLAYS,
+    )
+    for lc_state, _ in get_lc_items()
+]
+
+# Splice OTP images into bitstreams
+[
+    bitstream_splice(
+        name = "bitstream_boot_policy_valid_{}".format(lc_state),
+        src = "//hw/bitstream:mask_rom",
+        data = ":otp_img_boot_policy_valid_{}".format(lc_state),
+        instance = "otp",
+        meminfo = "//hw/bitstream:cw310_mmi",
+        update_usr_access = True,
     )
     for lc_state, _ in get_lc_items()
 ]
@@ -73,9 +90,9 @@ BOOT_POLICY_VALID_CASES = [
                 "//sw/device/silicon_creator/rom/e2e:empty_test_slot_a_fake_ecdsa_prod_key_0{}".format(a["suffix"]): "slot_a",
                 "//sw/device/silicon_creator/rom/e2e:empty_test_slot_b_fake_ecdsa_prod_key_0{}".format(b["suffix"]): "slot_b",
             },
+            bitstream = "bitstream_boot_policy_valid_{}".format(lc_state),
             exit_failure = MSG_PASS if a["desc"] == b["desc"] and a["desc"] == "bad" else DEFAULT_TEST_FAILURE_MSG,
             exit_success = MSG_TEMPLATE_BFV.format(hex_digits(CONST.BFV.SIGVERIFY.BAD_ECDSA_SIGNATURE)) if a["desc"] == b["desc"] and a["desc"] == "bad" else MSG_PASS,
-            otp = ":otp_img_boot_policy_valid_{}".format(lc_state),
             tags = maybe_skip_in_ci(lc_state_val),
         ),
     )

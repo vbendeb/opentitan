@@ -5,15 +5,8 @@
 package(default_visibility = ["//visibility:public"])
 
 filegroup(
-    name = "rtl_files",
-    srcs = glob(
-        ["**"],
-        exclude = [
-            "dv/**",
-            "doc/**",
-            "README.md",
-        ],
-    ) + [
+    name = "all_files",
+    srcs = glob(["**"]) + [
         "//hw/ip/aon_timer/data:all_files",
     ],
 )

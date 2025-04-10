@@ -4,6 +4,8 @@
 
 package(default_visibility = ["//visibility:public"])
 
+exports_files(glob(["autogen/**"]))
+
 filegroup(
     name = "all_files",
     srcs = glob(["**"]),

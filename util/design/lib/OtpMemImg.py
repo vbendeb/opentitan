@@ -77,10 +77,7 @@ def _present_64bit_digest(data_blocks, iv, const):
     # that uses the Davies-Meyer scheme to turn the PRESENT cipher into
     # a one-way compression function. Digest finalization consists of
     # a final digest round with a 128bit constant.
-    #
-    # See also: the Scrambling Datapath section of
-    #
-    #     ../../../hw/ip_templates/otp_ctrl/doc/theory_of_operation.md
+    # See also: https://docs.opentitan.org/hw/ip/otp_ctrl/doc/index.html#scrambling-datapath
     state = iv
     last_b64 = None
     for b64 in data_blocks:
@@ -148,7 +145,7 @@ def _to_memfile_with_ecc(data, annotation, config,
         # count ECC bits. In a comment, we also include any annotations
         # associated with the word.
         line = '@{:06x} {} // {}'.format(i_word, word_hex,
-                                         ', '.join(sorted(word_annotations)))
+                                         ', '.join(word_annotations))
         mem_lines.append(line)
 
     log.info('Done.')

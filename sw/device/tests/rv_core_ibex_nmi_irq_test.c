@@ -7,11 +7,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "dt/dt_alert_handler.h"  // Generated
-#include "dt/dt_aon_timer.h"      // Generated
-#include "dt/dt_pwrmgr.h"         // Generated
-#include "dt/dt_rv_core_ibex.h"   // Generated
-#include "dt/dt_rv_timer.h"       // Generated
+#include "sw/device/lib/base/mmio.h"
 #include "sw/device/lib/dif/dif_alert_handler.h"
 #include "sw/device/lib/dif/dif_aon_timer.h"
 #include "sw/device/lib/dif/dif_pwrmgr.h"
@@ -26,6 +22,9 @@
 #include "sw/device/lib/testing/test_framework/check.h"
 #include "sw/device/lib/testing/test_framework/ottf_isrs.h"
 #include "sw/device/lib/testing/test_framework/ottf_main.h"
+
+#include "hw/top_earlgrey/sw/autogen/top_earlgrey.h"
+#include "sw/device/lib/testing/autogen/isr_testutils.h"
 
 OTTF_DEFINE_TEST_CONFIG();
 
@@ -42,7 +41,6 @@ static dif_pwrmgr_t pwrmgr;
 static dif_rv_core_ibex_t rv_core_ibex;
 static dif_aon_timer_t aon_timer;
 static dif_alert_handler_t alert_handler;
-static dt_pwrmgr_t kPwrmgrDt = kDtPwrmgrAon;
 
 /**
  * Program the alert handler to escalate on alerts upto phase 2 (i.e. reset)
@@ -85,8 +83,7 @@ static void alert_handler_config(void) {
       .crashdump_escalation_phase = kDifAlertHandlerClassStatePhase3,
   }};
 
-  dt_alert_id_t alerts[] = {
-      dt_pwrmgr_alert_to_alert_id(kPwrmgrDt, kDtPwrmgrAlertFatalFault)};
+  dif_alert_handler_alert_t alerts[] = {kTopEarlgreyAlertIdPwrmgrAonFatalFault};
   dif_alert_handler_class_t alert_classes[] = {kDifAlertHandlerClassA};
   dif_alert_handler_class_t classes[] = {kDifAlertHandlerClassA};
   dif_alert_handler_config_t config = {
@@ -120,7 +117,8 @@ static void wdog_handler(void) {
   CHECK_DIF_OK(dif_aon_timer_watchdog_stop(&aon_timer));
   // In order to handle the NMI we need to acknowledge the interrupt status
   // bit it at the peripheral side. Note that this test does not use the
-  // PLIC, so there is nothing to acknowledge on the PLIC side.
+  // PLIC, so there is nothing to acknowledge on the PLIC side. We are hence
+  // not using the isr_testutils_aon_timer_isr function here.
   CHECK_DIF_OK(
       dif_aon_timer_irq_acknowledge(&aon_timer, kDifAonTimerIrqWdogTimerBark));
 }
@@ -255,17 +253,18 @@ void ottf_external_isr(uint32_t *exc_info) { ext_irq_fired = true; }
  * Initialized all peripherals used in this test.
  */
 void init_peripherals(void) {
-  static_assert(kDtRvCoreIbexCount >= 1, "This test requires an Ibex core");
-  CHECK_DIF_OK(
-      dif_rv_core_ibex_init_from_dt((dt_rv_core_ibex_t)0, &rv_core_ibex));
+  mmio_region_t addr =
+      mmio_region_from_addr(TOP_EARLGREY_RV_CORE_IBEX_CFG_BASE_ADDR);
+  CHECK_DIF_OK(dif_rv_core_ibex_init(addr, &rv_core_ibex));
 
-  CHECK_DIF_OK(dif_aon_timer_init_from_dt(kDtAonTimerAon, &aon_timer));
+  addr = mmio_region_from_addr(TOP_EARLGREY_AON_TIMER_AON_BASE_ADDR);
+  CHECK_DIF_OK(dif_aon_timer_init(addr, &aon_timer));
 
-  static_assert(kDtAlertHandlerCount >= 1, "This test needs an Alert Handler");
-  CHECK_DIF_OK(
-      dif_alert_handler_init_from_dt((dt_alert_handler_t)0, &alert_handler));
+  addr = mmio_region_from_addr(TOP_EARLGREY_ALERT_HANDLER_BASE_ADDR);
+  CHECK_DIF_OK(dif_alert_handler_init(addr, &alert_handler));
 
-  CHECK_DIF_OK(dif_pwrmgr_init_from_dt(kPwrmgrDt, &pwrmgr));
+  addr = mmio_region_from_addr(TOP_EARLGREY_PWRMGR_AON_BASE_ADDR);
+  CHECK_DIF_OK(dif_pwrmgr_init(addr, &pwrmgr));
 }
 /**
  * This test do the following steps:

@@ -266,8 +266,6 @@ void init_test_components(void) {
 
   init_peripherals();
 
-  ret_sram_testutils_init();
-
   // Enable all the AON interrupts used in this test.
   rv_plic_testutils_irq_range_enable(&plic, kTopEarlgreyPlicTargetIbex0,
                                      kTopEarlgreyPlicIrqIdPwrmgrAonWakeup,

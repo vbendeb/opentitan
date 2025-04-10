@@ -14,40 +14,35 @@
  * Top level module of the ibex RISC-V core
  */
 module ibex_core import ibex_pkg::*; #(
-  parameter bit                     PMPEnable        = 1'b0,
-  parameter int unsigned            PMPGranularity   = 0,
-  parameter int unsigned            PMPNumRegions    = 4,
-  parameter ibex_pkg::pmp_cfg_t     PMPRstCfg[16]    = ibex_pkg::PmpCfgRst,
-  parameter logic [33:0]            PMPRstAddr[16]   = ibex_pkg::PmpAddrRst,
-  parameter ibex_pkg::pmp_mseccfg_t PMPRstMsecCfg    = ibex_pkg::PmpMseccfgRst,
-  parameter int unsigned            MHPMCounterNum   = 0,
-  parameter int unsigned            MHPMCounterWidth = 40,
-  parameter bit                     RV32E            = 1'b0,
-  parameter rv32m_e                 RV32M            = RV32MFast,
-  parameter rv32b_e                 RV32B            = RV32BNone,
-  parameter bit                     BranchTargetALU  = 1'b0,
-  parameter bit                     WritebackStage   = 1'b0,
-  parameter bit                     ICache           = 1'b0,
-  parameter bit                     ICacheECC        = 1'b0,
-  parameter int unsigned            BusSizeECC       = BUS_SIZE,
-  parameter int unsigned            TagSizeECC       = IC_TAG_SIZE,
-  parameter int unsigned            LineSizeECC      = IC_LINE_SIZE,
-  parameter bit                     BranchPredictor  = 1'b0,
-  parameter bit                     DbgTriggerEn     = 1'b0,
-  parameter int unsigned            DbgHwBreakNum    = 1,
-  parameter bit                     ResetAll         = 1'b0,
-  parameter lfsr_seed_t             RndCnstLfsrSeed  = RndCnstLfsrSeedDefault,
-  parameter lfsr_perm_t             RndCnstLfsrPerm  = RndCnstLfsrPermDefault,
-  parameter bit                     SecureIbex       = 1'b0,
-  parameter bit                     DummyInstructions= 1'b0,
-  parameter bit                     RegFileECC       = 1'b0,
-  parameter int unsigned            RegFileDataWidth = 32,
-  parameter bit                     MemECC           = 1'b0,
-  parameter int unsigned            MemDataWidth     = MemECC ? 32 + 7 : 32,
-  parameter int unsigned            DmBaseAddr       = 32'h1A110000,
-  parameter int unsigned            DmAddrMask       = 32'h00000FFF,
-  parameter int unsigned            DmHaltAddr       = 32'h1A110800,
-  parameter int unsigned            DmExceptionAddr  = 32'h1A110808
+  parameter bit          PMPEnable         = 1'b0,
+  parameter int unsigned PMPGranularity    = 0,
+  parameter int unsigned PMPNumRegions     = 4,
+  parameter int unsigned MHPMCounterNum    = 0,
+  parameter int unsigned MHPMCounterWidth  = 40,
+  parameter bit          RV32E             = 1'b0,
+  parameter rv32m_e      RV32M             = RV32MFast,
+  parameter rv32b_e      RV32B             = RV32BNone,
+  parameter bit          BranchTargetALU   = 1'b0,
+  parameter bit          WritebackStage    = 1'b0,
+  parameter bit          ICache            = 1'b0,
+  parameter bit          ICacheECC         = 1'b0,
+  parameter int unsigned BusSizeECC        = BUS_SIZE,
+  parameter int unsigned TagSizeECC        = IC_TAG_SIZE,
+  parameter int unsigned LineSizeECC       = IC_LINE_SIZE,
+  parameter bit          BranchPredictor   = 1'b0,
+  parameter bit          DbgTriggerEn      = 1'b0,
+  parameter int unsigned DbgHwBreakNum     = 1,
+  parameter bit          ResetAll          = 1'b0,
+  parameter lfsr_seed_t  RndCnstLfsrSeed   = RndCnstLfsrSeedDefault,
+  parameter lfsr_perm_t  RndCnstLfsrPerm   = RndCnstLfsrPermDefault,
+  parameter bit          SecureIbex        = 1'b0,
+  parameter bit          DummyInstructions = 1'b0,
+  parameter bit          RegFileECC        = 1'b0,
+  parameter int unsigned RegFileDataWidth  = 32,
+  parameter bit          MemECC            = 1'b0,
+  parameter int unsigned MemDataWidth      = MemECC ? 32 + 7 : 32,
+  parameter int unsigned DmHaltAddr        = 32'h1A110800,
+  parameter int unsigned DmExceptionAddr   = 32'h1A110808
 ) (
   // Clock and Reset
   input  logic                         clk_i,
@@ -618,7 +613,6 @@ module ibex_core import ibex_pkg::*; #(
     // CSR ID/EX
     .csr_access_o         (csr_access),
     .csr_op_o             (csr_op),
-    .csr_addr_o           (csr_addr),
     .csr_op_en_o          (csr_op_en),
     .csr_save_if_o        (csr_save_if),  // control signal to save PC
     .csr_save_id_o        (csr_save_id),  // control signal to save PC
@@ -1021,19 +1015,13 @@ module ibex_core import ibex_pkg::*; #(
     end
   end
 
-  // A 1-bit encoding of fetch_enable_i to avoid polluting the NoExecWhenFetchEnableNotOn assertion
-  // with notes about SecureIbex and mubi values.
-  logic fetch_enable_raw;
-  assign fetch_enable_raw = SecureIbex ? (fetch_enable_i == IbexMuBiOn) : fetch_enable_i[0];
-
-  // When fetch is disabled, no instructions should be executed. Once fetch is disabled either the
+  // When fetch is disabled no instructions should be executed. Once fetch is disabled either the
   // ID/EX stage is not valid or the PC of the ID/EX stage must remain as it was at disable. The
   // ID/EX valid should not ressert once it has been cleared.
-  `ASSERT(NoExecWhenFetchEnableNotOn,
-          !fetch_enable_raw |=>
-          (~instr_valid_id || (pc_id == pc_at_fetch_disable)) && ~$rose(instr_valid_id))
+  `ASSERT(NoExecWhenFetchEnableNotOn, fetch_enable_i != IbexMuBiOn |=>
+    (~instr_valid_id || (pc_id == pc_at_fetch_disable)) && ~$rose(instr_valid_id))
 
-  `endif // INC_ASSERT
+  `endif
 
   ////////////////////////
   // RF (Register File) //
@@ -1047,6 +1035,7 @@ module ibex_core import ibex_pkg::*; #(
   /////////////////////////////////////////
 
   assign csr_wdata  = alu_operand_a_ex;
+  assign csr_addr   = csr_num_e'(csr_access ? alu_operand_b_ex[11:0] : 12'b0);
 
   ibex_cs_registers #(
     .DbgTriggerEn     (DbgTriggerEn),
@@ -1060,9 +1049,6 @@ module ibex_core import ibex_pkg::*; #(
     .PMPEnable        (PMPEnable),
     .PMPGranularity   (PMPGranularity),
     .PMPNumRegions    (PMPNumRegions),
-    .PMPRstCfg        (PMPRstCfg),
-    .PMPRstAddr       (PMPRstAddr),
-    .PMPRstMsecCfg    (PMPRstMsecCfg),
     .RV32E            (RV32E),
     .RV32M            (RV32M),
     .RV32B            (RV32B)
@@ -1185,8 +1171,6 @@ module ibex_core import ibex_pkg::*; #(
     assign pmp_priv_lvl[PMP_D]  = priv_mode_lsu;
 
     ibex_pmp #(
-      .DmBaseAddr    (DmBaseAddr),
-      .DmAddrMask    (DmAddrMask),
       .PMPGranularity(PMPGranularity),
       .PMPNumChan    (PMPNumChan),
       .PMPNumRegions (PMPNumRegions)
@@ -1195,7 +1179,6 @@ module ibex_core import ibex_pkg::*; #(
       .csr_pmp_cfg_i    (csr_pmp_cfg),
       .csr_pmp_addr_i   (csr_pmp_addr),
       .csr_pmp_mseccfg_i(csr_pmp_mseccfg),
-      .debug_mode_i     (debug_mode),
       .priv_mode_i      (pmp_priv_lvl),
       // Access checking channels
       .pmp_req_addr_i   (pmp_req_addr),
@@ -1695,7 +1678,7 @@ module ibex_core import ibex_pkg::*; #(
   end
 
 
-  // Memory address/write data available first cycle of ld/st instruction from register read
+  // Memory adddress/write data available first cycle of ld/st instruction from register read
   always_comb begin
     if (instr_first_cycle_id) begin
       rvfi_mem_addr_d  = alu_adder_result_ex;

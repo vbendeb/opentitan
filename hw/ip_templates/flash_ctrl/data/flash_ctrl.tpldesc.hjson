@@ -10,12 +10,6 @@
       default: ""
     }
     {
-      name: "uniquified_modules"
-      desc: "A dictionary mapping template_names to uniquified_names"
-      type: "object"
-      default: {"clkmgr": "clkmgr1"}
-    }
-    {
       name: "banks"
       desc: "Number of banks"
       type: "int"
@@ -92,12 +86,6 @@
       desc: "The total size in bytes"
       type: "int"
       default: "1048576"
-    }
-    {
-      name: "module_instance_name"
-      desc: "instance name in case there are multiple flash_ctrl instances. Not yet implemented."
-      type: "string"
-      default: "flash_ctrl"
     }
   ]
 }

@@ -284,7 +284,7 @@ bool test_main(void) {
       &rv_core_ibex));
 
   CHECK_DIF_OK(dif_lc_ctrl_init(
-      mmio_region_from_addr(TOP_EARLGREY_LC_CTRL_REGS_BASE_ADDR), &lc_ctrl));
+      mmio_region_from_addr(TOP_EARLGREY_LC_CTRL_BASE_ADDR), &lc_ctrl));
 
   CHECK_DIF_OK(dif_rstmgr_init(
       mmio_region_from_addr(TOP_EARLGREY_RSTMGR_AON_BASE_ADDR), &rstmgr));
@@ -296,8 +296,6 @@ bool test_main(void) {
   // Check if there was a HW reset caused by the escalation.
   dif_rstmgr_reset_info_bitfield_t rst_info = rstmgr_testutils_reason_get();
   rstmgr_testutils_reason_clear();
-
-  ret_sram_testutils_init();
 
   CHECK(rst_info == kDifRstmgrResetInfoPor ||
             rst_info == kDifRstmgrResetInfoEscalation,

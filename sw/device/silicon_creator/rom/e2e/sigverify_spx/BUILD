@@ -11,8 +11,15 @@ load(
     "opentitan_test",
     "spx_key_for_lc_state",
 )
-load("//rules:const.bzl", "CONST", "get_lc_items")
-load("//rules/opentitan:keyutils.bzl", "ECDSA_SPX_KEY_STRUCTS")
+load(
+    "//rules:const.bzl",
+    "CONST",
+    "get_lc_items",
+)
+load(
+    "//rules:opentitan.bzl",
+    "ECDSA_SPX_KEY_STRUCTS",
+)
 load(
     "//rules:otp.bzl",
     "STD_OTP_OVERLAYS",
@@ -21,8 +28,18 @@ load(
     "otp_json",
     "otp_partition",
 )
-load("//rules:rom_e2e.bzl", "maybe_skip_in_ci")
-load("@bazel_skylib//lib:dicts.bzl", "dicts")
+load(
+    "//rules:rom_e2e.bzl",
+    "maybe_skip_in_ci",
+)
+load(
+    "//rules:splice.bzl",
+    "bitstream_splice",
+)
+load(
+    "@bazel_skylib//lib:dicts.bzl",
+    "dicts",
+)
 
 package(default_visibility = ["//visibility:public"])
 
@@ -105,7 +122,7 @@ opentitan_binary(
         CONST.LCV.RMA,
     ),
     deps = [
-        "//hw/top:otp_ctrl_c_regs",
+        "//hw/ip/otp_ctrl/data:otp_ctrl_c_regs",
         "//sw/device/lib/testing/test_framework:ottf_ld_silicon_creator_slot_a",
         "//sw/device/lib/testing/test_framework:ottf_main",
         "//sw/device/silicon_creator/lib/drivers:lifecycle",
@@ -135,10 +152,30 @@ opentitan_binary(
             lc_state,
             t["name"],
         ),
-        src = "//hw/top_earlgrey/data/otp:otp_json_{}".format(lc_state),
+        src = "//hw/ip/otp_ctrl/data:otp_json_{}".format(lc_state),
         overlays = STD_OTP_OVERLAYS + [
             ":otp_json_sigverify_spx_{}".format(t["name"]),
         ],
+        visibility = ["//visibility:private"],
+    )
+    for lc_state, _ in get_lc_items()
+    for t in SIGVERIFY_SPX_CASES
+]
+
+[
+    bitstream_splice(
+        name = "bitstream_sigverify_spx_{}_{}".format(
+            lc_state,
+            t["name"],
+        ),
+        src = "//hw/bitstream:mask_rom",
+        data = ":otp_img_sigverify_spx_{}_{}".format(
+            lc_state,
+            t["name"],
+        ),
+        instance = "otp",
+        meminfo = "//hw/bitstream:cw310_mmi",
+        update_usr_access = True,
         visibility = ["//visibility:private"],
     )
     for lc_state, _ in get_lc_items()
@@ -160,11 +197,11 @@ opentitan_binary(
             "//hw/top_earlgrey:fpga_cw310_rom_with_fake_keys": None,
         },
         fpga = fpga_params(
-            exit_success = t["exit_success"][lc_state],
-            otp = ":otp_img_sigverify_spx_{}_{}".format(
+            bitstream = ":bitstream_sigverify_spx_{}_{}".format(
                 lc_state,
                 t["name"],
             ),
+            exit_success = t["exit_success"][lc_state],
             tags = maybe_skip_in_ci(lc_state_val),
         ),
         spx_key = spx_key_for_lc_state(
@@ -172,7 +209,7 @@ opentitan_binary(
             lc_state_val,
         ),
         deps = [
-            "//hw/top:otp_ctrl_c_regs",
+            "//hw/ip/otp_ctrl/data:otp_ctrl_c_regs",
             "//sw/device/lib/testing/test_framework:ottf_ld_silicon_creator_slot_a",
             "//sw/device/lib/testing/test_framework:ottf_main",
             "//sw/device/silicon_creator/lib/drivers:lifecycle",
@@ -194,5 +231,30 @@ test_suite(
         )
         for lc_state, _ in get_lc_items()
         for t in SIGVERIFY_SPX_CASES
+    ],
+)
+
+opentitan_test(
+    name = "sigverify_spx_prehashed_test",
+    srcs = ["sigverify_spx_test.c"],
+    ecdsa_key = {
+        "//sw/device/silicon_creator/rom/keys/fake/ecdsa:prod_key_1_ecdsa_p256": "prod_key_1",
+    },
+    exec_env = {
+        "//hw/top_earlgrey:fpga_cw310_rom_with_fake_keys": None,
+    },
+    fpga = fpga_params(
+        bitstream = ":bitstream_sigverify_spx_prod_enabled_true",
+    ),
+    spx_key = {
+        "//sw/device/silicon_creator/rom/keys/fake/spx:prod_key_1_spx_key": "prod_key_1",
+    },
+    deps = [
+        "//hw/ip/otp_ctrl/data:otp_ctrl_c_regs",
+        "//sw/device/lib/testing/test_framework:ottf_ld_silicon_creator_slot_a",
+        "//sw/device/lib/testing/test_framework:ottf_main",
+        "//sw/device/silicon_creator/lib/drivers:lifecycle",
+        "//sw/device/silicon_creator/lib/drivers:otp",
+        "//sw/device/silicon_creator/lib/sigverify:spx_verify",
     ],
 )

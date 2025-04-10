@@ -2,6 +2,10 @@
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 
+// ndmreset_req sequence.Debugger can issue non-debug reset to rest of the system.
+// write known value on any csr of all three RAL Models.
+// I have written on csrs of two RAL Models as "rv_dm_regs_Ral_Model" has only one register which is 'WO'.
+
 class rv_dm_ndmreset_req_vseq extends rv_dm_base_vseq;
   `uvm_object_utils(rv_dm_ndmreset_req_vseq)
   `uvm_object_new
@@ -13,12 +17,10 @@ class rv_dm_ndmreset_req_vseq extends rv_dm_base_vseq;
     value = dmstatus_t'(rdata);
   endtask
 
-  // Read dmstatus and check that anyunavail and allunavail are asserted (unless we are in reset, in
-  // which case any value is allowed)
+  // Read dmstatus and check that anyunavail and allunavail are asserted
   task check_unavail();
     dmstatus_t dmstatus;
     read_dmstatus(dmstatus);
-    if (!cfg.clk_rst_vif.rst_n) return;
     `DV_CHECK(dmstatus.anyunavail)
     `DV_CHECK(dmstatus.allunavail)
   endtask
@@ -32,12 +34,10 @@ class rv_dm_ndmreset_req_vseq extends rv_dm_base_vseq;
     rvalue = val[0];
   endtask
 
-  // Check that the ndmreset_pending_q signal in the design has the value we expect. If we are in
-  // reset, this returns immediately.
+  // Check that the ndmreset_pending_q signal in the design has the value we expect.
   task check_ndmreset_pending(bit expected_value);
     bit seen_value;
     get_ndmreset_pending(seen_value);
-    if (!cfg.clk_rst_vif.rst_n) return;
     `DV_CHECK_EQ(seen_value, expected_value);
   endtask
 
@@ -50,21 +50,13 @@ class rv_dm_ndmreset_req_vseq extends rv_dm_base_vseq;
     // If rv_dm currently thinks an ndmreset is pending, it probably means that we're following a
     // vseq that set the ndmreset field in dmcontrol. To clear this, we need to set the ndmreset_ack
     // signal, which happens in response to a reset through rst_lc_ni. We add short waits after
-    // changes to rst_lc_ni so that the signal can flow through some synchronisers. Skip this wait
-    // if there is a system reset.
-    fork begin : isolation_fork
-      fork
-        wait (!cfg.clk_rst_vif.rst_n);
-        begin
-          cfg.clk_lc_rst_vif.drive_rst_pin(1'b0);
-          cfg.clk_rst_vif.wait_clks(8);
-          cfg.clk_lc_rst_vif.drive_rst_pin(1'b1);
-          cfg.clk_rst_vif.wait_clks(8);
-        end
-      join_any
-      disable fork;
-    end join
-    if (!cfg.clk_rst_vif.rst_n) return;
+    // changes to rst_lc_ni so that the signal can flow through some synchronisers.
+    begin
+      cfg.clk_lc_rst_vif.drive_rst_pin(1'b0);
+      cfg.clk_rst_vif.wait_clks(8);
+      cfg.clk_lc_rst_vif.drive_rst_pin(1'b1);
+      cfg.clk_rst_vif.wait_clks(8);
+    end
 
     // This should now have cleared the pending reset flag. Make sure it is clear.
     check_ndmreset_pending(1'b0);
@@ -90,10 +82,8 @@ class rv_dm_ndmreset_req_vseq extends rv_dm_base_vseq;
     // field in dmcontrol.
     csr_wr(.ptr(jtag_dmi_ral.dmcontrol.ndmreset), .value(1));
 
-    // If we are in reset, stop immediately. Otherwise, check that the ndmreset request appears at
-    // top-level. Note that we don't assert that it remains high: it will drop again when we disable
-    // lc_hw_debug_en below.
-    if (!cfg.clk_rst_vif.rst_n) return;
+    // Check that the ndmreset request appears at top-level. Note that we don't assert that it
+    // remains high: it will drop again when we disable lc_hw_debug_en below.
     `DV_CHECK(cfg.rv_dm_vif.cb.ndmreset_req)
 
     // We should also expect to see the ndmreset_pending_q signal go high (tracking the fact that we
@@ -103,27 +93,6 @@ class rv_dm_ndmreset_req_vseq extends rv_dm_base_vseq;
     // Resetting the system would normally drop the rst_ni pin (resetting rv_dm as well). Because
     // this is an "ndm reset", we don't do that. But we *do* expect to see the reset on the
     // auxiliary clk_rst_lc_ni pin.
-    cfg.clk_lc_rst_vif.drive_rst_pin(1'b0);
-
-    // This is a bit of a hack to see a particular conditional coverage point in rv_dm.sv. The
-    // coverage point wants to see lc_rst_pending_q && !(ndmreset_pending_q && lc_rst_asserted). The
-    // lc_rst_pending_q only becomes true after both the other two have been true, so the only
-    // simple way to hit the coverage point is to cause lc_rst_asserted to drop again.
-    //
-    // This means we have to:
-    //
-    // 1. See the lc_ctrl reset happen (the statement just above this comment).
-    // 2. Wait long enough for that reset to be synchronised into lc_rst_asserted and then
-    //    lc_reset_pending_q.
-    // 3. Stop the reset again.
-    // 4. Wait a few cycles for the missing reset to by synchronised into lc_rst_asserted (which
-    //    should drop)
-    // 5. Finally apply the reset again.
-    //
-    // This dance (showing a "glitchy LC reset") shouldn't have any other effect.
-    cfg.clk_rst_vif.wait_clks(4);
-    cfg.clk_lc_rst_vif.drive_rst_pin(1'b1);
-    cfg.clk_rst_vif.wait_clks(10);
     cfg.clk_lc_rst_vif.drive_rst_pin(1'b0);
 
     // Pretend that the "rest of the system" has indeed seen a reset by asserting the unavailable_i
@@ -144,9 +113,6 @@ class rv_dm_ndmreset_req_vseq extends rv_dm_base_vseq;
     csr_wr(.ptr(jtag_dmi_ral.dmcontrol.ndmreset), .value(0));
     `DV_CHECK(!cfg.rv_dm_vif.cb.ndmreset_req)
 
-    // If there has been a system reset in this time, exit the vseq.
-    if (!cfg.clk_rst_vif.rst_n) return;
-
     // We still expect the ndmreset_pending_q signal to be high at this point. It's job is to track
     // the entire ndm reset and it should only drop when the rest of the system comes out of reset.
     check_ndmreset_pending(1'b1);
@@ -155,14 +121,6 @@ class rv_dm_ndmreset_req_vseq extends rv_dm_base_vseq;
     // and then drop the unavailable_i signal to show that the CPU is back. Also behave as lc_ctrl
     // and re-enable debug.
     cfg.clk_lc_rst_vif.drive_rst_pin(1'b1);
-
-    // Debugging should be enabled again (through lc_hw_debug_en), but that will take a short while
-    // (as the rest of the system comes up). Wait 16 cycles to represent this, which allows rv_dm to
-    // see the state where the de-asserted LC reset signal has been synchronised (4 cycles) but we
-    // haven't yet got far enough to allow debug to work again.
-    //
-    // Also drop the unavailable_i signal to represent the hart coming back.
-    cfg.clk_rst_vif.wait_clks(16);
     cfg.rv_dm_vif.cb.unavailable <= 0;
     lc_hw_debug_en = 1'b1;
     upd_lc_hw_debug_en();
@@ -175,13 +133,11 @@ class rv_dm_ndmreset_req_vseq extends rv_dm_base_vseq;
     check_ndmreset_pending(1'b0);
 
     // Also, the debug module should think that the one and only hart has reset. The allhavereset
-    // and anyhavereset fields should all be high (but we drop out if there has been a system reset
-    // in the meantime)
+    // and anyhavereset fields should all be high.
     begin
       uvm_reg_data_t rvalue;
       csr_rd(.ptr(jtag_dmi_ral.dmstatus), .value(rvalue));
     end
-    if (!cfg.clk_rst_vif.rst_n) return;
     `DV_CHECK_EQ(`gmv(jtag_dmi_ral.dmstatus.anyhavereset), 1)
     `DV_CHECK_EQ(`gmv(jtag_dmi_ral.dmstatus.allhavereset), 1)
 

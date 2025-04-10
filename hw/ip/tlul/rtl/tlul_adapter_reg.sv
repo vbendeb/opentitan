@@ -65,6 +65,7 @@ module tlul_adapter_reg
   logic             error_q, error, err_internal, instr_error, intg_error;
 
   logic addr_align_err;     // Size and alignment
+  logic malformed_meta_err; // User signal format error or unsupported
   logic tl_err;             // Common TL-UL error checker
 
   logic [IW-1:0]  reqid_q;
@@ -151,7 +152,9 @@ module tlul_adapter_reg
 
   tlul_pkg::tl_d2h_t tl_o_pre;
   assign tl_o_pre = '{
-    a_ready:  ~(outstanding_q | busy_i),
+    // busy is selected based on address
+    // thus if there is no valid transaction, we should ignore busy
+    a_ready:  ~(outstanding_q | tl_i.a_valid & busy_i),
     d_valid:  outstanding_q,
     d_opcode: rspop_q,
     d_param:  '0,
@@ -166,8 +169,7 @@ module tlul_adapter_reg
   // outgoing integrity generation
   tlul_rsp_intg_gen #(
     .EnableRspIntgGen(EnableRspIntgGen),
-    .EnableDataIntgGen(EnableDataIntgGen),
-    .UserInIsZero(1'b1)
+    .EnableDataIntgGen(EnableDataIntgGen)
   ) u_rsp_intg_gen (
     .tl_i(tl_o_pre),
     .tl_o(tl_o)
@@ -198,10 +200,15 @@ module tlul_adapter_reg
   ////////////////////
 
   // An instruction type transaction is only valid if en_ifetch is enabled
-  assign instr_error = prim_mubi_pkg::mubi4_test_true_strict(tl_i.a_user.instr_type) &
-                       prim_mubi_pkg::mubi4_test_false_loose(en_ifetch_i);
+  // If the instruction type is completely invalid, also considered an instruction error
+  assign instr_error = prim_mubi_pkg::mubi4_test_invalid(tl_i.a_user.instr_type) |
+                       (prim_mubi_pkg::mubi4_test_true_strict(tl_i.a_user.instr_type) &
+                        prim_mubi_pkg::mubi4_test_false_loose(en_ifetch_i));
 
-  assign err_internal = addr_align_err | tl_err | instr_error | intg_error;
+  assign err_internal = addr_align_err | malformed_meta_err | tl_err | instr_error | intg_error;
+
+  // Don't allow unsupported values.
+  assign malformed_meta_err = tl_a_user_chk(tl_i.a_user);
 
   // addr_align_err
   //    Raised if addr isn't aligned with the size

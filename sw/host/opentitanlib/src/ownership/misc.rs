@@ -24,6 +24,8 @@ with_unknown! {
         FlashConfig = u32::from_le_bytes(*b"FLSH"),
         FlashInfoConfig = u32::from_le_bytes(*b"INFO"),
         Rescue = u32::from_le_bytes(*b"RESQ"),
+        DetachedSignature = u32::from_le_bytes(*b"SIGN"),
+        IntegratorSpecificFirmwareBinding = u32::from_le_bytes(*b"ISFB"),
         NotPresent = u32::from_le_bytes(*b"ZZZZ"),
     }
 
@@ -31,8 +33,38 @@ with_unknown! {
         Unknown = 0,
         Rsa = u32::from_le_bytes(*b"RSA3"),
         EcdsaP256 = u32::from_le_bytes(*b"P256"),
-        Spx = u32::from_le_bytes(*b"SPX+"),
-        Spxq20 = u32::from_le_bytes(*b"Sq20"),
+        SpxPure = u32::from_le_bytes(*b"S+Pu"),
+        SpxPrehash = u32::from_le_bytes(*b"S+S2"),
+        HybridSpxPure = u32::from_le_bytes(*b"H+Pu"),
+        HybridSpxPrehash = u32::from_le_bytes(*b"H+S2"),
+    }
+}
+
+impl OwnershipKeyAlg {
+    pub fn is_detached(self) -> bool {
+        !matches!(self, Self::EcdsaP256)
+    }
+
+    pub fn is_ecdsa(self) -> bool {
+        matches!(
+            self,
+            Self::EcdsaP256 | Self::HybridSpxPure | Self::HybridSpxPrehash
+        )
+    }
+
+    pub fn is_spx(self) -> bool {
+        matches!(
+            self,
+            Self::SpxPure | Self::SpxPrehash | Self::HybridSpxPure | Self::HybridSpxPrehash
+        )
+    }
+
+    pub fn is_hybrid(self) -> bool {
+        matches!(self, Self::HybridSpxPure | Self::HybridSpxPrehash)
+    }
+
+    pub fn is_prehashed(self) -> bool {
+        matches!(self, Self::SpxPrehash | Self::HybridSpxPrehash)
     }
 }
 
@@ -130,6 +162,31 @@ impl TlvHeader {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct HybridRawPublicKey {
+    #[serde(deserialize_with = "string_or_struct")]
+    pub ecdsa: EcdsaRawPublicKey,
+    #[serde(deserialize_with = "string_or_struct")]
+    pub spx: SpxRawPublicKey,
+}
+
+impl HybridRawPublicKey {
+    const SIZE: usize = EcdsaRawPublicKey::SIZE + SpxRawPublicKey::SIZE;
+
+    pub fn read(src: &mut impl Read) -> Result<Self> {
+        Ok(Self {
+            ecdsa: EcdsaRawPublicKey::read(src)?,
+            spx: SpxRawPublicKey::read(src)?,
+        })
+    }
+
+    pub fn write(&self, dest: &mut impl Write) -> Result<()> {
+        self.ecdsa.write(dest)?;
+        self.spx.write(dest)?;
+        Ok(())
+    }
+}
+
 /// Low-level key material (ie: bit representation).
 #[derive(Debug, Serialize, Deserialize)]
 #[allow(clippy::len_without_is_empty)]
@@ -142,6 +199,8 @@ pub enum KeyMaterial {
     Rsa(#[serde(deserialize_with = "string_or_struct")] RsaRawPublicKey),
     #[serde(alias = "spx")]
     Spx(#[serde(deserialize_with = "string_or_struct")] SpxRawPublicKey),
+    #[serde(alias = "hybrid")]
+    Hybrid(HybridRawPublicKey),
 }
 
 impl Default for KeyMaterial {
@@ -156,6 +215,7 @@ impl KeyMaterial {
             KeyMaterial::Ecdsa(_) => EcdsaRawPublicKey::SIZE,
             KeyMaterial::Rsa(_) => RsaRawPublicKey::SIZE,
             KeyMaterial::Spx(_) => SpxRawPublicKey::SIZE,
+            KeyMaterial::Hybrid(_) => HybridRawPublicKey::SIZE,
             KeyMaterial::Unknown(u) => u.len(),
         }
     }
@@ -164,7 +224,8 @@ impl KeyMaterial {
         match self {
             KeyMaterial::Ecdsa(_) => OwnershipKeyAlg::EcdsaP256,
             KeyMaterial::Rsa(_) => OwnershipKeyAlg::Rsa,
-            KeyMaterial::Spx(_) => OwnershipKeyAlg::Spx,
+            KeyMaterial::Spx(_) => OwnershipKeyAlg::SpxPure,
+            KeyMaterial::Hybrid(_) => OwnershipKeyAlg::HybridSpxPure,
             KeyMaterial::Unknown(_) => OwnershipKeyAlg::Unknown,
         }
     }
@@ -173,8 +234,11 @@ impl KeyMaterial {
         let result = match kind {
             OwnershipKeyAlg::Rsa => KeyMaterial::Rsa(RsaRawPublicKey::read(src)?),
             OwnershipKeyAlg::EcdsaP256 => KeyMaterial::Ecdsa(EcdsaRawPublicKey::read(src)?),
-            OwnershipKeyAlg::Spx | OwnershipKeyAlg::Spxq20 => {
+            OwnershipKeyAlg::SpxPure | OwnershipKeyAlg::SpxPrehash => {
                 KeyMaterial::Spx(SpxRawPublicKey::read(src)?)
+            }
+            OwnershipKeyAlg::HybridSpxPure | OwnershipKeyAlg::HybridSpxPrehash => {
+                KeyMaterial::Hybrid(HybridRawPublicKey::read(src)?)
             }
             _ => {
                 return Err(
@@ -208,6 +272,7 @@ impl KeyMaterial {
             KeyMaterial::Ecdsa(k) => k.write(dest)?,
             KeyMaterial::Rsa(k) => k.write(dest)?,
             KeyMaterial::Spx(k) => k.write(dest)?,
+            KeyMaterial::Hybrid(k) => k.write(dest)?,
             _ => {
                 return Err(Error::InvalidPublicKey(anyhow!("Unknown key type")).into());
             }

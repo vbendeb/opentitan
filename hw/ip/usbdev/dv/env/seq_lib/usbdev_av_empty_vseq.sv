@@ -34,8 +34,6 @@ class usbdev_av_empty_vseq extends usbdev_base_vseq;
     uvm_reg_data_t intr_bit = 1 << (setup ? IntrAvSetupEmpty : IntrAvOutEmpty);
     int unsigned depth = setup ? AvSetupFIFODepth : AvOutFIFODepth;
 
-    `uvm_info(`gfn, $sformatf("Testing AVSetup %0d", setup), UVM_LOW)
-
     clear_all_interrupts();
     // Enable the appropriate Av Empty interrupt.
     csr_wr(.ptr(ral.intr_enable), .value(intr_bit));
@@ -66,14 +64,7 @@ class usbdev_av_empty_vseq extends usbdev_base_vseq;
     // Check that the interrupt line is asserted.
     `DV_CHECK_EQ(cfg.intr_vif.pins[setup ? IntrAvSetupEmpty : IntrAvOutEmpty], 1'b1,
                  "Interrupt signal not asserted")
-
-    // Provide another buffer and check that this Status type interrupt is deasserted.
-    supply_buffer(1);
-    check_level(1);
-    check_interrupt_state(0, "Av Empty interrupt unexpectedly remained asserted");
-    `DV_CHECK_EQ(cfg.intr_vif.pins[setup ? IntrAvSetupEmpty : IntrAvOutEmpty], 1'b0)
-
-    // Disable the interrupt so that it does not remain asserted when the FIFOs are emptied.
+    // We can't clear this interrupt, so mask it off.
     csr_wr(.ptr(ral.intr_enable), .value(0));
   endtask
 

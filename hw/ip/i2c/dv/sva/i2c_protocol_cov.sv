@@ -403,7 +403,7 @@ module i2c_protocol_cov(
     Rstart_after_Address_Ack_x_ip_mode_cp : cross Rstart_after_Address_Ack_cp, ip_mode_cp;
     Rstart_after_Address_Nack_x_ip_mode_cp : cross Rstart_after_Address_Nack_cp, ip_mode_cp;
     Start_followed_by_Rstart_cp_x_ip_mode_cp : cross Start_followed_by_Rstart_cp, ip_mode_cp;
-  endgroup : i2c_protocol_cov_cg
+  endgroup
 
   // Cover read write bytes in host and target modes
   covergroup i2c_rd_wr_cg;
@@ -468,16 +468,16 @@ module i2c_protocol_cov(
     bit en_cov;
     void'($value$plusargs("en_cov=%b", en_cov));
     if (en_cov) begin
-      i2c_protocol_cov_cg protocol_cov_cg = new();
-      i2c_rd_wr_cg        rd_wr_cg        = new();
-      i2c_cmd_complete_cg cmd_complete_cg = new();
+      i2c_protocol_cov_cg   i2c_protocol_cov = new();
+      i2c_rd_wr_cg          i2c_rd_wr_cov = new();
+      i2c_cmd_complete_cg   cmd_complete_cg = new();
       fork
         begin
             forever begin
             @(sda or scl);
             if(rst_n) begin
-              protocol_cov_cg.sample();
-              rd_wr_cg.sample();
+              i2c_protocol_cov.sample();
+              i2c_rd_wr_cov.sample();
             end
           end
         end

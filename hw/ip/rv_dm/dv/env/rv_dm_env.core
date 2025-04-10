@@ -7,13 +7,15 @@ description: "RV_DM DV UVM environment"
 filesets:
   files_dv:
     depend:
-      - lowrisc:ip:rv_dm
       - lowrisc:dv:ralgen
       - lowrisc:dv:cip_lib
       - lowrisc:dv:dv_base_reg
       - lowrisc:dv:jtag_agent
       - lowrisc:dv:jtag_dmi_agent
       - lowrisc:opentitan:bus_params_pkg
+      # Note: This core pulls in an rv_dm implementation. We actually
+      # just need the package (dm_pkg.sv) for DV here.
+      - pulp-platform:riscv-dbg:0.1
     files:
       - rv_dm_env_pkg.sv
       - rv_dm_if.sv
@@ -52,9 +54,6 @@ filesets:
       - seq_lib/rv_dm_progbuf_read_write_execute_vseq.sv: {is_include_file: true}
       - seq_lib/rv_dm_dmi_failed_op_vseq.sv: {is_include_file: true}
       - seq_lib/rv_dm_hartsel_warl_vseq.sv: {is_include_file: true}
-      - seq_lib/rv_dm_buffered_enable_vseq.sv: {is_include_file: true}
-      - seq_lib/rv_dm_sparse_lc_gate_fsm_vseq.sv: {is_include_file: true}
-      - seq_lib/rv_dm_scanmode_vseq.sv: {is_include_file: true}
     file_type: systemVerilogSource
 
 generate:

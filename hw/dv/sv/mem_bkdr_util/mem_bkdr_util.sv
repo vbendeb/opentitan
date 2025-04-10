@@ -16,21 +16,11 @@ class mem_bkdr_util extends uvm_object;
   // Hierarchical path to the memory.
   protected string path;
 
-  // If set to a value different to "", a path to the tile memory, based on path and tiling_path,
-  // is used to perform the backdoor access
-  protected string tiling_path;
-
   // The depth of the memory.
   protected uint32_t depth;
 
-  // The depth of a single SRAM tile.
-  protected uint32_t tile_depth;
-
   // The width of the memory.
   protected uint32_t width;
-
-  // The number of subword entries in the whole memory
-  protected uint32_t num_entries;
 
   // Indicates the error detection scheme implemented for this memory.
   protected err_detection_e err_detection_scheme = ErrDetectionNone;
@@ -68,62 +58,28 @@ class mem_bkdr_util extends uvm_object;
   event writememh_event;
 
   // Number of PRINCE half rounds for scrambling, can be [1..5].
-  protected uint32_t num_prince_rounds_half;
+  protected int num_prince_rounds_half;
 
-  // Construct an instance called name.
-  //
-  // Required arguments:
-  //
-  //   path:                 A hierarchical HDL path to the memory.
-  //
-  //   depth:                The number memory rows.
-  //
-  //   n_bits:               The total size of the memory in bits.
-  //
-  //   err_detection_scheme  The error detection scheme that is implemented for the memory.
-  //
-  // Optional arguments:
-  //
-  //  num_prince_rounds_half   The number of rounds of PRINCE used to scramble the memory. This is
-  //                           used for scrambled memories. This defaults to 3.
-  //
-  //  extra_bits_per_subword   When ECC is enabled, the words of the memory are divided into
-  //                           separate subwords that are used for ECC checks. This gives the number
-  //                           of extra bits added to each subword (to contain additional SECDED
-  //                           metadata). This defaults to zero.
-  //
-  //  system_base_addr         The memory words accessed through this backdoor would normally be
-  //                           indexed from zero. If this value is non-zero, the backdoor starts at
-  //                           some higher index.
-  //
-  //  tiling_path              A path used for constructing HDL paths to individual tiles (used
-  //                           when tile_depth < depth). By default this is empty because there are
-  //                           no tiles that would need paths at all.
-  //
-  //  tile_depth               The number of rows of a single tle. By default, this is the entire
-  //                           memory.
+  // Initialize the class instance.
+  // `extra_bits_per_subword` is the width any additional metadata that is not captured in secded
+  // package.
   function new(string name = "", string path, int unsigned depth,
                longint unsigned n_bits, err_detection_e err_detection_scheme,
-               uint32_t num_prince_rounds_half = 3,
-               uint32_t extra_bits_per_subword = 0, uint32_t system_base_addr = 0,
-               string tiling_path = "", uint32_t tile_depth = depth);
+               int num_prince_rounds_half = 3,
+               int extra_bits_per_subword = 0, int unsigned system_base_addr = 0);
+
+
+    bit res;
     super.new(name);
     `DV_CHECK_FATAL(!(n_bits % depth), "n_bits must be divisible by depth.")
+    res = uvm_hdl_check_path(path);
+    `DV_CHECK_EQ_FATAL(res, 1, $sformatf("Hierarchical path %0s appears to be invalid.", path))
 
-    this.path                  = path;
-    this.tiling_path           = tiling_path;
-    this.depth                 = depth;
-    this.tile_depth            = tile_depth;
-    this.width                 = n_bits / depth;
-    this.err_detection_scheme  = err_detection_scheme;
+    this.path  = path;
+    this.depth = depth;
+    this.width = n_bits / depth;
+    this.err_detection_scheme = err_detection_scheme;
     this.num_prince_rounds_half = num_prince_rounds_half;
-
-    // Check if the inferred path to each tile (or the whole memory) really exist
-    for (int i = 0; i < (depth + tile_depth - 1) / tile_depth; i++) begin
-      string full_path = get_full_path(i);
-      `DV_CHECK_FATAL(uvm_hdl_check_path(get_full_path(i)) == 1,
-                      $sformatf("Hierarchical path %0s appears to be invalid.", full_path))
-    end
 
     if (`HAS_ECC) begin
       import prim_secded_pkg::prim_secded_e;
@@ -151,10 +107,8 @@ class mem_bkdr_util extends uvm_object;
 
       subwords_per_word = (width + bits_per_subword - 1) / bits_per_subword;
       this.data_width = subwords_per_word * non_ecc_bits_per_subword;
-      this.num_entries = depth * subwords_per_word;
     end else begin
       this.data_width = width;
-      this.num_entries = depth;
     end
 
     byte_width = `HAS_PARITY ? 9 : 8;
@@ -193,26 +147,8 @@ class mem_bkdr_util extends uvm_object;
     return path;
   endfunction
 
-  function string get_full_path(int unsigned tile);
-    string base = get_path();
-    string tile_suffix = "";
-
-    `DV_CHECK_FATAL(tile > 0 -> tiling_path.len() > 0,
-                    $sformatf("Positive tile index (%0d) with empty tiling path.", tile))
-
-    if (tiling_path != "") begin
-      tile_suffix = $sformatf(".gen_ram_inst[%0d].%s", tile, tiling_path);
-    end
-
-    return {base, tile_suffix};
-  endfunction
-
   function uint32_t get_depth();
     return depth;
-  endfunction
-
-  function uint32_t get_tile_depth();
-    return tile_depth;
   endfunction
 
   function uint32_t get_width();
@@ -284,12 +220,11 @@ class mem_bkdr_util extends uvm_object;
   // encryption is enabled.
   virtual function uvm_hdl_data_t read(bit [bus_params_pkg::BUS_AW-1:0] addr);
     bit res;
-    uint32_t index, ram_tile;
+    uint32_t index;
     uvm_hdl_data_t data;
     if (!check_addr_valid(addr)) return 'x;
-    index    = addr >> addr_lsb;
-    ram_tile = index / tile_depth;
-    res      = uvm_hdl_read($sformatf("%0s[%0d]", get_full_path(ram_tile), index), data);
+    index = addr >> addr_lsb;
+    res   = uvm_hdl_read($sformatf("%0s[%0d]", path, index), data);
     `DV_CHECK_EQ(res, 1, $sformatf("uvm_hdl_read failed at index %0d", index))
     return data;
   endfunction
@@ -399,11 +334,10 @@ class mem_bkdr_util extends uvm_object;
   // Updates the entire width of the memory at the given address, including the ECC bits.
   virtual function void write(bit [bus_params_pkg::BUS_AW-1:0] addr, uvm_hdl_data_t data);
     bit res;
-    uint32_t index, ram_tile;
+    uint32_t index;
     if (!check_addr_valid(addr)) return;
-    index    = addr >> addr_lsb;
-    ram_tile = index / tile_depth;
-    res      = uvm_hdl_deposit($sformatf("%0s[%0d]", get_full_path(ram_tile), index), data);
+    index = addr >> addr_lsb;
+    res = uvm_hdl_deposit($sformatf("%0s[%0d]", path, index), data);
     `DV_CHECK_EQ(res, 1, $sformatf("uvm_hdl_deposit failed at index %0d", index))
   endfunction
 
@@ -566,36 +500,13 @@ class mem_bkdr_util extends uvm_object;
   endfunction
 
   // load mem from file
-  virtual task load_mem_from_file(string file, bit recompute_ecc = 0);
+  virtual task load_mem_from_file(string file);
     check_file(file, "r");
     this.file = file;
     ->readmemh_event;
     // The delay below avoids a race condition between this mem backdoor load and a subsequent
     // backdoor write to a particular location.
     #0;
-
-    // Recompute ECC if indicated (this allows to load an image that does not have ECC present).
-    if (recompute_ecc) begin
-      case (err_detection_scheme)
-        Ecc_22_16, EccHamming_22_16, EccInv_22_16, EccInvHamming_22_16: begin
-          for (int addr = 0; addr < depth; addr += bytes_per_word) begin
-            write16(addr, read(addr));
-          end
-        end
-        Ecc_39_32, EccHamming_39_32, EccInv_39_32, EccInvHamming_39_32: begin
-          for (int addr = 0; addr < depth; addr += bytes_per_word) begin
-            write32(addr, read(addr));
-          end
-        end
-        Ecc_72_64, EccHamming_72_64, EccInv_72_64, EccInvHamming_72_64: begin
-          for (int addr = 0; addr < depth; addr += bytes_per_word) begin
-            write64(addr, read(addr));
-          end
-        end
-        // Nothing to recompute
-        default: ;
-      endcase
-    end
   endtask
 
   // save mem contents to file
@@ -638,16 +549,7 @@ class mem_bkdr_util extends uvm_object;
     for (int i = 0; i < depth; i++) begin
       uvm_hdl_data_t data;
       `DV_CHECK_STD_RANDOMIZE_FATAL(data, "Randomization failed!", path)
-      if (`HAS_PARITY) begin
-        uvm_hdl_data_t raw_data = data;
-        for (int byte_idx = 0; byte_idx < bytes_per_word; byte_idx++) begin
-          bit raw_byte = raw_data[byte_idx * 8 +: 8];
-          bit parity = (err_detection_scheme == ParityOdd) ? ~(^raw_byte) : (^raw_byte);
-          data[byte_idx * 9 +: 9] = {parity, raw_byte};
-        end
-      end else begin
-        data = get_ecc_computed_data(data);
-      end
+      data = get_ecc_computed_data(data);
       write(i * bytes_per_word, data);
     end
   endfunction
@@ -676,6 +578,18 @@ class mem_bkdr_util extends uvm_object;
               "Addr: %0h, original data: %0h, error_mask: %0h, backdoor inject data: %0h",
               addr, rw_data, err_mask, rw_data ^ err_mask), UVM_HIGH)
   endfunction
+
+  // Wrapper function for backdoor write OTP partitions.
+  `include "mem_bkdr_util__otp.sv"
+
+  // Wrapper functions for encrypted SRAM reads and writes.
+  `include "mem_bkdr_util__sram.sv"
+
+  // Wrapper function for encrypted ROM reads.
+  `include "mem_bkdr_util__rom.sv"
+
+  // Wrapper function for encrypted FLASH writes.
+  `include "mem_bkdr_util__flash.sv"
 
   `undef HAS_ECC
   `undef HAS_PARITY

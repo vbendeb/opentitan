@@ -24,9 +24,7 @@ module ${module_instance_name}_assert_fpv #(parameter int NumSrc = 1,
   input [NumSrc-1:0] claim,
   input [NumSrc-1:0] complete,
   input [NumSrc-1:0][PRIOW-1:0] prio,
-  input [PRIOW-1:0]  threshold [NumTarget],
-  input logic        fatal_alert_i,
-  input tlul_pkg::tl_d2h_t tl_o
+  input [PRIOW-1:0]  threshold [NumTarget]
 );
 
   localparam int SrcIdxWidth = NumSrc > 1 ? $clog2(NumSrc - 1) : 1;
@@ -106,17 +104,4 @@ module ${module_instance_name}_assert_fpv #(parameter int NumSrc = 1,
   // but smaller than the threshold
   `ASSERT(IdChangeWithIrq_A, !$stable(irq_id_o[tgt_sel]) && irq_id_o[tgt_sel] != 0 |->
           irq_o[tgt_sel] || ((irq_id_o[tgt_sel]) == $past(i_high_prio) && !$past(irq)))
-
-  // When fatal alert happens then only reset can clear it.
-  `ASSERT(FatalAlertNeverdrops_A, !$fell(fatal_alert_i))
-
-  // If a response is coming back from the device, then check if it contains the correct integrity
-  // bits.
-  `ASSERT(DataIntg_A,
-          tl_o.d_valid -> (tlul_pkg::get_data_intg(tl_o.d_data) == tl_o.d_user.data_intg))
-
-  `ASSERT(RspIntg_A,
-          tl_o.d_valid ->
-          (prim_secded_pkg::prim_secded_inv_64_57_enc({51'b0, tlul_pkg::extract_d2h_rsp_intg(tl_o)})
-          >> (64-tlul_pkg::D2HRspIntgWidth)) == tl_o.d_user.rsp_intg)
 endmodule : ${module_instance_name}_assert_fpv

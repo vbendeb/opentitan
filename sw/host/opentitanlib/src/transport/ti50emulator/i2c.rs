@@ -261,7 +261,6 @@ impl Bus for Ti50I2cBus {
                 Transfer::Read(rd) => {
                     self.read(addr, rd)?;
                 }
-                _ => bail!(TransportError::UnsupportedOperation),
             }
         }
         Ok(())

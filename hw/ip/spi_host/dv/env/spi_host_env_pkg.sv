@@ -15,12 +15,9 @@ package spi_host_env_pkg;
   import dv_base_reg_pkg::*;
   import spi_host_reg_pkg::*;
   import spi_host_ral_pkg::*;
-  import spi_host_env_cfg_pkg::*;
-
-  // Re-export SPI_HOST_NUM_CS from spi_host_env_cfg_pkg to make it available in DV
-  export spi_host_env_cfg_pkg::SPI_HOST_NUM_CS;
 
   // parameters
+  parameter uint SPI_HOST_NUM_CS         = spi_host_reg_pkg::NumCS;
   parameter uint SPI_HOST_TX_DEPTH       = spi_host_reg_pkg::TxDepth;
   parameter uint SPI_HOST_RX_DEPTH       = spi_host_reg_pkg::RxDepth;
   parameter uint SPI_HOST_CMD_DEPTH      = spi_host_reg_pkg::CmdDepth;
@@ -34,7 +31,7 @@ package spi_host_env_pkg;
   parameter uint SPI_HOST_RX_FIFO_END    = (SPI_HOST_RX_FIFO_START - 1) +
                                            spi_host_reg_pkg::SPI_HOST_RXDATA_SIZE;
 
-  parameter uint SPI_HOST_COMMAND_LEN_SIZE_BITS = 20;
+  parameter uint SPI_HOST_COMMAND_LEN_SIZE_BITS = 9;
   // macro includes
   `include "uvm_macros.svh"
   `include "dv_macros.svh"
@@ -61,13 +58,13 @@ package spi_host_env_pkg;
   // spi config
   typedef struct {
     // configopts register fields
-    rand bit        cpol;
-    rand bit        cpha;
-    rand bit        fullcyc;
-    rand bit [3:0]  csnlead;
-    rand bit [3:0]  csntrail;
-    rand bit [3:0]  csnidle;
-    rand bit [15:0] clkdiv;
+    rand bit        cpol[SPI_HOST_NUM_CS];
+    rand bit        cpha[SPI_HOST_NUM_CS];
+    rand bit        fullcyc[SPI_HOST_NUM_CS];
+    rand bit [3:0]  csnlead[SPI_HOST_NUM_CS];
+    rand bit [3:0]  csntrail[SPI_HOST_NUM_CS];
+    rand bit [3:0]  csnidle[SPI_HOST_NUM_CS];
+    rand bit [15:0] clkdiv[SPI_HOST_NUM_CS];
   } spi_host_configopts_t;
 
   typedef struct {

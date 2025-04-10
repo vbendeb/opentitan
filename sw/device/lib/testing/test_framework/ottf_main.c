@@ -7,8 +7,6 @@
 #include <assert.h>
 #include <stddef.h>
 
-#include "dt/dt_rstmgr.h"
-#include "dt/dt_rv_core_ibex.h"
 #include "external/freertos/include/FreeRTOS.h"
 #include "external/freertos/include/queue.h"
 #include "external/freertos/include/task.h"
@@ -26,10 +24,12 @@
 #include "sw/device/lib/testing/test_framework/check.h"
 #include "sw/device/lib/testing/test_framework/coverage.h"
 #include "sw/device/lib/testing/test_framework/ottf_console.h"
-#include "sw/device/lib/testing/test_framework/ottf_isrs.h"
 #include "sw/device/lib/testing/test_framework/ottf_test_config.h"
 #include "sw/device/lib/testing/test_framework/status.h"
 #include "sw/device/silicon_creator/lib/manifest_def.h"
+
+// TODO: make this toplevel agnostic.
+#include "hw/top_earlgrey/sw/autogen/top_earlgrey.h"
 
 #define MODULE_ID MAKE_MODULE_ID('o', 't', 'm')
 
@@ -114,22 +114,25 @@ static void report_test_status(bool result) {
   // Print the reported status in case of error. Beware that
   // status_report_list_cnt might be greater than kStatusReportListSize which
   // means we had to overwrite values.
-  if (!result) {
-    LOG_INFO("Status reported by the test:");
-    // Handle overflow.
-    size_t print_cnt = status_report_list_cnt;
-    if (status_report_list_cnt > kStatusReportListSize) {
-      print_cnt = kStatusReportListSize;
-    }
-    // We print the list backwards like a stack (last report event first).
-    for (size_t i = 1; i <= print_cnt; i++) {
-      size_t idx = (status_report_list_cnt - i) % kStatusReportListSize;
-      LOG_INFO("- %r", status_report_list[idx]);
-    }
-    // Warn about overflow.
-    if (status_report_list_cnt > kStatusReportListSize) {
-      LOG_INFO(
-          "Some statuses have been lost due to the limited size of the list.");
+  if (!kOttfTestConfig.silence_console_prints) {
+    if (!result) {
+      LOG_INFO("Status reported by the test:");
+      // Handle overflow.
+      size_t print_cnt = status_report_list_cnt;
+      if (status_report_list_cnt > kStatusReportListSize) {
+        print_cnt = kStatusReportListSize;
+      }
+      // We print the list backwards like a stack (last report event first).
+      for (size_t i = 1; i <= print_cnt; i++) {
+        size_t idx = (status_report_list_cnt - i) % kStatusReportListSize;
+        LOG_INFO("- %r", status_report_list[idx]);
+      }
+      // Warn about overflow.
+      if (status_report_list_cnt > kStatusReportListSize) {
+        LOG_INFO(
+            "Some statuses have been lost due to the limited size of the "
+            "list.");
+      }
     }
   }
 
@@ -153,14 +156,11 @@ void _ottf_main(void) {
 
   // Clear reset reason register.
   dif_rstmgr_t rstmgr;
-  CHECK_DIF_OK(dif_rstmgr_init_from_dt(kDtRstmgrAon, &rstmgr));
+  CHECK_DIF_OK(dif_rstmgr_init(
+      mmio_region_from_addr(TOP_EARLGREY_RSTMGR_AON_BASE_ADDR), &rstmgr));
   if (kOttfTestConfig.clear_reset_reason) {
     CHECK_DIF_OK(dif_rstmgr_reset_info_clear(&rstmgr));
   }
-
-  // Initialize the global rv_plic DIF context for interrupts.
-  // This needs to happen before ottf_console_init.
-  CHECK_DIF_OK(dif_rv_plic_init_from_dt(kDtRvPlic, &ottf_plic));
 
   // Initialize the console to enable logging for non-DV simulation platforms.
   if (kDeviceType != kDeviceSimDV) {
@@ -173,7 +173,9 @@ void _ottf_main(void) {
   // Initialize a global random number generator testutil context to provide
   // tests with a source of entropy for randomizing test behaviors.
   dif_rv_core_ibex_t rv_core_ibex;
-  CHECK_DIF_OK(dif_rv_core_ibex_init_from_dt(kDtRvCoreIbex, &rv_core_ibex));
+  CHECK_DIF_OK(dif_rv_core_ibex_init(
+      mmio_region_from_addr(TOP_EARLGREY_RV_CORE_IBEX_CFG_BASE_ADDR),
+      &rv_core_ibex));
   rand_testutils_rng_ctx = rand_testutils_init(&rv_core_ibex);
 
   // Run the test.

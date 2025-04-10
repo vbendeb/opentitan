@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 load("@rules_python//python:defs.bzl", "py_binary")
-load("@ot_python_deps//:requirements.bzl", "all_requirements", "requirement")
+load("//third_party/python:requirements.bzl", "all_requirements", "requirement")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -54,47 +54,6 @@ py_binary(
     ],
 )
 
-py_binary(
-    name = "autogen_dif",
-    srcs = ["autogen_dif.py"],
-    data = [
-        "//util/make_new_dif:tpl_files",
-    ],
-    deps = [
-        ":repo_top",
-        "//util/make_new_dif:ip",
-        requirement("hjson"),
-        requirement("mako"),
-    ],
-)
-
-py_binary(
-    name = "dttool",
-    srcs = ["dttool.py"],
-    data = [
-        "//util/dtgen:tpl_files",
-    ],
-    deps = [
-        "//util/dtgen:helper",
-        "//util/ipgen",
-        "//util/reggen:ip_block",
-        "//util/reggen:version",
-        "//util/topgen",
-        requirement("mako"),
-    ],
-)
-
-py_binary(
-    name = "gen_testutils",
-    srcs = ["gen_testutils.py"],
-    deps = [
-        "//util/autogen_testutils",
-        "//util/topgen",
-        requirement("mako"),
-        requirement("hjson"),
-    ],
-)
-
 py_test(
     name = "generate_compilation_db_test",
     srcs = [
@@ -122,20 +81,15 @@ py_binary(
     deps = all_requirements,
 )
 
-py_library(
-    name = "version_file",
-    srcs = ["version_file.py"],
-)
-
-py_library(
-    name = "repo_top",
-    srcs = ["repo_top.py"],
-)
-
 cc_library(
     name = "bfv_decoder",
     srcs = ["bfv_decoder.c"],
     deps = [
         "//sw/device/silicon_creator/lib:error",
     ],
+)
+
+py_binary(
+    name = "gen_stamped_tarball",
+    srcs = ["gen_stamped_tarball.py"],
 )

@@ -51,8 +51,7 @@ class chip_sw_lc_ctrl_scrap_vseq extends chip_sw_lc_base_vseq;
 
   virtual function void backdoor_override_otp();
     // Override the LC partition to TestLocked1 state.
-    otp_write_lc_partition_state(
-        cfg.mem_bkdr_util_h[Otp],
+    cfg.mem_bkdr_util_h[Otp].otp_write_lc_partition_state(
         lc_ctrl_dv_utils_pkg::encode_lc_state(src_state));
   endfunction : backdoor_override_otp
 
@@ -116,7 +115,7 @@ class chip_sw_lc_ctrl_scrap_vseq extends chip_sw_lc_base_vseq;
 
     // read the LC state from the LC controller and
     // check LC state is indeed in SCRAP
-    jtag_riscv_agent_pkg::jtag_read_csr(ral.lc_ctrl_regs.lc_state.get_offset(),
+    jtag_riscv_agent_pkg::jtag_read_csr(ral.lc_ctrl.lc_state.get_offset(),
                                         p_sequencer.jtag_sequencer_h, state);
     `DV_CHECK_EQ(state, {DecLcStateNumRep{DecLcStScrap}})
   endtask : body

@@ -5,11 +5,9 @@
   instance_name: top_earlgrey_rv_plic
   param_values:
   {
-    module_instance_name: rv_plic
     src: 186
     target: 1
     prio: 3
     topname: earlgrey
-    uniquified_modules: {}
   }
 }

@@ -14,7 +14,10 @@ load(
     "CONST",
     "get_lc_items",
 )
-load("//rules/opentitan:keyutils.bzl", "ECDSA_ONLY_KEY_STRUCTS")
+load(
+    "//rules:opentitan.bzl",
+    "ECDSA_ONLY_KEY_STRUCTS",
+)
 load(
     "//rules:otp.bzl",
     "STD_OTP_OVERLAYS",
@@ -23,7 +26,10 @@ load(
     "otp_json",
     "otp_partition",
 )
-load("//rules:rom_e2e.bzl", "maybe_skip_in_ci")
+load(
+    "//rules:rom_e2e.bzl",
+    "maybe_skip_in_ci",
+)
 
 package(default_visibility = ["//visibility:public"])
 
@@ -82,7 +88,7 @@ SHUTDOWN_WATCHDOG_CASES = [
             t["lc_state"],
             t["bite_threshold"],
         ),
-        src = "//hw/top_earlgrey/data/otp:otp_json_{}".format(t["lc_state"]),
+        src = "//hw/ip/otp_ctrl/data:otp_json_{}".format(t["lc_state"]),
         overlays = STD_OTP_OVERLAYS + [
             ":otp_json_shutdown_watchdog_{}_{}".format(
                 t["lc_state"],

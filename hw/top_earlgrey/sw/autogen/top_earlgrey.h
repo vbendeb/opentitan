@@ -1,11 +1,6 @@
 // Copyright lowRISC contributors (OpenTitan project).
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
-//
-// ------------------- W A R N I N G: A U T O - G E N E R A T E D   C O D E !! -------------------//
-// PLEASE DO NOT HAND-EDIT THIS FILE. IT HAS BEEN AUTO-GENERATED WITH THE FOLLOWING COMMAND:
-// util/topgen.py -t hw/top_earlgrey/data/top_earlgrey.hjson
-// -o hw/top_earlgrey
 
 #ifndef OPENTITAN_HW_TOP_EARLGREY_SW_AUTOGEN_TOP_EARLGREY_H_
 #define OPENTITAN_HW_TOP_EARLGREY_SW_AUTOGEN_TOP_EARLGREY_H_
@@ -118,7 +113,7 @@ extern "C" {
  * address between #TOP_EARLGREY_GPIO_BASE_ADDR and
  * `TOP_EARLGREY_GPIO_BASE_ADDR + TOP_EARLGREY_GPIO_SIZE_BYTES`.
  */
-#define TOP_EARLGREY_GPIO_SIZE_BYTES 0x80u
+#define TOP_EARLGREY_GPIO_SIZE_BYTES 0x40u
 
 /**
  * Peripheral base address for spi_device in top earlgrey.
@@ -265,40 +260,22 @@ extern "C" {
 #define TOP_EARLGREY_OTP_CTRL_PRIM_SIZE_BYTES 0x20u
 
 /**
- * Peripheral base address for regs device on lc_ctrl in top earlgrey.
+ * Peripheral base address for lc_ctrl in top earlgrey.
  *
  * This should be used with #mmio_region_from_addr to access the memory-mapped
  * registers associated with the peripheral (usually via a DIF).
  */
-#define TOP_EARLGREY_LC_CTRL_REGS_BASE_ADDR 0x40140000u
+#define TOP_EARLGREY_LC_CTRL_BASE_ADDR 0x40140000u
 
 /**
- * Peripheral size for regs device on lc_ctrl in top earlgrey.
+ * Peripheral size for lc_ctrl in top earlgrey.
  *
  * This is the size (in bytes) of the peripheral's reserved memory area. All
  * memory-mapped registers associated with this peripheral should have an
- * address between #TOP_EARLGREY_LC_CTRL_REGS_BASE_ADDR and
- * `TOP_EARLGREY_LC_CTRL_REGS_BASE_ADDR + TOP_EARLGREY_LC_CTRL_REGS_SIZE_BYTES`.
+ * address between #TOP_EARLGREY_LC_CTRL_BASE_ADDR and
+ * `TOP_EARLGREY_LC_CTRL_BASE_ADDR + TOP_EARLGREY_LC_CTRL_SIZE_BYTES`.
  */
-#define TOP_EARLGREY_LC_CTRL_REGS_SIZE_BYTES 0x100u
-
-/**
- * Peripheral base address for dmi device on lc_ctrl in top earlgrey.
- *
- * This should be used with #mmio_region_from_addr to access the memory-mapped
- * registers associated with the peripheral (usually via a DIF).
- */
-#define TOP_EARLGREY_LC_CTRL_DMI_BASE_ADDR 0x0u
-
-/**
- * Peripheral size for dmi device on lc_ctrl in top earlgrey.
- *
- * This is the size (in bytes) of the peripheral's reserved memory area. All
- * memory-mapped registers associated with this peripheral should have an
- * address between #TOP_EARLGREY_LC_CTRL_DMI_BASE_ADDR and
- * `TOP_EARLGREY_LC_CTRL_DMI_BASE_ADDR + TOP_EARLGREY_LC_CTRL_DMI_SIZE_BYTES`.
- */
-#define TOP_EARLGREY_LC_CTRL_DMI_SIZE_BYTES 0x1000u
+#define TOP_EARLGREY_LC_CTRL_SIZE_BYTES 0x100u
 
 /**
  * Peripheral base address for alert_handler in top earlgrey.
@@ -677,24 +654,6 @@ extern "C" {
  * `TOP_EARLGREY_RV_DM_MEM_BASE_ADDR + TOP_EARLGREY_RV_DM_MEM_SIZE_BYTES`.
  */
 #define TOP_EARLGREY_RV_DM_MEM_SIZE_BYTES 0x1000u
-
-/**
- * Peripheral base address for dbg device on rv_dm in top earlgrey.
- *
- * This should be used with #mmio_region_from_addr to access the memory-mapped
- * registers associated with the peripheral (usually via a DIF).
- */
-#define TOP_EARLGREY_RV_DM_DBG_BASE_ADDR 0x1000u
-
-/**
- * Peripheral size for dbg device on rv_dm in top earlgrey.
- *
- * This is the size (in bytes) of the peripheral's reserved memory area. All
- * memory-mapped registers associated with this peripheral should have an
- * address between #TOP_EARLGREY_RV_DM_DBG_BASE_ADDR and
- * `TOP_EARLGREY_RV_DM_DBG_BASE_ADDR + TOP_EARLGREY_RV_DM_DBG_SIZE_BYTES`.
- */
-#define TOP_EARLGREY_RV_DM_DBG_SIZE_BYTES 0x200u
 
 /**
  * Peripheral base address for rv_plic in top earlgrey.
@@ -1272,49 +1231,48 @@ typedef enum top_earlgrey_plic_target {
  * alert.
  */
 typedef enum top_earlgrey_alert_peripheral {
-  kTopEarlgreyAlertPeripheralExternal = 0, /**< External Peripheral */
-  kTopEarlgreyAlertPeripheralUart0 = 1, /**< uart0 */
-  kTopEarlgreyAlertPeripheralUart1 = 2, /**< uart1 */
-  kTopEarlgreyAlertPeripheralUart2 = 3, /**< uart2 */
-  kTopEarlgreyAlertPeripheralUart3 = 4, /**< uart3 */
-  kTopEarlgreyAlertPeripheralGpio = 5, /**< gpio */
-  kTopEarlgreyAlertPeripheralSpiDevice = 6, /**< spi_device */
-  kTopEarlgreyAlertPeripheralI2c0 = 7, /**< i2c0 */
-  kTopEarlgreyAlertPeripheralI2c1 = 8, /**< i2c1 */
-  kTopEarlgreyAlertPeripheralI2c2 = 9, /**< i2c2 */
-  kTopEarlgreyAlertPeripheralPattgen = 10, /**< pattgen */
-  kTopEarlgreyAlertPeripheralRvTimer = 11, /**< rv_timer */
-  kTopEarlgreyAlertPeripheralOtpCtrl = 12, /**< otp_ctrl */
-  kTopEarlgreyAlertPeripheralLcCtrl = 13, /**< lc_ctrl */
-  kTopEarlgreyAlertPeripheralSpiHost0 = 14, /**< spi_host0 */
-  kTopEarlgreyAlertPeripheralSpiHost1 = 15, /**< spi_host1 */
-  kTopEarlgreyAlertPeripheralUsbdev = 16, /**< usbdev */
-  kTopEarlgreyAlertPeripheralPwrmgrAon = 17, /**< pwrmgr_aon */
-  kTopEarlgreyAlertPeripheralRstmgrAon = 18, /**< rstmgr_aon */
-  kTopEarlgreyAlertPeripheralClkmgrAon = 19, /**< clkmgr_aon */
-  kTopEarlgreyAlertPeripheralSysrstCtrlAon = 20, /**< sysrst_ctrl_aon */
-  kTopEarlgreyAlertPeripheralAdcCtrlAon = 21, /**< adc_ctrl_aon */
-  kTopEarlgreyAlertPeripheralPwmAon = 22, /**< pwm_aon */
-  kTopEarlgreyAlertPeripheralPinmuxAon = 23, /**< pinmux_aon */
-  kTopEarlgreyAlertPeripheralAonTimerAon = 24, /**< aon_timer_aon */
-  kTopEarlgreyAlertPeripheralSensorCtrlAon = 25, /**< sensor_ctrl_aon */
-  kTopEarlgreyAlertPeripheralSramCtrlRetAon = 26, /**< sram_ctrl_ret_aon */
-  kTopEarlgreyAlertPeripheralFlashCtrl = 27, /**< flash_ctrl */
-  kTopEarlgreyAlertPeripheralRvDm = 28, /**< rv_dm */
-  kTopEarlgreyAlertPeripheralRvPlic = 29, /**< rv_plic */
-  kTopEarlgreyAlertPeripheralAes = 30, /**< aes */
-  kTopEarlgreyAlertPeripheralHmac = 31, /**< hmac */
-  kTopEarlgreyAlertPeripheralKmac = 32, /**< kmac */
-  kTopEarlgreyAlertPeripheralOtbn = 33, /**< otbn */
-  kTopEarlgreyAlertPeripheralKeymgr = 34, /**< keymgr */
-  kTopEarlgreyAlertPeripheralCsrng = 35, /**< csrng */
-  kTopEarlgreyAlertPeripheralEntropySrc = 36, /**< entropy_src */
-  kTopEarlgreyAlertPeripheralEdn0 = 37, /**< edn0 */
-  kTopEarlgreyAlertPeripheralEdn1 = 38, /**< edn1 */
-  kTopEarlgreyAlertPeripheralSramCtrlMain = 39, /**< sram_ctrl_main */
-  kTopEarlgreyAlertPeripheralRomCtrl = 40, /**< rom_ctrl */
-  kTopEarlgreyAlertPeripheralRvCoreIbex = 41, /**< rv_core_ibex */
-  kTopEarlgreyAlertPeripheralLast = 41, /**< \internal Final Alert peripheral */
+  kTopEarlgreyAlertPeripheralUart0 = 0, /**< uart0 */
+  kTopEarlgreyAlertPeripheralUart1 = 1, /**< uart1 */
+  kTopEarlgreyAlertPeripheralUart2 = 2, /**< uart2 */
+  kTopEarlgreyAlertPeripheralUart3 = 3, /**< uart3 */
+  kTopEarlgreyAlertPeripheralGpio = 4, /**< gpio */
+  kTopEarlgreyAlertPeripheralSpiDevice = 5, /**< spi_device */
+  kTopEarlgreyAlertPeripheralI2c0 = 6, /**< i2c0 */
+  kTopEarlgreyAlertPeripheralI2c1 = 7, /**< i2c1 */
+  kTopEarlgreyAlertPeripheralI2c2 = 8, /**< i2c2 */
+  kTopEarlgreyAlertPeripheralPattgen = 9, /**< pattgen */
+  kTopEarlgreyAlertPeripheralRvTimer = 10, /**< rv_timer */
+  kTopEarlgreyAlertPeripheralOtpCtrl = 11, /**< otp_ctrl */
+  kTopEarlgreyAlertPeripheralLcCtrl = 12, /**< lc_ctrl */
+  kTopEarlgreyAlertPeripheralSpiHost0 = 13, /**< spi_host0 */
+  kTopEarlgreyAlertPeripheralSpiHost1 = 14, /**< spi_host1 */
+  kTopEarlgreyAlertPeripheralUsbdev = 15, /**< usbdev */
+  kTopEarlgreyAlertPeripheralPwrmgrAon = 16, /**< pwrmgr_aon */
+  kTopEarlgreyAlertPeripheralRstmgrAon = 17, /**< rstmgr_aon */
+  kTopEarlgreyAlertPeripheralClkmgrAon = 18, /**< clkmgr_aon */
+  kTopEarlgreyAlertPeripheralSysrstCtrlAon = 19, /**< sysrst_ctrl_aon */
+  kTopEarlgreyAlertPeripheralAdcCtrlAon = 20, /**< adc_ctrl_aon */
+  kTopEarlgreyAlertPeripheralPwmAon = 21, /**< pwm_aon */
+  kTopEarlgreyAlertPeripheralPinmuxAon = 22, /**< pinmux_aon */
+  kTopEarlgreyAlertPeripheralAonTimerAon = 23, /**< aon_timer_aon */
+  kTopEarlgreyAlertPeripheralSensorCtrlAon = 24, /**< sensor_ctrl_aon */
+  kTopEarlgreyAlertPeripheralSramCtrlRetAon = 25, /**< sram_ctrl_ret_aon */
+  kTopEarlgreyAlertPeripheralFlashCtrl = 26, /**< flash_ctrl */
+  kTopEarlgreyAlertPeripheralRvDm = 27, /**< rv_dm */
+  kTopEarlgreyAlertPeripheralRvPlic = 28, /**< rv_plic */
+  kTopEarlgreyAlertPeripheralAes = 29, /**< aes */
+  kTopEarlgreyAlertPeripheralHmac = 30, /**< hmac */
+  kTopEarlgreyAlertPeripheralKmac = 31, /**< kmac */
+  kTopEarlgreyAlertPeripheralOtbn = 32, /**< otbn */
+  kTopEarlgreyAlertPeripheralKeymgr = 33, /**< keymgr */
+  kTopEarlgreyAlertPeripheralCsrng = 34, /**< csrng */
+  kTopEarlgreyAlertPeripheralEntropySrc = 35, /**< entropy_src */
+  kTopEarlgreyAlertPeripheralEdn0 = 36, /**< edn0 */
+  kTopEarlgreyAlertPeripheralEdn1 = 37, /**< edn1 */
+  kTopEarlgreyAlertPeripheralSramCtrlMain = 38, /**< sram_ctrl_main */
+  kTopEarlgreyAlertPeripheralRomCtrl = 39, /**< rom_ctrl */
+  kTopEarlgreyAlertPeripheralRvCoreIbex = 40, /**< rv_core_ibex */
+  kTopEarlgreyAlertPeripheralLast = 40, /**< \internal Final Alert peripheral */
 } top_earlgrey_alert_peripheral_t;
 
 /**

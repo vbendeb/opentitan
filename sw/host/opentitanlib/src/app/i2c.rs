@@ -2,12 +2,11 @@
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::io::gpio::GpioPin;
 use crate::io::i2c::{self, Bus, DeviceStatus, Mode};
 use crate::transport::Transport;
 
 use anyhow::Result;
-use std::cell::{Cell, RefCell};
+use std::cell::Cell;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
@@ -46,17 +45,8 @@ pub struct LogicalI2cWrapper {
     physical_wrapper: Rc<PhysicalI2cWrapper>,
     /// Unique ID of this `LogicalI2cWrapper`.
     uid: usize,
-    /// I2C port settings applying to this named logical I2C port.
-    inner: RefCell<Inner>,
-}
-
-/// I2C port settings applying to this named logical I2C port.
-struct Inner {
-    default_addr: Option<u8>,
-    max_speed: Option<u32>,
-    serial_clock: Option<Rc<dyn GpioPin>>,
-    serial_data: Option<Rc<dyn GpioPin>>,
-    gsc_ready: Option<Rc<dyn GpioPin>>,
+    default_addr: Cell<Option<u8>>,
+    max_speed: Cell<Option<u32>>,
 }
 
 impl LogicalI2cWrapper {
@@ -69,13 +59,8 @@ impl LogicalI2cWrapper {
         Ok(Self {
             physical_wrapper,
             uid: COUNTER.fetch_add(1, Ordering::Relaxed),
-            inner: RefCell::new(Inner {
-                default_addr: conf.default_addr,
-                max_speed: conf.bits_per_sec,
-                serial_clock: None,
-                serial_data: None,
-                gsc_ready: None,
-            }),
+            default_addr: Cell::new(conf.default_addr),
+            max_speed: Cell::new(conf.bits_per_sec),
         })
     }
 
@@ -85,27 +70,15 @@ impl LogicalI2cWrapper {
             // settings.
             return Ok(());
         }
-        let inner = self.inner.borrow();
-        if let Some(addr) = inner.default_addr {
+        if let Some(addr) = self.default_addr.get() {
             self.physical_wrapper
                 .underlying_target
                 .set_default_address(addr)?;
         }
-        if let Some(speed) = inner.max_speed {
+        if let Some(speed) = self.max_speed.get() {
             self.physical_wrapper
                 .underlying_target
                 .set_max_speed(speed)?;
-        }
-        match (
-            inner.serial_clock.as_ref(),
-            inner.serial_data.as_ref(),
-            inner.gsc_ready.as_ref(),
-        ) {
-            (None, None, None) => (),
-            (scl, sda, rdy) => self
-                .physical_wrapper
-                .underlying_target
-                .set_pins(scl, sda, rdy)?,
         }
         self.physical_wrapper.last_used_by_uid.set(Some(self.uid));
         Ok(())
@@ -121,31 +94,12 @@ impl Bus for LogicalI2cWrapper {
         self.physical_wrapper.underlying_target.get_max_speed()
     }
     fn set_max_speed(&self, max_speed: u32) -> Result<()> {
-        self.inner.borrow_mut().max_speed = Some(max_speed);
-        Ok(())
-    }
-
-    fn set_pins(
-        &self,
-        serial_clock: Option<&Rc<dyn GpioPin>>,
-        serial_data: Option<&Rc<dyn GpioPin>>,
-        gsc_ready: Option<&Rc<dyn GpioPin>>,
-    ) -> Result<()> {
-        let mut inner = self.inner.borrow_mut();
-        if serial_clock.is_some() {
-            inner.serial_clock = serial_clock.map(Rc::clone);
-        }
-        if serial_data.is_some() {
-            inner.serial_data = serial_data.map(Rc::clone);
-        }
-        if gsc_ready.is_some() {
-            inner.gsc_ready = gsc_ready.map(Rc::clone);
-        }
+        self.max_speed.set(Some(max_speed));
         Ok(())
     }
 
     fn set_default_address(&self, addr: u8) -> Result<()> {
-        self.inner.borrow_mut().default_addr = Some(addr);
+        self.default_addr.set(Some(addr));
         Ok(())
     }
 

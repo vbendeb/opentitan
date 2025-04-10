@@ -14,9 +14,6 @@ package uart_reg_pkg;
   // Address widths within the block
   parameter int BlockAw = 6;
 
-  // Number of registers for every interface
-  parameter int NumRegs = 13;
-
   ////////////////////////////
   // Typedefs for registers //
   ////////////////////////////

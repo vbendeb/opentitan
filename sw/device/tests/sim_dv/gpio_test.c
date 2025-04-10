@@ -15,20 +15,7 @@
 #include "sw/device/lib/testing/test_framework/check.h"
 #include "sw/device/lib/testing/test_framework/ottf_main.h"
 
-static const dt_gpio_t kGpioDt = kDtGpio;
-static const dt_pinmux_t kPinmuxDt = kDtPinmuxAon;
-static const dt_rv_plic_t kRvPlicDt = kDtRvPlic;
-
-enum {
-  kPlicTarget = 0,
-};
-
-// Assume that the pins in dt_gpio_pin_t are numbered 0, 1, and so on.
-static_assert(kDtGpioPeriphIoGpio0 == 0, "kDtGpioPinGpio0 is expected to be 0");
-// Assume that the IRQs in dt_gpio_irq_t are numbered 0, 1, and so on.
-static_assert(kDtGpioIrqGpio0 == 0, "kDtGpioIrqGpio0 is expected to be 0");
-static_assert(kDtGpioPeriphIoCount == kDifGpioNumPins,
-              "kDtGpioPinCount does not match kDifGpioNumPins");
+#include "hw/top_earlgrey/sw/autogen/top_earlgrey.h"
 
 static dif_gpio_t gpio;
 static dif_pinmux_t pinmux;
@@ -80,11 +67,6 @@ static void gpio_output_test(const dif_gpio_t *gpio, uint32_t mask) {
     uint32_t gpio_val = 1 << i;
     CHECK_DIF_OK(dif_gpio_write_all(gpio, gpio_val));
 
-    // The GPIO output signals are routed through pinmux back to the GPIO block
-    // and there are synchronizers involved so the inputs may not be available
-    // immediately, and may in fact arrive at different times.
-    busy_spin_micros(1);
-
     // Read GPIO_IN to confirm what we wrote.
     uint32_t read_val;
     CHECK_DIF_OK(dif_gpio_read_all(gpio, &read_val));
@@ -104,11 +86,6 @@ static void gpio_output_test(const dif_gpio_t *gpio, uint32_t mask) {
   for (uint32_t i = 0; i < kDifGpioNumPins; ++i) {
     uint32_t gpio_val = ~(1 << i);
     CHECK_DIF_OK(dif_gpio_write_all(gpio, gpio_val));
-
-    // The GPIO output signals are routed through pinmux back to the GPIO block
-    // and there are synchronizers involved so the inputs may not be available
-    // immediately, and may in fact arrive at different times.
-    busy_spin_micros(1);
 
     // Read GPIO_IN to confirm what we wrote.
     uint32_t read_val;
@@ -190,16 +167,18 @@ static void gpio_input_test(const dif_gpio_t *gpio, uint32_t mask) {
 void ottf_external_isr(uint32_t *exc_info) {
   // Find which interrupt fired at PLIC by claiming it.
   dif_rv_plic_irq_id_t plic_irq_id;
-  CHECK_DIF_OK(dif_rv_plic_irq_claim(&plic, kPlicTarget, &plic_irq_id));
+  CHECK_DIF_OK(
+      dif_rv_plic_irq_claim(&plic, kTopEarlgreyPlicTargetIbex0, &plic_irq_id));
 
   // Check if it is the right peripheral.
-  dt_instance_id_t inst_id = dt_plic_id_to_instance_id(plic_irq_id);
-  CHECK(inst_id == dt_gpio_instance_id(kGpioDt),
+  top_earlgrey_plic_peripheral_t peripheral = (top_earlgrey_plic_peripheral_t)
+      top_earlgrey_plic_interrupt_for_peripheral[plic_irq_id];
+  CHECK(peripheral == kTopEarlgreyPlicPeripheralGpio,
         "Interrupt from incorrect peripheral: (exp: %d, obs: %s)",
-        dt_gpio_instance_id(kGpioDt), inst_id);
+        kTopEarlgreyPlicPeripheralGpio, peripheral);
 
   // Correlate the interrupt fired from GPIO.
-  uint32_t gpio_pin_irq_fired = dt_gpio_irq_from_plic_id(kGpioDt, plic_irq_id);
+  uint32_t gpio_pin_irq_fired = plic_irq_id - kTopEarlgreyPlicIrqIdGpioGpio0;
 
   // Check if we did expect the right GPIO IRQ to fire.
   CHECK(gpio_pin_irq_fired == expected_gpio_pin_irq,
@@ -225,38 +204,43 @@ void ottf_external_isr(uint32_t *exc_info) {
   CHECK_DIF_OK(dif_gpio_irq_acknowledge(&gpio, gpio_pin_irq_fired));
 
   // Complete the IRQ at PLIC.
-  CHECK_DIF_OK(dif_rv_plic_irq_complete(&plic, kPlicTarget, plic_irq_id));
+  CHECK_DIF_OK(dif_rv_plic_irq_complete(&plic, kTopEarlgreyPlicTargetIbex0,
+                                        plic_irq_id));
 }
 
 OTTF_DEFINE_TEST_CONFIG();
 
 void configure_pinmux(void) {
   for (size_t i = 0; i < kDifGpioNumPins; ++i) {
-    // Assume that the pins in dt_gpio_pin_t are numbered 0, 1, and so on.
-    dt_periph_io_t periph_io =
-        dt_gpio_periph_io(kGpioDt, kDtGpioPeriphIoGpio0 + i);
-    dt_pad_t pad = kPinmuxTestutilsGpioPads[i];
-    CHECK_STATUS_OK(
-        pinmux_testutils_connect(&pinmux, periph_io, kDtPeriphIoDirInout, pad));
+    dif_pinmux_index_t mio = kPinmuxTestutilsGpioInselPins[i];
+    dif_pinmux_index_t periph_io = kTopEarlgreyPinmuxPeripheralInGpioGpio0 + i;
+    CHECK_DIF_OK(dif_pinmux_input_select(&pinmux, periph_io, mio));
+  }
+
+  for (size_t i = 0; i < kDifGpioNumPins; ++i) {
+    dif_pinmux_index_t mio = kPinmuxTestutilsGpioMioOutPins[i];
+    dif_pinmux_index_t periph_io = kTopEarlgreyPinmuxOutselGpioGpio0 + i;
+    CHECK_DIF_OK(dif_pinmux_output_select(&pinmux, mio, periph_io));
   }
 }
 
 bool test_main(void) {
   // Initialize the pinmux.
-  CHECK_DIF_OK(dif_pinmux_init_from_dt(kPinmuxDt, &pinmux));
+  CHECK_DIF_OK(dif_pinmux_init(
+      mmio_region_from_addr(TOP_EARLGREY_PINMUX_AON_BASE_ADDR), &pinmux));
   pinmux_testutils_init(&pinmux);
   configure_pinmux();
 
   // Initialize the GPIO.
-  CHECK_DIF_OK(dif_gpio_init_from_dt(kGpioDt, &gpio));
+  CHECK_DIF_OK(
+      dif_gpio_init(mmio_region_from_addr(TOP_EARLGREY_GPIO_BASE_ADDR), &gpio));
 
   // Initialize the PLIC.
-  CHECK_DIF_OK(dif_rv_plic_init_from_dt(kRvPlicDt, &plic));
-  // Here we assume that the IRQs are numbered 0, 1, so that they correspond to
-  // GPIO numbers.
-  dt_plic_irq_id_t first_irq = dt_gpio_irq_to_plic_id(kGpioDt, kDtGpioIrqGpio0);
-  rv_plic_testutils_irq_range_enable(&plic, kPlicTarget, first_irq,
-                                     first_irq + kDifGpioNumPins - 1);
+  CHECK_DIF_OK(dif_rv_plic_init(
+      mmio_region_from_addr(TOP_EARLGREY_RV_PLIC_BASE_ADDR), &plic));
+  rv_plic_testutils_irq_range_enable(
+      &plic, kTopEarlgreyPlicTargetIbex0, kTopEarlgreyPlicIrqIdGpioGpio0,
+      kTopEarlgreyPlicIrqIdGpioGpio0 + kDifGpioNumPins);
 
   // Enable the external IRQ at Ibex.
   irq_global_ctrl(true);

@@ -15,19 +15,13 @@
   tool: vcs
 
   // Fusesoc core file used for building the file list.
-  fusesoc_core: lowrisc:dv:top_earlgrey_chip_sim:0.1
+  fusesoc_core: lowrisc:dv:chip_sim:0.1
 
   // Testplan hjson file, excluding the connectivity tests.
   testplan: "{proj_root}/hw/top_earlgrey/data/chip_testplan.hjson:-conn:-no_dv"
 
   // RAL spec - used to generate the RAL model.
   ral_spec: "{proj_root}/hw/top_earlgrey/data/top_earlgrey.hjson"
-
-  // OTP mmap - used to generate the otp memory map
-  otp_mmap: "{proj_root}/hw/top_earlgrey/data/otp/otp_ctrl_mmap.hjson"
-
-  // OTP image - used to generate otp image, defaults to a DEV image
-  otp_img: "{proj_root}/hw/top_earlgrey/data/otp/otp_ctrl_img_dev.hjson"
 
   // Add additional tops for simulation.
   sim_tops: ["clkmgr_bind",
@@ -189,9 +183,7 @@
         // Generate LC encoding
         "cd {proj_root} && ./util/design/gen-lc-state-enc.py --seed {seed}",
         // Generate OTP memory map and scrambling constants keys.
-        '''cd {proj_root} && ./util/design/gen-otp-mmap.py --seed {seed} \
-        --topname earlrey
-	''',
+        "cd {proj_root} && ./util/design/gen-otp-mmap.py --seed {seed}",
         // Use eval_cmd to save build_seed in a file and reuse that file during run phase.
         // Create the build directory first because eval_cmd runs before actual build phase command
         // execution.
@@ -227,9 +219,6 @@
     //   build_opts: ["-cm_constfile {top_dv_path}/cov/constfile.txt"]
     //   is_sim_mode: 1
     // }
-    {
-      name: cover_reg_top
-    }
   ]
 
   // Add options needed to compile against otbn_memutil, otbn_tracer,
@@ -241,12 +230,10 @@
                    "{tool}_dpi_build_opts"]
 
   // Setup for generating OTP images.
-  gen_otp_images_cfg_dir: "{proj_root}/hw/top_earlgrey/data/otp"
+  gen_otp_images_cfg_dir: "{proj_root}/hw/ip/otp_ctrl/data"
   gen_otp_images_cmd: "{proj_root}/util/design/gen-otp-img.py"
   gen_otp_images_cmd_opts: ["--quiet",
                             "--img-seed {seed}",
-			    "--mmap-def {gen_otp_images_cfg_dir}/otp_ctrl_mmap.hjson",
-
                             // Only provide `--otp-seed` argument if the file to store build_seed
                             // is found. Set this option at the end of the list to avoid `eval_cmd`
                             // take other options as eval_cmd.
@@ -888,6 +875,22 @@
       reseed: 1
     }
     {
+      name: chip_sw_otp_ctrl_rot_auth_config
+      uvm_test_seq: chip_sw_rom_e2e_jtag_inject_vseq
+      sw_images: [
+        "//hw/ip/otp_ctrl/data/earlgrey_skus/emulation:otp_img_test_unlocked0_manuf_empty:4",
+        "//sw/device/tests:otp_ctrl_rot_auth_config_test:5",
+      ]
+      en_run_modes: ["sw_test_mode_mask_rom"]
+      run_opts: [
+        "+sw_test_timeout_ns=160_000_000",
+        "+use_jtag_dmi=1",
+        "+use_otp_image=OtpTypeCustom",
+      ]
+      reseed: 1
+      run_timeout_mins: 240
+    }
+    {
       name: chip_sw_otp_ctrl_ecc_error_vendor_test
       uvm_test_seq: chip_sw_otp_ctrl_vendor_test_ecc_error_vseq
       sw_images: ["//sw/device/tests/sim_dv:otp_ctrl_vendor_test_ecc_error_test:1:new_rules"]
@@ -1315,7 +1318,7 @@
     {
       name: chip_sw_alert_test
       uvm_test_seq: chip_sw_base_vseq
-      sw_images: ["//hw/top_earlgrey/sw/autogen/tests:alert_test:1:new_rules"]
+      sw_images: ["//sw/device/tests/autogen:alert_test:1:new_rules"]
       en_run_modes: ["sw_test_mode_test_rom"]
     }
     {
@@ -1731,19 +1734,19 @@
     {
       name: chip_plic_all_irqs_0
       uvm_test_seq: chip_sw_base_vseq
-      sw_images: ["//hw/top_earlgrey/sw/autogen/tests:plic_all_irqs_test_0:1:new_rules"]
+      sw_images: ["//sw/device/tests/autogen:plic_all_irqs_test_0:1:new_rules"]
       en_run_modes: ["sw_test_mode_test_rom"]
     }
     {
       name: chip_plic_all_irqs_10
       uvm_test_seq: chip_sw_base_vseq
-      sw_images: ["//hw/top_earlgrey/sw/autogen/tests:plic_all_irqs_test_10:1:new_rules"]
+      sw_images: ["//sw/device/tests/autogen:plic_all_irqs_test_10:1:new_rules"]
       en_run_modes: ["sw_test_mode_test_rom"]
     }
     {
       name: chip_plic_all_irqs_20
       uvm_test_seq: chip_sw_base_vseq
-      sw_images: ["//hw/top_earlgrey/sw/autogen/tests:plic_all_irqs_test_20:1:new_rules"]
+      sw_images: ["//sw/device/tests/autogen:plic_all_irqs_test_20:1:new_rules"]
       en_run_modes: ["sw_test_mode_test_rom"]
     }
     {
@@ -1960,7 +1963,7 @@
     {
       name: chip_sw_rv_dm_access_after_escalation_reset
       uvm_test_seq: "chip_sw_rv_dm_access_after_escalation_reset_vseq"
-      sw_images: ["//sw/device/tests:alert_handler_escalation_test:1:new_rules"]
+      sw_images: ["//sw/device/tests/sim_dv:alert_handler_escalation_test:1:new_rules"]
       en_run_modes: ["sw_test_mode_test_rom"]
       run_opts: ["+use_jtag_dmi=1"]
     }

@@ -24,6 +24,5 @@
     bytes_per_bank: 524288
     size: 1048576
     topname: earlgrey
-    uniquified_modules: {}
   }
 }

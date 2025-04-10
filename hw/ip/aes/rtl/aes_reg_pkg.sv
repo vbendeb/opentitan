@@ -15,9 +15,6 @@ package aes_reg_pkg;
   // Address widths within the block
   parameter int BlockAw = 8;
 
-  // Number of registers for every interface
-  parameter int NumRegs = 34;
-
   ////////////////////////////
   // Typedefs for registers //
   ////////////////////////////

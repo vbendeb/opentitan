@@ -63,6 +63,8 @@ static status_t program_page(void) {
   for (size_t i = 0; i < ARRAYSIZE(ast_cfg_data); ++i) {
     ast_cfg_data[i] = i;
   }
+
+  // The AST blob is 1 count word plus 2 additional words for every <count>.
   return flash_ctrl_testutils_write(
       &flash_state, byte_address, kFlashInfoFieldAstCalibrationData.partition,
       ast_cfg_data, kDifFlashCtrlPartitionTypeInfo,
@@ -80,9 +82,9 @@ static status_t execute_test(void) {
   TRY(program_page());
   TRY(ast_program_config(true));
   uint32_t crc =
-      crc32(ast_cfg_data,
-            kFlashInfoAstCalibrationDataSizeIn32BitWords * sizeof(uint32_t));
-  TRY_CHECK(ast_nr_writes == 39);
+      crc32(ast_cfg_data, (kFlashInfoAstCalibrationDataSizeIn32BitWords - 3) *
+                              sizeof(uint32_t));
+  TRY_CHECK(ast_nr_writes == 36);
   TRY_CHECK(crc32_finish(&ast_crc) == crc);
   return OK_STATUS();
 }

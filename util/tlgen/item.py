@@ -4,7 +4,7 @@
 
 """Classes to represent the crossbar's dataflow graph."""
 
-from typing import Dict, List, Tuple
+from typing import List, Tuple
 
 
 class Edge:
@@ -36,9 +36,7 @@ class Node:
     # Other nodes have this fields set to -1.
     address_from: int = -1
     address_to: int = -1
-    addr_ranges: Dict[int, Tuple[int, int]] = {}
     addr_range: List[Tuple[int, int]] = []
-    addr_spaces = set()
 
     us: List[Edge] = []  # Number of Ports depends on the NodeType
     # 1 for Host, Device, 2 for Async FIFO, N for Sockets
@@ -68,8 +66,7 @@ class Node:
         self.resets = [reset]
         self.us = []
         self.ds = []
-        self.addr_ranges = {}
-        self.addr_spaces = set()
+        self.addr_range = []
 
     def esc_name(self) -> str:
         '''Return an "escaped name" for this node

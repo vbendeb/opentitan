@@ -65,7 +65,12 @@ def _transform(ctx, exec_env, name, elf, binary, signed_bin, disassembly, mapfil
     elif ctx.attr.kind == "ram":
         default = elf
         rom = None
-        vmem = None
+        vmem = convert_to_vmem(
+            ctx,
+            name = name,
+            src = signed_bin if signed_bin else binary,
+            word_size = 32,
+        )
     elif ctx.attr.kind == "flash":
         default = signed_bin if signed_bin else binary
         rom = None
@@ -183,6 +188,7 @@ silicon = rule(
 def silicon_params(
         tags = [],
         timeout = "short",
+        local = True,
         rom_ext = None,
         test_harness = None,
         binaries = {},
@@ -197,6 +203,7 @@ def silicon_params(
     Args:
       tags: The test tags to apply to the test rule.
       timeout: The timeout to apply to the test rule.
+      local: Whether to set the `local` flag on this test.
       test_harness: Use an alternative test harness for this test.
       binaries: Dict of binary labels to substitution parameter names.
       rom_ext: Use an alternate ROM_EXT for this test.
@@ -211,6 +218,7 @@ def silicon_params(
     return struct(
         tags = ["silicon", "exclusive"] + (["changes_otp"] if changes_otp else []) + tags,
         timeout = timeout,
+        local = local,
         test_harness = test_harness,
         binaries = binaries,
         rom = None,

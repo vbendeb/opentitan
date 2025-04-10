@@ -7,6 +7,7 @@ pub mod bitbang;
 pub mod bitfield;
 pub mod file;
 pub mod hexdump;
+pub mod known_keys;
 pub mod num_de;
 pub mod parse_int;
 pub mod present;
@@ -38,15 +39,23 @@ macro_rules! collection {
     }};
 }
 
-/// The `testdata` function can be used in tests to reference testdata directories.
+/// The `testdata` macro can be used in tests to reference testdata directories.
+#[macro_export]
 #[cfg(test)]
-pub fn testdata(test: &str) -> std::path::PathBuf {
-    let mut path: std::path::PathBuf = std::env::var_os("TESTDATA").unwrap().into();
-    // TESTDATA points an arbitrary test, remove two levels to get the directory.
-    path.pop();
-    path.pop();
-    path.push(test);
-    path
+macro_rules! testdata {
+    () => {{
+        use std::path::PathBuf;
+        let mut path = PathBuf::new();
+        path.push(file!());
+        path.pop();
+        path.push("testdata");
+        path
+    }};
+    ($f:expr) => {{
+        let mut path = testdata!();
+        path.push($f);
+        path
+    }};
 }
 
 /// Create a filename in a temporary directory.
@@ -59,4 +68,19 @@ pub fn tmpfilename(name: &str) -> String {
     };
     dir.push(name);
     dir.to_str().unwrap().into()
+}
+
+#[cfg(test)]
+mod test {
+    #[test]
+    fn test_testdata() {
+        assert_eq!(
+            testdata!().to_str().unwrap(),
+            "sw/host/opentitanlib/src/util/testdata"
+        );
+        assert_eq!(
+            testdata!("my.file").to_str().unwrap(),
+            "sw/host/opentitanlib/src/util/testdata/my.file"
+        );
+    }
 }

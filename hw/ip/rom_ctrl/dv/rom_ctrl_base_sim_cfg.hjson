@@ -41,8 +41,7 @@
 
   // Add additional tops for simulation.
   sim_tops: ["rom_ctrl_bind", "rom_ctrl_cov_bind",
-             "sec_cm_prim_sparse_fsm_flop_bind", "sec_cm_prim_onehot_check_bind",
-             "sec_cm_prim_count_bind"]
+             "sec_cm_prim_sparse_fsm_flop_bind", "sec_cm_prim_onehot_check_bind"]
 
   // Default iterations for all tests - each test entry can override this.
   reseed: 50
@@ -56,10 +55,6 @@
     {
       name: rel_path
       value: "hw/ip/{name}_{variant}/dv"
-    }
-    {
-      name: cover_reg_top_vcs_cov_cfg_file
-      value: "-cm_hier {proj_root}/hw/dv/tools/vcs/cover_reg_top.cfg+{proj_root}/hw/ip/rom_ctrl/dv/cov/cover_reg_top.cfg"
     }
   ]
 

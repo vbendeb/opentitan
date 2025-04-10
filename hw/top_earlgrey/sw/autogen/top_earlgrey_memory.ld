@@ -1,12 +1,6 @@
 /* Copyright lowRISC contributors (OpenTitan project). */
 /* Licensed under the Apache License, Version 2.0, see LICENSE for details. */
 /* SPDX-License-Identifier: Apache-2.0 */
-/*
- * ------------------- W A R N I N G: A U T O - G E N E R A T E D   C O D E !! ------------------- *
- * PLEASE DO NOT HAND-EDIT THIS FILE. IT HAS BEEN AUTO-GENERATED WITH THE FOLLOWING COMMAND:
- * util/topgen.py -t hw/top_earlgrey/data/top_earlgrey.hjson
- * -o hw/top_earlgrey
- */
 
 /**
  * Partial linker script for chip memory configuration.
@@ -44,17 +38,17 @@ _stack_start = _stack_end - _stack_size;
 _static_critical_size = 8168;
 
 /**
- * `.chip_info` at the top of each ROM.
+ * `.chip_info` at the top of ROM.
  */
 _chip_info_size = 128;
-_rom_chip_info_end = ORIGIN(rom) + LENGTH(rom);
-_rom_chip_info_start = _rom_chip_info_end - _chip_info_size;
+_chip_info_end   = ORIGIN(rom) + LENGTH(rom);
+_chip_info_start = _chip_info_end - _chip_info_size;
 
 /**
  * Size of the initial ePMP RX region at reset (in bytes). This region must be
  * large enough to cover the .crt section.
  *
  * NOTE: This value must match the size of the RX region in
- * hw/earlgrey/rtl/ibex_pmp_reset_pkg.sv.
+ * hw/ip/rv_core_ibex/rtl/ibex_pmp_reset.svh.
  */
 _epmp_reset_rx_size = 2048;

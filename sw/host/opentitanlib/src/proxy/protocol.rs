@@ -75,10 +75,6 @@ pub enum GpioRequest {
     SetPullMode {
         pull: PullMode,
     },
-    AnalogWrite {
-        value: f32,
-    },
-    AnalogRead,
     MultiSet {
         mode: Option<PinMode>,
         value: Option<bool>,
@@ -93,8 +89,6 @@ pub enum GpioResponse {
     Read { value: bool },
     SetMode,
     SetPullMode,
-    AnalogWrite,
-    AnalogRead { value: f32 },
     MultiSet,
 }
 
@@ -183,7 +177,6 @@ pub enum UartRequest {
         rate: u32,
     },
     SetParity(Parity),
-    GetDevicePath,
     Read {
         timeout_millis: Option<u32>,
         len: u32,
@@ -200,7 +193,6 @@ pub enum UartResponse {
     GetBaudrate { rate: u32 },
     SetBaudrate,
     SetParity,
-    GetDevicePath { path: String },
     Read { data: Vec<u8> },
     Write,
     SupportsNonblockingRead { has_support: bool },
@@ -212,8 +204,6 @@ pub enum SpiTransferRequest {
     Read { len: u32 },
     Write { data: Vec<u8> },
     Both { data: Vec<u8> },
-    TpmPoll,
-    GscReady,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -221,8 +211,6 @@ pub enum SpiTransferResponse {
     Read { data: Vec<u8> },
     Write,
     Both { data: Vec<u8> },
-    TpmPoll,
-    GscReady,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -240,13 +228,11 @@ pub enum SpiRequest {
         value: u32,
     },
     SupportsBidirectionalTransfer,
-    SupportsTpmPoll,
     SetPins {
         serial_clock: Option<String>,
         host_out_device_in: Option<String>,
         host_in_device_out: Option<String>,
         chip_select: Option<String>,
-        gsc_ready: Option<String>,
     },
     GetMaxTransferCount,
     GetMaxTransferSizes,
@@ -254,7 +240,6 @@ pub enum SpiRequest {
     SetVoltage {
         voltage: Voltage,
     },
-    GetFlashromArgs,
     RunTransaction {
         transaction: Vec<SpiTransferRequest>,
     },
@@ -279,9 +264,6 @@ pub enum SpiResponse {
     SupportsBidirectionalTransfer {
         has_support: bool,
     },
-    SupportsTpmPoll {
-        has_support: bool,
-    },
     SetPins,
     GetMaxTransferCount {
         number: usize,
@@ -293,9 +275,6 @@ pub enum SpiResponse {
         sizes: MaxSizes,
     },
     SetVoltage,
-    GetFlashromArgs {
-        programmer: String,
-    },
     RunTransaction {
         transaction: Vec<SpiTransferResponse>,
     },
@@ -307,14 +286,12 @@ pub enum SpiResponse {
 pub enum I2cTransferRequest {
     Read { len: u32 },
     Write { data: Vec<u8> },
-    GscReady,
 }
 
 #[derive(Serialize, Deserialize)]
 pub enum I2cTransferResponse {
     Read { data: Vec<u8> },
     Write,
-    GscReady,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -326,11 +303,6 @@ pub enum I2cRequest {
     GetMaxSpeed,
     SetMaxSpeed {
         value: u32,
-    },
-    SetPins {
-        serial_clock: Option<String>,
-        serial_data: Option<String>,
-        gsc_ready: Option<String>,
     },
     RunTransaction {
         address: Option<u8>,
@@ -353,7 +325,6 @@ pub enum I2cResponse {
         speed: u32,
     },
     SetMaxSpeed,
-    SetPins,
     RunTransaction {
         transaction: Vec<I2cTransferResponse>,
     },

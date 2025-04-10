@@ -328,7 +328,7 @@ impl EmulatorProcess {
             let raw_pid = handle.id() as i32;
             let pid = Pid::from_raw(raw_pid).context("Pid is invalid")?;
             log::debug!("Stop sub-process PID:{} SIGTERM", raw_pid);
-            rustix::process::kill_process(pid, Signal::TERM)
+            rustix::process::kill_process(pid, Signal::Term)
                 .context("Stop sub-process using SIGTERM")?;
             for _retry in 0..MAX_RETRY {
                 log::debug!("Stop sub-process PID:{} ...", raw_pid);
@@ -354,7 +354,7 @@ impl EmulatorProcess {
             log::warn!("Ti50Emulator sub-process did not shut down gracefully, killing...");
             log::debug!("Stop sub-process PID:{} SIGKILL", raw_pid);
             for _retry in 0..MAX_RETRY {
-                match rustix::process::kill_process(pid, Signal::KILL) {
+                match rustix::process::kill_process(pid, Signal::Kill) {
                     Ok(()) => {}
                     Err(rustix::io::Errno::SRCH) => {}
                     Err(e) => {

@@ -15,8 +15,14 @@ load(
     "CONST",
     "get_lc_items",
 )
-load("//rules/opentitan:keyutils.bzl", "ECDSA_ONLY_KEY_STRUCTS")
-load("//rules:rom_e2e.bzl", "maybe_skip_in_ci")
+load(
+    "//rules:opentitan.bzl",
+    "ECDSA_ONLY_KEY_STRUCTS",
+)
+load(
+    "//rules:rom_e2e.bzl",
+    "maybe_skip_in_ci",
+)
 
 package(default_visibility = ["//visibility:public"])
 
@@ -33,7 +39,7 @@ package(default_visibility = ["//visibility:public"])
             "//hw/top_earlgrey:sim_verilator": None,
         },
         fpga = fpga_params(
-            otp = "//hw/top_earlgrey/data/otp:img_" + lc_state,
+            otp = "//hw/ip/otp_ctrl/data:img_" + lc_state,
             tags = maybe_skip_in_ci(lc_state_val),
         ),
         local_defines = [
@@ -46,7 +52,7 @@ package(default_visibility = ["//visibility:public"])
         manifest = "//sw/device/silicon_creator/rom_ext:manifest",
         verilator = verilator_params(
             timeout = "eternal",
-            otp = "//hw/top_earlgrey/data/otp:img_" + lc_state,
+            otp = "//hw/ip/otp_ctrl/data:img_" + lc_state,
             rom = "//sw/device/silicon_creator/rom:mask_rom",
         ),
         deps = [

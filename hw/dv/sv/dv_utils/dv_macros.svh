@@ -295,13 +295,13 @@
 
 // print non-empty tlm fifos that were uncompared at end of test
 `ifndef DV_EOT_PRINT_TLM_FIFO_CONTENTS
-`define DV_EOT_PRINT_TLM_FIFO_CONTENTS(TYP_, FIFO_, SEV_=error, ID_=`gfn)                          \
-  forever begin                                                                                    \
-    TYP_ item;                                                                                     \
-    int res = FIFO_.try_get(item);                                                                 \
-    if (res == 0) break;                                                                           \
-    if (res < 0) `dv_fatal($sformatf("Cannot read item from %s (type mismatch)", `"FIFO_`"), ID_)  \
-    `dv_``SEV_($sformatf("%s item uncompared:\n%s", `"FIFO_`", item.sprint()), ID_)                \
+`define DV_EOT_PRINT_TLM_FIFO_CONTENTS(TYP_, FIFO_, SEV_=error, ID_=`gfn) \
+  begin \
+    while (!FIFO_.is_empty()) begin \
+      TYP_ item; \
+      void'(FIFO_.try_get(item)); \
+      `dv_``SEV_($sformatf("%s item uncompared:\n%s", `"FIFO_`", item.sprint()), ID_) \
+    end \
   end
 `endif
 
@@ -387,55 +387,26 @@
   end
 `endif
 
-// Wait for one of two statements but stop early if the EXIT statement completes.
-//
-// Example usage:
-//
-//    `DV_SPINWAIT_EXIT_MULTI(do_something_time_consuming();,
-//                      do_something_else_time_consuming();,
-//                      wait(stop_now_flag);,
-//                      "The stop flag was set when we were working")
-`ifndef DV_SPINWAIT_EXIT_MULTI
-`define DV_SPINWAIT_EXIT_MULTI(WAIT_1_, WAIT_2_, EXIT_, MSG_ = "exit condition occurred!", ID_ =`gfn) \
-  `DV_SPINWAIT_EXIT(fork begin \
-                      fork \
-                        begin WAIT_1_ end \
-                        begin WAIT_2_ end \
-                      join_any \
-                      disable fork; \
-                    end join, \
-                    EXIT_, MSG_, ID_)
-`endif
-
 // macro that waits for a given delay and then reports an error
 `ifndef DV_WAIT_TIMEOUT
 `define DV_WAIT_TIMEOUT(TIMEOUT_NS_, ID_  = `gfn, ERROR_MSG_ = "timeout occurred!", REPORT_FATAL_ = 1) \
   begin \
     #(TIMEOUT_NS_ * 1ns); \
-    if (REPORT_FATAL_) begin \
-      `dv_fatal(ERROR_MSG_, ID_) \
-    end else begin \
-      `dv_error(ERROR_MSG_, ID_) \
-    end \
+    if (REPORT_FATAL_) `dv_fatal(ERROR_MSG_, ID_) \
+    else               `dv_error(ERROR_MSG_, ID_) \
   end
 `endif
 
 // Wait for a statement, but exit early after a timeout
 `ifndef DV_SPINWAIT
-`define DV_SPINWAIT(WAIT_, MSG_ = "timeout occurred!", TIMEOUT_NS_ = default_spinwait_timeout_ns, ID_ =`gfn, REPORT_FATAL_ = 1) \
-  `DV_SPINWAIT_EXIT(WAIT_, `DV_WAIT_TIMEOUT(TIMEOUT_NS_, ID_, MSG_, REPORT_FATAL_);, "", ID_)
+`define DV_SPINWAIT(WAIT_, MSG_ = "timeout occurred!", TIMEOUT_NS_ = default_spinwait_timeout_ns, ID_ =`gfn) \
+  `DV_SPINWAIT_EXIT(WAIT_, `DV_WAIT_TIMEOUT(TIMEOUT_NS_, ID_, MSG_);, "", ID_)
 `endif
 
 // a shorthand of `DV_SPINWAIT(wait(...))
 `ifndef DV_WAIT
-`define DV_WAIT(WAIT_COND_, MSG_ = "wait timeout occurred!", TIMEOUT_NS_ = default_spinwait_timeout_ns, ID_ =`gfn, REPORT_FATAL_ = 1) \
-  `DV_SPINWAIT(wait (WAIT_COND_);, MSG_, TIMEOUT_NS_, ID_, REPORT_FATAL_)
-`endif
-
-// Wait for one of two statements, but exit early after a timeout
-`ifndef DV_WAIT_MULTI
-`define DV_WAIT_MULTI(WAIT_COND_1_, WAIT_COND_2_, MSG_ = "wait timeout occurred!", TIMEOUT_NS_ = default_spinwait_timeout_ns, ID_ =`gfn, REPORT_FATAL_ = 1) \
-  `DV_SPINWAIT_EXIT_MULTI(WAIT_COND_1_, WAIT_COND_2_, `DV_WAIT_TIMEOUT(TIMEOUT_NS_, ID_, MSG_, REPORT_FATAL_);, "", ID_)
+`define DV_WAIT(WAIT_COND_, MSG_ = "wait timeout occurred!", TIMEOUT_NS_ = default_spinwait_timeout_ns, ID_ =`gfn) \
+  `DV_SPINWAIT(wait (WAIT_COND_);, MSG_, TIMEOUT_NS_, ID_)
 `endif
 
 // Control assertions in the DUT.

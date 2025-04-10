@@ -129,7 +129,7 @@ module prim_sha2 import prim_sha2_pkg::*;
         if (digest_mode_flag_q == SHA2_256) begin
           hash_d = compress_multi_256(w_q[0][31:0],
                    CubicRootPrime256[round_q[RndWidth256-1:0]], hash_q);
-        end else begin // SHA384 || SHA512
+        end else if ((digest_mode_flag_q == SHA2_512) || (digest_mode_flag_q == SHA2_384)) begin
           hash_d = compress_512(w_q[0], CubicRootPrime512[round_q], hash_q);
         end
       end
@@ -178,14 +178,6 @@ module prim_sha2 import prim_sha2_pkg::*;
     // assign digest to output
     assign digest_o = digest_q;
 
-    // When wipe_secret is high, sensitive internal variables are cleared by extending the wipe
-    // value specifed in the register
-    `ASSERT(WipeHashAssert,
-            wipe_secret_i |=> (hash_q == {($bits(hash_q)/$bits(wipe_v_i)){$past(wipe_v_i)}}))
-    `ASSERT(WipeMsgSchArrAssert,
-            wipe_secret_i |=> (w_q == {($bits(w_q)/$bits(wipe_v_i)){$past(wipe_v_i)}}))
-    `ASSERT(WipeDigestAssert,
-            wipe_secret_i |=> (digest_q == {($bits(digest_q)/$bits(wipe_v_i)){$past(wipe_v_i)}}))
   end else begin : gen_256 // MultimodeEn = 0
     // datapath signal definitions for SHA-2 256 only
     sha_word32_t        shaf_rdata256;
@@ -272,15 +264,6 @@ module prim_sha2 import prim_sha2_pkg::*;
       assign digest_o[i][31:0]  = digest256_q[i];
       assign digest_o[i][63:32] = 32'b0;
     end
-
-    // When wipe_secret is high, sensitive internal variables are cleared by extending the wipe
-    // value specifed in the register
-    `ASSERT(WipeHashAssert,
-      wipe_secret_i |=> (hash256_q == {($bits(hash256_q)/$bits(wipe_v_i)){$past(wipe_v_i)}}))
-    `ASSERT(WipeMsgSchArrAssert,
-      wipe_secret_i |=> (w256_q == {($bits(w256_q)/$bits(wipe_v_i)){$past(wipe_v_i)}}))
-    `ASSERT(WipeDigestAssert,
-      wipe_secret_i |=> (digest256_q == {($bits(digest256_q)/$bits(wipe_v_i)){$past(wipe_v_i)}}))
   end
 
   // compute round counter (shared)
@@ -334,7 +317,7 @@ module prim_sha2 import prim_sha2_pkg::*;
   end
 
   always_comb begin
-    fifo_st_d          = fifo_st_q;
+    fifo_st_d          = FifoIdle;
     update_w_from_fifo = 1'b0;
     hash_done_next     = 1'b0;
 
@@ -349,10 +332,6 @@ module prim_sha2 import prim_sha2_pkg::*;
           // Wait until it is filled
           fifo_st_d          = FifoLoadFromFifo;
           update_w_from_fifo = 1'b0;
-          if (msg_feed_complete) begin
-            fifo_st_d       = FifoIdle;
-            hash_done_next  = 1'b1;
-          end
         end else if (w_index_q == 4'd 15) begin
           fifo_st_d = FifoWait;
           // To increment w_index and it rolls over to 0
@@ -464,25 +443,12 @@ module prim_sha2 import prim_sha2_pkg::*;
     if (!sha_en_i || hash_go) sha_st_d  = ShaIdle;
   end
 
-  logic update_digest_q, update_digest_d;
-
   // Determine whether a digest is being computed for a complete block: when `update_digest` is set,
   // this module is not waiting for more data from the FIFO, and `message_length_i` is zero modulo a
   // complete block (512 bit for SHA2_256 and 1024 bit for SHA2_384 and SHA2_512).
-  assign digest_on_blk_o = (update_digest || update_digest_q) && (fifo_st_q == FifoIdle) && (
+  assign digest_on_blk_o = update_digest && (fifo_st_q == FifoIdle) && (
       (digest_mode_flag_q == SHA2_256                 && message_length_i[8:0] == '0) ||
       (digest_mode_flag_q inside {SHA2_384, SHA2_512} && message_length_i[9:0] == '0));
-
-  assign update_digest_d = digest_on_blk_o ? 1'b0 :
-                           update_digest   ? 1'b1 : update_digest_q;
-
-  always_ff @(posedge clk_i or negedge rst_ni) begin
-    if (!rst_ni) begin
-      update_digest_q <= 1'b0;
-    end else begin
-      update_digest_q <= update_digest_d;
-    end
-  end
 
   assign one_chunk_done = ((digest_mode_flag_q == SHA2_256 || ~MultimodeEn)
                           && (round_q == 7'd63)) ? 1'b1 :
@@ -515,12 +481,4 @@ module prim_sha2 import prim_sha2_pkg::*;
 
   // Idle
   assign idle_o = (fifo_st_q == FifoIdle) && (sha_st_q == ShaIdle) && !hash_go;
-
-  ////////////////
-  // Assertions //
-  ////////////////
-
-  `ASSERT(ValidDigestModeFlag_A, run_hash |->
-    digest_mode_flag_q inside {SHA2_256, SHA2_384, SHA2_512})
-
 endmodule : prim_sha2

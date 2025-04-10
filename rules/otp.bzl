@@ -40,40 +40,39 @@ load("@bazel_skylib//lib:new_sets.bzl", "sets")
 load("@bazel_skylib//rules:common_settings.bzl", "BuildSettingInfo")
 load("//rules:const.bzl", "CONST", "hex")
 load("//rules/opentitan:toolchain.bzl", "LOCALTOOLS_TOOLCHAIN")
-load("//rules:stamp.bzl", "stamp_attr", "stamping_enabled")
 
 def get_otp_images():
     """Returns a list of (otp_name, img_target) tuples.
 
-    Each tuple corresponds to an OTP image defined in //util/design/data. The
+    Each tuple corresponds to an OTP image defined in //hw/ip/otp_ctrl/data. The
     otp_name is a short, unique suffix of the image target, e.g. "rma". The
     img_target is the full path of the OTP image target.
     """
 
     img_targets = [
-        "//hw/top_earlgrey/data/otp:img_dev",
-        "//hw/top_earlgrey/data/otp:img_rma",
-        "//hw/top_earlgrey/data/otp:img_test_locked0",
-        "//hw/top_earlgrey/data/otp:img_test_locked1",
-        "//hw/top_earlgrey/data/otp:img_test_locked2",
-        "//hw/top_earlgrey/data/otp:img_test_locked3",
-        "//hw/top_earlgrey/data/otp:img_test_locked4",
-        "//hw/top_earlgrey/data/otp:img_test_locked5",
-        "//hw/top_earlgrey/data/otp:img_test_locked6",
-        "//hw/top_earlgrey/data/otp:img_test_unlocked0",
-        "//hw/top_earlgrey/data/otp:img_test_unlocked1",
-        "//hw/top_earlgrey/data/otp:img_test_unlocked1_initial",
-        "//hw/top_earlgrey/data/otp:img_test_unlocked2",
-        "//hw/top_earlgrey/data/otp:img_test_unlocked3",
-        "//hw/top_earlgrey/data/otp:img_test_unlocked4",
-        "//hw/top_earlgrey/data/otp:img_test_unlocked5",
-        "//hw/top_earlgrey/data/otp:img_test_unlocked6",
-        "//hw/top_earlgrey/data/otp:img_test_unlocked7",
-        "//hw/top_earlgrey/data/otp:img_prod",
-        "//hw/top_earlgrey/data/otp:img_prod_end",
-        "//hw/top_earlgrey/data/otp:img_exec_disabled",
-        "//hw/top_earlgrey/data/otp:img_bootstrap_disabled",
-        "//hw/top_earlgrey/data/otp:img_raw",
+        "//hw/ip/otp_ctrl/data:img_dev",
+        "//hw/ip/otp_ctrl/data:img_rma",
+        "//hw/ip/otp_ctrl/data:img_test_locked0",
+        "//hw/ip/otp_ctrl/data:img_test_locked1",
+        "//hw/ip/otp_ctrl/data:img_test_locked2",
+        "//hw/ip/otp_ctrl/data:img_test_locked3",
+        "//hw/ip/otp_ctrl/data:img_test_locked4",
+        "//hw/ip/otp_ctrl/data:img_test_locked5",
+        "//hw/ip/otp_ctrl/data:img_test_locked6",
+        "//hw/ip/otp_ctrl/data:img_test_unlocked0",
+        "//hw/ip/otp_ctrl/data:img_test_unlocked1",
+        "//hw/ip/otp_ctrl/data:img_test_unlocked1_initial",
+        "//hw/ip/otp_ctrl/data:img_test_unlocked2",
+        "//hw/ip/otp_ctrl/data:img_test_unlocked3",
+        "//hw/ip/otp_ctrl/data:img_test_unlocked4",
+        "//hw/ip/otp_ctrl/data:img_test_unlocked5",
+        "//hw/ip/otp_ctrl/data:img_test_unlocked6",
+        "//hw/ip/otp_ctrl/data:img_test_unlocked7",
+        "//hw/ip/otp_ctrl/data:img_prod",
+        "//hw/ip/otp_ctrl/data:img_prod_end",
+        "//hw/ip/otp_ctrl/data:img_exec_disabled",
+        "//hw/ip/otp_ctrl/data:img_bootstrap_disabled",
+        "//hw/ip/otp_ctrl/data:img_raw",
     ]
 
     out = []
@@ -199,20 +198,11 @@ def _otp_alert_digest_impl(ctx):
     args.add_all(("--rcfile=", "otp", "alert-digest", ctx.file.otp_img))
     args.add("--output", file)
 
-    # By default, no environment variables are available to the action
-    # during bazel builds. This can not be changed with action_env.
-    # However, the opentitantool binary used in building the json target
-    # needs access to LD_LIBRARY_PATH to load shared libraries
-    # outside standard system paths.
-    # Setting use_default_shell_env to True allows passing LD_LIBRARY_PATH
-    # to the sandbox using --action_env switch
-
     ctx.actions.run(
         outputs = outputs,
         inputs = inputs,
         arguments = [args],
         executable = tc.tools.opentitantool,
-        use_default_shell_env = True,
     )
     return [DefaultInfo(files = depset([file]))]
 
@@ -232,8 +222,6 @@ def _otp_image(ctx):
     args = ctx.actions.args()
     if not ctx.attr.verbose:
         args.add("--quiet")
-    if stamping_enabled(ctx):
-        args.add("--stamp")
     args.add("--lc-state-def", ctx.file.lc_state_def)
     args.add("--mmap-def", ctx.file.mmap_def)
     if ctx.attr.img_seed:
@@ -277,23 +265,23 @@ otp_image = rule(
         ),
         "mmap_def": attr.label(
             allow_single_file = True,
-            default = "//hw/top_earlgrey/data/otp:otp_ctrl_mmap.hjson",
+            default = "//hw/ip/otp_ctrl/data:otp_ctrl_mmap.hjson",
             doc = "OTP Controller memory map file in Hjson format.",
         ),
         "img_seed": attr.label(
-            default = "//util/design/data:img_seed",
+            default = "//hw/ip/otp_ctrl/data:img_seed",
             doc = "Configuration override seed used to randomize field values in an OTP image.",
         ),
         "lc_seed": attr.label(
-            default = "//util/design/data:lc_seed",
+            default = "//hw/ip/otp_ctrl/data:lc_seed",
             doc = "Configuration override seed used to randomize LC netlist constants.",
         ),
         "otp_seed": attr.label(
-            default = "//util/design/data:otp_seed",
+            default = "//hw/ip/otp_ctrl/data:otp_seed",
             doc = "Configuration override seed used to randomize OTP netlist constants.",
         ),
         "data_perm": attr.label(
-            default = "//util/design/data:data_perm",
+            default = "//hw/ip/otp_ctrl/data:data_perm",
             doc = "Post-processing option to trigger permuting bit positions in memfile.",
         ),
         "verbose": attr.bool(
@@ -305,7 +293,7 @@ otp_image = rule(
             executable = True,
             cfg = "exec",
         ),
-    } | stamp_attr(-1, "//rules:stamp_flag"),
+    },
 )
 
 def _otp_image_consts_impl(ctx):
@@ -313,8 +301,6 @@ def _otp_image_consts_impl(ctx):
     args = ctx.actions.args()
     if not ctx.attr.verbose:
         args.add("--quiet")
-    if stamping_enabled(ctx):
-        args.add("--stamp")
     args.add("--lc-state-def", ctx.file.lc_state_def)
     args.add("--mmap-def", ctx.file.mmap_def)
     args.add("--img-seed", ctx.attr.img_seed[BuildSettingInfo].value)
@@ -357,24 +343,24 @@ otp_image_consts = rule(
         ),
         "mmap_def": attr.label(
             allow_single_file = True,
-            default = "//hw/top_earlgrey/data/otp:otp_ctrl_mmap.hjson",
+            default = "//hw/ip/otp_ctrl/data:otp_ctrl_mmap.hjson",
             doc = "OTP Controller memory map file in Hjson format.",
         ),
         "img_seed": attr.label(
-            default = "//util/design/data:img_seed",
+            default = "//hw/ip/otp_ctrl/data:img_seed",
             doc = "Configuration override seed used to randomize field values in an OTP image.",
         ),
         "lc_seed": attr.label(
-            default = "//util/design/data:lc_seed",
+            default = "//hw/ip/otp_ctrl/data:lc_seed",
             doc = "Configuration override seed used to randomize LC netlist constants.",
         ),
         "otp_seed": attr.label(
-            default = "//util/design/data:otp_seed",
+            default = "//hw/ip/otp_ctrl/data:otp_seed",
             doc = "Configuration override seed used to randomize OTP netlist constants.",
         ),
         "c_template": attr.label(
             allow_single_file = True,
-            default = "//util/design/data:otp_ctrl_img.c.tpl",
+            default = "//hw/ip/otp_ctrl/data:otp_ctrl_img.c.tpl",
             doc = "OTP image header template.",
         ),
         "verbose": attr.bool(
@@ -386,7 +372,7 @@ otp_image_consts = rule(
             executable = True,
             cfg = "exec",
         ),
-    } | stamp_attr(-1, "//rules:stamp_flag"),
+    },
 )
 
 # The following overlays are used to generate a generic OTP image with fake
@@ -400,19 +386,19 @@ OTP_SIGVERIFY_FAKE_KEYS = [
 # Additional overlays can be applied on top to further customize the OTP.
 # This set overlays does not include any of the SECRET[0-2] partitions.
 STD_OTP_OVERLAYS_WITHOUT_SECRET_PARTITIONS = OTP_SIGVERIFY_FAKE_KEYS + [
-    "//hw/top_earlgrey/data/otp:otp_json_creator_sw_cfg",
-    "//hw/top_earlgrey/data/otp:otp_json_owner_sw_cfg",
-    "//hw/top_earlgrey/data/otp:otp_json_alert_digest_cfg",
-    "//hw/top_earlgrey/data/otp:otp_json_hw_cfg0",
-    "//hw/top_earlgrey/data/otp:otp_json_hw_cfg1",
+    "//hw/ip/otp_ctrl/data:otp_json_creator_sw_cfg",
+    "//hw/ip/otp_ctrl/data:otp_json_owner_sw_cfg",
+    "//hw/ip/otp_ctrl/data:otp_json_alert_digest_cfg",
+    "//hw/ip/otp_ctrl/data:otp_json_hw_cfg0",
+    "//hw/ip/otp_ctrl/data:otp_json_hw_cfg1",
 ]
 
 # This is a set of overlays to generate a generic, standard OTP image.
 # Additional overlays can be applied on top to further customize the OTP.
 STD_OTP_OVERLAYS = STD_OTP_OVERLAYS_WITHOUT_SECRET_PARTITIONS + [
-    "//hw/top_earlgrey/data/otp:otp_json_secret0",
-    "//hw/top_earlgrey/data/otp:otp_json_secret1",
-    "//hw/top_earlgrey/data/otp:otp_json_secret2_unlocked",
+    "//hw/ip/otp_ctrl/data:otp_json_secret0",
+    "//hw/ip/otp_ctrl/data:otp_json_secret1",
+    "//hw/ip/otp_ctrl/data:otp_json_secret2_unlocked",
 ]
 
 def otp_hex(v):
@@ -440,7 +426,7 @@ def _parse_str_list(s):
     """
     return s.replace(" ", "").split(",")
 
-def otp_alert_classification(alert_list, default = None, **kwargs):
+def otp_alert_classification(alert_list, default = None, ordered_params = {}, **kwargs):
     """Create an array specifying the alert classifications.
 
     This function creates an array of bytestrings that specifies the alert
@@ -452,6 +438,14 @@ def otp_alert_classification(alert_list, default = None, **kwargs):
         default: default classification for all alerts that are not specified
             in kwargs. If kwargs does not include all alerts, a value must be
             specified for default.
+        ordered_params: a mapping of the format '{"alert_name": alert_class_string}'.
+            alert_name is an alert in the alert_list argument.
+            alert_class_string is a comma-delimited string that can contain
+            spaces and is intended to be parsed by the _parse_str_list macro.
+            This string must indicate exactly 4 alert classes for the prod,
+            prod_end, dev, and rma LC states in that order.
+            Use this argument instead of kwargs to ensure the order of the
+            alert classes is maintained in the bazel build file.
         kwargs: a mapping of the format 'alert_name = alert_class_string'.
             alert_name is an alert in the alert_list argument.
             alert_class_string is a comma-delimited string that can contain
@@ -482,6 +476,9 @@ def otp_alert_classification(alert_list, default = None, **kwargs):
 
     provided_alerts = dict()
     for alert, class_str in kwargs.items():
+        provided_alerts[alert] = _parse_alert_class_string(class_str)
+
+    for alert, class_str in ordered_params.items():
         provided_alerts[alert] = _parse_alert_class_string(class_str)
 
     alert_set = sets.make(alert_list)

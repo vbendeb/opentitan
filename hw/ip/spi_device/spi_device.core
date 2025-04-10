@@ -19,11 +19,9 @@ filesets:
       - lowrisc:prim:ram_1r1w_async_adv
       - lowrisc:prim:edge_detector
       - lowrisc:prim:rst_sync
-      - lowrisc:prim:racl_error_arb
       - lowrisc:ip:lc_ctrl_pkg
       - lowrisc:prim:lc_sync
       - lowrisc:ip:spi_device_pkg
-      - lowrisc:virtual_constants:top_racl_pkg
     files:
       - rtl/spi_device_reg_top.sv
       - rtl/spi_cmdparse.sv
@@ -68,9 +66,6 @@ filesets:
       # common waivers
       - lowrisc:lint:common
       - lowrisc:lint:comportable
-    files:
-      - lint/spi_device.vbl
-    file_type: veribleLintWaiver
 
 parameters:
   SYNTHESIS:

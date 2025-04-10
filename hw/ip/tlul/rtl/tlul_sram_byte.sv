@@ -231,8 +231,7 @@ module tlul_sram_byte import tlul_pkg::*; #(
 
       logic unused_rdback;
 
-      assign unused_rdback = ^{rdback_check_d, rdback_data_exp_d, rdback_data_exp_intg_d,
-                               rdback_en_d};
+      assign unused_rdback = ^{rdback_check_d, rdback_data_exp_d, rdback_data_exp_intg_d};
     end
 
     // state machine handling
@@ -392,20 +391,23 @@ module tlul_sram_byte import tlul_pkg::*; #(
           // this is happening.
           stall_host = 1'b1;
 
-          // Wait for one cycle with sending readback request to SRAM to avoid reading from
-          // holding register.
-          wait_phase  = 1'b1;
+          // Wait until there is a single ongoing transaction.
+          if (pending_txn_cnt == PendingTxnCntW'(1)) begin
+            // Wait for one cycle with sending readback request to SRAM to avoid reading from
+            // holding register.
+            wait_phase  = 1'b1;
 
-          if (d_ack) begin
-            // Got an immediate TL-UL write response. Wait for one cycle until the holding
-            // register is flushed and then perform the readback.
-            state_d = StByteWrReadBack;
-          end else begin
-            // No response received for initial write. We already can send the
-            // request for the readback in the next cycle but we need to wait
-            // for the response for the initial write before doing the readback
-            // check.
-            state_d = StByteWrReadBackDWait;
+            if (d_ack) begin
+              // Got an immediate TL-UL write response. Wait for one cycle until the holding
+              // register is flushed and then perform the readback.
+              state_d = StByteWrReadBack;
+            end else begin
+              // No response received for initial write. We already can send the
+              // request for the readback in the next cycle but we need to wait
+              // for the response for the initial write before doing the readback
+              // check.
+              state_d = StByteWrReadBackDWait;
+            end
           end
         end
 
@@ -693,12 +695,6 @@ module tlul_sram_byte import tlul_pkg::*; #(
     `ASSERT(ReadbackDataImmediatelyAvailable_A, (state_q == StPassThru) &&
       mubi4_test_true_loose(rdback_en_q) && mubi4_test_true_loose(rdback_check_q) &&
       !error_i|-> tl_sram_i.d_valid)
-
-    // When in the StByteWrReadbackInit state, pending_txn_cnt (the depth of a FIFO)
-    // will always be 1. We will have seen StWaitRd -> StWriteCmd -> StByteWrReadBackInit
-    // to get to this FSM state and the FIFO cannot be pushed or popped along that path.
-    `ASSERT(WrReadBackInitPendingTxn_A,
-      (state_q == StByteWrReadBackInit) |-> pending_txn_cnt == PendingTxnCntW'(1))
 
     assign compound_txn_in_progress_o = wr_phase | rdback_phase | rdback_phase_wrreadback;
   end else begin : gen_no_integ_handling

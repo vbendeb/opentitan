@@ -6,7 +6,6 @@ use anyhow::{anyhow, Result};
 use cryptoki::object::Attribute;
 use cryptoki::session::Session;
 use serde::{Deserialize, Serialize};
-use serde_annotate::Annotate;
 use std::any::Any;
 use std::ops::Range;
 use std::path::PathBuf;
@@ -26,7 +25,7 @@ pub struct Verify {
     label: Option<String>,
     #[arg(short, long, default_value = "sha256-hash", help=SignData::HELP)]
     format: SignData,
-    /// Reverse the input data and result (for little-endian targets).
+    /// Reverse the result (for little-endian targets).
     #[arg(short = 'r', long)]
     little_endian: bool,
     /// The signature is at the given byte range of the input file.
@@ -44,22 +43,20 @@ impl Dispatch for Verify {
         _context: &dyn Any,
         _hsm: &Module,
         session: Option<&Session>,
-    ) -> Result<Box<dyn Annotate>> {
+    ) -> Result<Box<dyn erased_serde::Serialize>> {
         let session = session.ok_or(HsmError::SessionRequired)?;
         let mut attrs = helper::search_spec(self.id.as_deref(), self.label.as_deref())?;
         attrs.push(Attribute::KeyType(KeyType::Rsa.try_into()?));
         attrs.push(Attribute::Verify(true));
         let object = helper::find_one_object(session, &attrs)?;
 
-        let data = std::fs::read(&self.input)?;
-        let data = self
-            .format
-            .prepare(KeyType::Rsa, &data, self.little_endian)?;
+        let data = helper::read_file(&self.input)?;
+        let data = self.format.prepare(KeyType::Rsa, &data)?;
         let mechanism = self.format.mechanism(KeyType::Rsa)?;
         let mut signature = if let Some(filename) = &self.signature {
-            std::fs::read(filename)?
+            helper::read_file(filename)?
         } else if let Some(range) = &self.signature_at {
-            let input = std::fs::read(&self.input)?;
+            let input = helper::read_file(&self.input)?;
             input
                 .get(range.clone())
                 .ok_or_else(|| anyhow!("Invalid range on input file: {range:?}"))?

@@ -25,6 +25,8 @@
 #include "flash_ctrl_regs.h"  // Generated.
 
 enum {
+  kFlashPageSize = FLASH_CTRL_PARAM_BYTES_PER_PAGE,
+
   /**
    * The size of the scratch buffer that is large enough for constructing the
    * CDI certs.
@@ -42,7 +44,7 @@ typedef struct dice_chain {
   /**
    * RAM buffer that mirrors the DICE cert chain in a flash page.
    */
-  uint8_t data[FLASH_CTRL_PARAM_BYTES_PER_PAGE];
+  uint8_t data[kFlashPageSize];
 
   /**
    * Indicate whether `data` needs to be written back to flash.
@@ -180,8 +182,13 @@ static rom_error_t dice_chain_load_cert_obj(const char *name,
 
   RETURN_IF_ERROR(err);
 
-  // Check if this cert is what we are looking for.
-  if (name == NULL || memcmp(dice_chain.cert_obj.name, name, name_size) != 0) {
+  // Check if this cert is what we are looking for. The name and type (X.509 vs
+  // CWT) should match.
+  const perso_tlv_object_type_t kExpectedCertType =
+      kDiceCertFormat == kDiceCertFormatX509TcbInfo ? kPersoObjectTypeX509Cert
+                                                    : kPersoObjectTypeCwtCert;
+  if (name == NULL || memcmp(dice_chain.cert_obj.name, name, name_size) != 0 ||
+      kExpectedCertType != dice_chain.cert_obj.obj_type) {
     // Name unmatched, keep the cert_obj but mark it as invalid.
     dice_chain.cert_valid = kHardenedBoolFalse;
     return kErrorOk;
@@ -220,12 +227,11 @@ static rom_error_t dice_chain_load_flash(
   RETURN_IF_ERROR(dice_chain_flush_flash());
 
   // Read in a DICE certificate(s) page.
-  static_assert(sizeof(dice_chain.data) == FLASH_CTRL_PARAM_BYTES_PER_PAGE,
+  static_assert(sizeof(dice_chain.data) == kFlashPageSize,
                 "Invalid dice_chain buffer size");
   RETURN_IF_ERROR(flash_ctrl_info_read_zeros_on_read_error(
       info_page, /*offset=*/0,
-      /*word_count=*/FLASH_CTRL_PARAM_BYTES_PER_PAGE / sizeof(uint32_t),
-      dice_chain.data));
+      /*word_count=*/kFlashPageSize / sizeof(uint32_t), dice_chain.data));
 
   // Resets the flash page status.
   dice_chain.data_dirty = kHardenedBoolFalse;
@@ -248,9 +254,12 @@ static rom_error_t dice_chain_push_cert(const char *name, const uint8_t *cert,
 
   // Encode the certificate to the tail buffer.
   size_t cert_page_left = dice_chain_get_tail_size();
-  RETURN_IF_ERROR(
-      perso_tlv_cert_obj_build(name, kPersoObjectTypeX509Cert, cert, cert_size,
-                               dice_chain_get_tail_buffer(), &cert_page_left));
+  perso_tlv_object_type_t cert_type =
+      kDiceCertFormat == kDiceCertFormatX509TcbInfo ? kPersoObjectTypeX509Cert
+                                                    : kPersoObjectTypeCwtCert;
+  RETURN_IF_ERROR(perso_tlv_cert_obj_build(name, cert_type, cert, cert_size,
+                                           dice_chain_get_tail_buffer(),
+                                           &cert_page_left));
 
   // Move the offset to the new tail.
   RETURN_IF_ERROR(perso_tlv_get_cert_obj(dice_chain_get_tail_buffer(),
@@ -320,7 +329,6 @@ rom_error_t dice_chain_attestation_creator(
   // Check if the current CDI_0 cert is valid.
   RETURN_IF_ERROR(dice_chain_load_cert_obj("CDI_0", /*name_size=*/6));
   if (dice_chain.cert_valid == kHardenedBoolFalse) {
-    dbg_puts("CDI_0 certificate not valid. Updating it ...\r\n");
     // Update the cert page buffer.
     static_dice_cdi_0.cert_size = sizeof(static_dice_cdi_0.cert_data);
     HARDENED_RETURN_IF_ERROR(dice_cdi_0_cert_build(
@@ -396,8 +404,8 @@ static rom_error_t dice_chain_attestation_check_cdi_0(void) {
 
 rom_error_t dice_chain_attestation_owner(
     const manifest_t *owner_manifest, keymgr_binding_value_t *bl0_measurement,
-    hmac_digest_t *owner_measurement, keymgr_binding_value_t *sealing_binding,
-    owner_app_domain_t key_domain) {
+    hmac_digest_t *owner_measurement, hmac_digest_t *owner_history_hash,
+    keymgr_binding_value_t *sealing_binding, owner_app_domain_t key_domain) {
   // Handles the certificates from the immutable rom_ext first.
   RETURN_IF_ERROR(dice_chain_attestation_check_uds());
   RETURN_IF_ERROR(dice_chain_attestation_check_cdi_0());
@@ -430,12 +438,11 @@ rom_error_t dice_chain_attestation_owner(
   // Check if the current CDI_1 cert is valid.
   RETURN_IF_ERROR(dice_chain_load_cert_obj("CDI_1", /*name_size=*/6));
   if (dice_chain.cert_valid == kHardenedBoolFalse) {
-    dbg_puts("CDI_1 certificate not valid. Updating it ...\r\n");
+    dbg_puts("warning: CDI_1 certificate not valid; updating\r\n");
     // Update the cert page buffer.
     size_t updated_cert_size = kScratchCertSizeBytes;
-    // TODO(#19596): add owner configuration block measurement to CDI_1 cert.
     HARDENED_RETURN_IF_ERROR(dice_cdi_1_cert_build(
-        (hmac_digest_t *)bl0_measurement, owner_measurement,
+        (hmac_digest_t *)bl0_measurement, owner_measurement, owner_history_hash,
         owner_manifest->security_version, key_domain, &dice_chain.key_ids,
         &dice_chain.subject_pubkey, dice_chain.scratch_cert,
         &updated_cert_size));
@@ -463,14 +470,13 @@ rom_error_t dice_chain_flush_flash(void) {
       dice_chain.info_page != NULL) {
     RETURN_IF_ERROR(
         flash_ctrl_info_erase(dice_chain.info_page, kFlashCtrlEraseTypePage));
-    static_assert(sizeof(dice_chain.data) == FLASH_CTRL_PARAM_BYTES_PER_PAGE,
+    static_assert(sizeof(dice_chain.data) == kFlashPageSize,
                   "Invalid dice_chain buffer size");
     RETURN_IF_ERROR(flash_ctrl_info_write(
         dice_chain.info_page,
         /*offset=*/0,
         /*word_count=*/FLASH_CTRL_PARAM_BYTES_PER_PAGE / sizeof(uint32_t),
         dice_chain.data));
-    dbg_puts("Flushed dice cert page\r\n");
     dice_chain.data_dirty = kHardenedBoolFalse;
   }
   return kErrorOk;

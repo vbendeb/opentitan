@@ -4,12 +4,13 @@
 
 use anyhow::{bail, Result};
 use bitflags::bitflags;
+use num_enum::IntoPrimitive;
 use serde::{Deserialize, Serialize};
 
 use crate::with_unknown;
 
 with_unknown! {
-    pub enum DifLcCtrlState: u32 {
+    pub enum DifLcCtrlState: u32 [default = Self::StateInvalid] {
         Raw = bindgen::dif::dif_lc_ctrl_state_kDifLcCtrlStateRaw ,
         TestUnlocked0 = bindgen::dif::dif_lc_ctrl_state_kDifLcCtrlStateTestUnlocked0 ,
         TestLocked0 = bindgen::dif::dif_lc_ctrl_state_kDifLcCtrlStateTestLocked0 ,
@@ -340,7 +341,7 @@ impl DifLcCtrlToken {
     }
 }
 
-#[derive(clap::ValueEnum, Clone, Copy, Debug, strum::EnumString)]
+#[derive(IntoPrimitive, Clone, Debug, strum::EnumString)]
 #[strum(serialize_all = "snake_case")]
 #[repr(u32)]
 pub enum LcCtrlReg {
@@ -382,7 +383,7 @@ pub enum LcCtrlReg {
 
 impl LcCtrlReg {
     pub fn byte_offset(&self) -> u32 {
-        *self as u32
+        self.clone().into()
     }
     /// Converts the register's byte offset into a word offset for use with DMI.
     /// <https://docs.opentitan.org/hw/ip/lc_ctrl/doc/#life-cycle-tap-controller>

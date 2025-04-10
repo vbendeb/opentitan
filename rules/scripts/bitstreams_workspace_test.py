@@ -53,7 +53,7 @@ class TestBitstreamCache(unittest.TestCase):
 
         m = unittest.mock.mock_open(read_data=MOCK_MANIFEST)
         with unittest.mock.patch('bitstreams_workspace.open', m):
-            (manifest, _manifest_path) = cache.GetFromCache('abcd')
+            (manifest, manifest_path) = cache.GetFromCache('abcd')
         m.assert_called_once_with('cache/abcd/manifest.json', 'r')
 
         # This is more of an implementation detail, but it verifies that we hit
@@ -213,7 +213,7 @@ class TestFetchAvailableBitstreams(unittest.TestCase):
             name='cache.Get',
             side_effect=MOCKED_GET_RETURN,
         )
-        self.cache.GetBitstreamsAvailable(refresh=True)
+        self.cache.GetBitstreamsAvailable(branch="earlgrey_1.0.0", refresh=True)
         self.assertEqual(self.cache.Get.call_count, 2)
         self.assertEqual(self.cache.available, {
             "0": "master/bitstream-0.tar.gz",
@@ -269,7 +269,7 @@ class TestFetchAvailableBitstreams(unittest.TestCase):
             name='cache.Get',
             side_effect=MOCKED_GET_RETURN,
         )
-        self.cache.GetBitstreamsAvailable(refresh=True)
+        self.cache.GetBitstreamsAvailable(branch="earlgrey_1.0.0", refresh=True)
         self.assertEqual(self.cache.Get.call_count, 3)
         self.assertEqual(
             self.cache.available, {

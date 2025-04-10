@@ -112,20 +112,22 @@ class chip_sw_base_vseq extends chip_base_vseq;
 `endif
     end
 
-    if (cfg.sw_images.exists(SwTypeTestSlotA)) begin
-      if (cfg.use_spi_load_bootstrap) begin
-        `uvm_info(`gfn, "Initializing SPI flash bootstrap", UVM_MEDIUM)
-        spi_device_load_bootstrap({cfg.sw_images[SwTypeTestSlotA], ".64.vmem"});
-        cfg.use_spi_load_bootstrap = 1'b0;
-      end else begin
-        cfg.mem_bkdr_util_h[FlashBank0Data].load_mem_from_file(
-            {cfg.sw_images[SwTypeTestSlotA], ".64.scr.vmem"});
+    if (cfg.skip_flash_bkdr_load == 0) begin
+      if (cfg.sw_images.exists(SwTypeTestSlotA)) begin
+        if (cfg.use_spi_load_bootstrap) begin
+          `uvm_info(`gfn, "Initializing SPI flash bootstrap", UVM_MEDIUM)
+          spi_device_load_bootstrap({cfg.sw_images[SwTypeTestSlotA], ".64.vmem"});
+          cfg.use_spi_load_bootstrap = 1'b0;
+        end else begin
+          cfg.mem_bkdr_util_h[FlashBank0Data].load_mem_from_file(
+              {cfg.sw_images[SwTypeTestSlotA], ".64.scr.vmem"});
+        end
       end
-    end
-    if (cfg.sw_images.exists(SwTypeTestSlotB)) begin
-      // TODO: support bootstrapping entire flash address space, not just slot A.
-      cfg.mem_bkdr_util_h[FlashBank1Data].load_mem_from_file(
-          {cfg.sw_images[SwTypeTestSlotB], ".64.scr.vmem"});
+      if (cfg.sw_images.exists(SwTypeTestSlotB)) begin
+        // TODO: support bootstrapping entire flash address space, not just slot A.
+        cfg.mem_bkdr_util_h[FlashBank1Data].load_mem_from_file(
+            {cfg.sw_images[SwTypeTestSlotB], ".64.scr.vmem"});
+      end
     end
 
     config_jitter();
@@ -207,7 +209,6 @@ class chip_sw_base_vseq extends chip_base_vseq;
       bit [sram_scrambler_pkg::SRAM_BLOCK_WIDTH-1:0] nonce,
       bit [38:0] flip_bits);
 
-    sram_ctrl_bkdr_util sram;
     chip_mem_e mem;
     int        num_tiles;
     bit [31:0] addr_scr;
@@ -217,10 +218,9 @@ class chip_sw_base_vseq extends chip_base_vseq;
     int        tile_idx;
 
     _sram_get_params(mem, num_tiles, size_bytes, is_main_ram);
-    `downcast(sram, cfg.mem_bkdr_util_h[mem])
 
     // calculate the scramble address
-    addr_scr = sram.get_sram_encrypt_addr(
+    addr_scr = cfg.mem_bkdr_util_h[mem].get_sram_encrypt_addr(
         .addr(addr), .nonce(nonce), .extra_addr_bits($clog2(num_tiles)));
     addr_mask = size_bytes - 1;
 
@@ -229,7 +229,7 @@ class chip_sw_base_vseq extends chip_base_vseq;
     mem = chip_mem_e'(mem + tile_idx);
 
     // calculate the scrambled data
-    data_scr = sram.get_sram_encrypt32_intg_data(
+    data_scr = cfg.mem_bkdr_util_h[mem].get_sram_encrypt32_intg_data(
        .addr(addr), .data(data), .key(key), .nonce(nonce), .extra_addr_bits($clog2(num_tiles)),
        .flip_bits(flip_bits));
     cfg.mem_bkdr_util_h[mem].write39integ(addr_scr & addr_mask, data_scr ^ flip_bits);
@@ -243,7 +243,6 @@ class chip_sw_base_vseq extends chip_base_vseq;
       bit [sram_scrambler_pkg::SRAM_KEY_WIDTH-1:0]   key,
       bit [sram_scrambler_pkg::SRAM_BLOCK_WIDTH-1:0] nonce);
 
-    sram_ctrl_bkdr_util sram;
     chip_mem_e mem;
     int        num_tiles;
     bit [31:0] addr_scr;
@@ -253,10 +252,9 @@ class chip_sw_base_vseq extends chip_base_vseq;
     int        size_bytes;
 
     _sram_get_params(mem, num_tiles, size_bytes, is_main_ram);
-    `downcast(sram, cfg.mem_bkdr_util_h[mem])
 
     // calculate the scramble address
-    addr_scr = sram.get_sram_encrypt_addr(
+    addr_scr = cfg.mem_bkdr_util_h[mem].get_sram_encrypt_addr(
         .addr(addr), .nonce(nonce), .extra_addr_bits($clog2(num_tiles)));
 
     // determine which tile the scrambled address belongs
@@ -264,8 +262,8 @@ class chip_sw_base_vseq extends chip_base_vseq;
     mem = chip_mem_e'(mem + tile_idx);
 
     addr_mask = size_bytes - 1;
-    sram.sram_inject_integ_error(addr & addr_mask, addr_scr & addr_mask, key,
-                                 nonce, $clog2(num_tiles));
+    cfg.mem_bkdr_util_h[mem].sram_inject_integ_error(addr & addr_mask, addr_scr & addr_mask, key,
+                                                     nonce, $clog2(num_tiles));
   endfunction
 
   virtual task body();
@@ -523,9 +521,11 @@ class chip_sw_base_vseq extends chip_base_vseq;
     cfg.m_spi_host_agent_cfg.min_idle_ns_after_csb_drop = 50;
     cfg.m_spi_host_agent_cfg.max_idle_ns_after_csb_drop = 200;
 
+    `uvm_info(`gfn, "Configuring SPI flash commands.", UVM_LOW)
     // Configure the spi_agent for flash mode and add command info.
     spi_agent_configure_flash_cmds(cfg.m_spi_host_agent_cfg);
 
+    `uvm_info(`gfn, "Wait for SPI flash commands to be ready.", UVM_LOW)
     // Wait for the commands to be ready
     csr_spinwait(
       .ptr(ral.spi_device.cmd_info[spi_device_pkg::CmdInfoReadSfdp].opcode),
@@ -543,15 +543,20 @@ class chip_sw_base_vseq extends chip_base_vseq;
       .backdoor(1),
       .spinwait_delay_ns(5000));
 
+    `uvm_info(`gfn, "Reading SW image frames ...", UVM_LOW)
     read_sw_frames(sw_image, sw_byte_q);
+    `uvm_info(`gfn, "Done.", UVM_LOW)
 
     `uvm_create_on(m_spi_host_seq, p_sequencer.spi_host_sequencer_h)
     m_spi_host_seq.opcode = SpiFlashChipErase;
+    `uvm_info(`gfn, "Sending SPI flash erase command ...", UVM_LOW)
     spi_host_flash_issue_write_cmd(
       .write_command(m_spi_host_seq),
       .busy_timeout_ns(200_000_000),
       .busy_poll_interval_ns(1_000_000));
+    `uvm_info(`gfn, "Done.", UVM_LOW)
 
+    `uvm_info(`gfn, "Sending page program commands ...", UVM_LOW)
     while (sw_byte_q.size > byte_cnt) begin
       `uvm_create_on(m_spi_host_seq, p_sequencer.spi_host_sequencer_h)
       m_spi_host_seq.opcode = SpiFlashPageProgram;
@@ -567,7 +572,9 @@ class chip_sw_base_vseq extends chip_base_vseq;
       spi_host_flash_issue_write_cmd(m_spi_host_seq);
       byte_cnt += bytes_to_write;
     end
+    `uvm_info(`gfn, "Done.", UVM_LOW)
 
+    `uvm_info(`gfn, "Resetting SW straps and chip.", UVM_LOW)
     cfg.chip_vif.sw_straps_if.drive(3'h0);
     assert_por_reset();
   endtask
@@ -644,11 +651,10 @@ class chip_sw_base_vseq extends chip_base_vseq;
                               symbol, mem, addr, mem_addr, size, addr_mask), UVM_LOW)
       for (int i = 0; i < size; i++) mem_bkdr_write8(mem, mem_addr + i, data[i]);
 
+      // TODO: Move this specialization to an extended class called rom_bkdr_util.
       if (mem == Rom) begin
-        rom_ctrl_bkdr_util rom;
-        `downcast(rom, cfg.mem_bkdr_util_h[mem])
         `uvm_info(`gfn, "Regenerate ROM digest and update via backdoor", UVM_LOW)
-        rom.update_rom_digest(RndCnstRomCtrlScrKey, RndCnstRomCtrlScrNonce);
+        cfg.mem_bkdr_util_h[mem].update_rom_digest(RndCnstRomCtrlScrKey, RndCnstRomCtrlScrNonce);
       end
     end else begin
       `uvm_info(`gfn, $sformatf({"Reading symbol \"%s\" via backdoor in %0s: ",
@@ -688,8 +694,18 @@ class chip_sw_base_vseq extends chip_base_vseq;
   virtual function void mem_bkdr_write8(input chip_mem_e mem,
                                         input bit [bus_params_pkg::BUS_AW-1:0] addr,
                                         input byte data);
-    byte prev_data = cfg.mem_bkdr_util_h[mem].read8(addr);
-    cfg.mem_bkdr_util_h[mem].write8(addr, data);
+    byte prev_data;
+    // TODO: Move these specializations to extended classes so that no special handling is needed at
+    // the call site.
+    if (mem == Rom) begin
+      bit [127:0] key = RndCnstRomCtrlScrKey;
+      bit [63:0] nonce = RndCnstRomCtrlScrNonce;
+      prev_data = cfg.mem_bkdr_util_h[mem].rom_encrypt_read8(addr, key, nonce);
+      cfg.mem_bkdr_util_h[mem].rom_encrypt_write8(addr, data, key, nonce);
+    end else begin // flash
+      prev_data = cfg.mem_bkdr_util_h[mem].read8(addr);
+      cfg.mem_bkdr_util_h[mem].write8(addr, data);
+    end
     `uvm_info(`gfn, $sformatf("addr %0h = 0x%0h --> 0x%0h", addr, prev_data, data), UVM_HIGH)
   endfunction
 
@@ -699,9 +715,18 @@ class chip_sw_base_vseq extends chip_base_vseq;
   virtual function void mem_bkdr_read8(input chip_mem_e mem,
                                        input bit [bus_params_pkg::BUS_AW-1:0] addr,
                                        output byte data);
-    data = cfg.mem_bkdr_util_h[mem].read8(addr);
+    // TODO: Move these specializations to extended classes so that no special handling is needed at
+    // the call site.
+    if (mem == Rom) begin
+      bit [127:0] key = RndCnstRomCtrlScrKey;
+      bit [63:0] nonce = RndCnstRomCtrlScrNonce;
+      data = cfg.mem_bkdr_util_h[mem].rom_encrypt_read8(addr, key, nonce);
+    end else begin // flash
+      data = cfg.mem_bkdr_util_h[mem].read8(addr);
+    end
     `uvm_info(`gfn, $sformatf("addr %0h = 0x%0h", addr, data), UVM_HIGH)
   endfunction
+
 
   // LC state transition tasks
   // This function takes the token value from the four LC_CTRL token CSRs, then runs through
@@ -800,7 +825,7 @@ class chip_sw_base_vseq extends chip_base_vseq;
       bit [TL_DW-1:0] status_val;
       lc_ctrl_status_e dummy;
       cfg.clk_rst_vif.wait_clks($urandom_range(5, 10));
-      jtag_riscv_agent_pkg::jtag_read_csr(ral.lc_ctrl_regs.status.get_offset(),
+      jtag_riscv_agent_pkg::jtag_read_csr(ral.lc_ctrl.status.get_offset(),
                                           p_sequencer.jtag_sequencer_h,
                                           status_val);
 
@@ -864,14 +889,14 @@ class chip_sw_base_vseq extends chip_base_vseq;
     dec_lc_state_e dest_state = DecLcStTestUnlocked0;
 
     wait_lc_ready();
-    jtag_riscv_agent_pkg::jtag_read_csr(ral.lc_ctrl_regs.lc_state.get_offset(),
+    jtag_riscv_agent_pkg::jtag_read_csr(ral.lc_ctrl.lc_state.get_offset(),
                                         p_sequencer.jtag_sequencer_h,
                                         current_lc_state);
     `DV_CHECK_EQ(DecLcStRaw, current_lc_state)
 
     `uvm_info(`gfn, $sformatf("Start LC transition request to %0s state", dest_state.name),
                               UVM_LOW)
-    jtag_riscv_agent_pkg::jtag_write_csr(ral.lc_ctrl_regs.claim_transition_if.get_offset(),
+    jtag_riscv_agent_pkg::jtag_write_csr(ral.lc_ctrl.claim_transition_if.get_offset(),
                                          p_sequencer.jtag_sequencer_h,
                                          prim_mubi_pkg::MuBi8True);
 
@@ -885,12 +910,12 @@ class chip_sw_base_vseq extends chip_base_vseq;
 
     `uvm_info(`gfn, "Switching to VOLATILE_RAW_UNLOCK via JTAG...", UVM_LOW)
     jtag_riscv_agent_pkg::jtag_write_csr(
-      ral.lc_ctrl_regs.transition_ctrl.get_offset(),
+      ral.lc_ctrl.transition_ctrl.get_offset(),
       p_sequencer.jtag_sequencer_h,
       (2 | use_ext_clk));
 
     jtag_riscv_agent_pkg::jtag_read_csr(
-      ral.lc_ctrl_regs.transition_ctrl.get_offset(),
+      ral.lc_ctrl.transition_ctrl.get_offset(),
       p_sequencer.jtag_sequencer_h,
       transition_ctrl);
     // In this case we expect the transition_ctrl bit to stay 0.
@@ -910,7 +935,7 @@ class chip_sw_base_vseq extends chip_base_vseq;
     begin
       bit [TL_DW-1:0] token_csr_vals[4] = {<< 32 {{>> 8 {RndCnstRawUnlockTokenHashed}}}};
       foreach (token_csr_vals[index]) begin
-        jtag_riscv_agent_pkg::jtag_write_csr(ral.lc_ctrl_regs.transition_token[index].get_offset(),
+        jtag_riscv_agent_pkg::jtag_write_csr(ral.lc_ctrl.transition_token[index].get_offset(),
                                              p_sequencer.jtag_sequencer_h,
                                              token_csr_vals[index]);
       end
@@ -921,17 +946,17 @@ class chip_sw_base_vseq extends chip_base_vseq;
     cfg.chip_vif.tap_straps_if.drive(target_strap);
 
     `uvm_info(`gfn, "Sent LC transition request", UVM_LOW)
-    jtag_riscv_agent_pkg::jtag_write_csr(ral.lc_ctrl_regs.transition_target.get_offset(),
+    jtag_riscv_agent_pkg::jtag_write_csr(ral.lc_ctrl.transition_target.get_offset(),
                                          p_sequencer.jtag_sequencer_h,
                                          {DecLcStateNumRep{DecLcStTestUnlocked0}});
-    jtag_riscv_agent_pkg::jtag_write_csr(ral.lc_ctrl_regs.transition_cmd.get_offset(),
+    jtag_riscv_agent_pkg::jtag_write_csr(ral.lc_ctrl.transition_cmd.get_offset(),
                                          p_sequencer.jtag_sequencer_h,
                                          1);
 
     if (target_strap == JtagTapLc) begin
       if (expect_success) begin
         wait_lc_transition_successful(.max_attempt(max_attempt));
-        jtag_riscv_agent_pkg::jtag_write_csr(ral.lc_ctrl_regs.claim_transition_if.get_offset(),
+        jtag_riscv_agent_pkg::jtag_write_csr(ral.lc_ctrl.claim_transition_if.get_offset(),
                                              p_sequencer.jtag_sequencer_h,
                                              prim_mubi_pkg::MuBi8False);
       end else begin
@@ -960,7 +985,7 @@ class chip_sw_base_vseq extends chip_base_vseq;
     // Check that the LC controller is ready to accept a transition.
     wait_lc_ready();
 
-    jtag_riscv_agent_pkg::jtag_read_csr(ral.lc_ctrl_regs.lc_state.get_offset(),
+    jtag_riscv_agent_pkg::jtag_read_csr(ral.lc_ctrl.lc_state.get_offset(),
                                         p_sequencer.jtag_sequencer_h,
                                         actual_src_state);
     `DV_CHECK_EQ({DecLcStateNumRep{src_state}}, actual_src_state)
@@ -1046,7 +1071,7 @@ class chip_sw_base_vseq extends chip_base_vseq;
 
     `uvm_info(`gfn, $sformatf("Start LC transition request from %0s state to %0s state",
                               src_state.name, dest_state.name), UVM_LOW)
-    jtag_riscv_agent_pkg::jtag_write_csr(ral.lc_ctrl_regs.claim_transition_if.get_offset(),
+    jtag_riscv_agent_pkg::jtag_write_csr(ral.lc_ctrl.claim_transition_if.get_offset(),
                                          p_sequencer.jtag_sequencer_h,
                                          prim_mubi_pkg::MuBi8True);
 
@@ -1054,16 +1079,16 @@ class chip_sw_base_vseq extends chip_base_vseq;
     begin
       bit [TL_DW-1:0] token_csr_vals[4] = {<< 32 {{>> 8 {test_unlock_token}}}};
       foreach (token_csr_vals[index]) begin
-        jtag_riscv_agent_pkg::jtag_write_csr(ral.lc_ctrl_regs.transition_token[index].get_offset(),
+        jtag_riscv_agent_pkg::jtag_write_csr(ral.lc_ctrl.transition_token[index].get_offset(),
                                              p_sequencer.jtag_sequencer_h,
                                              token_csr_vals[index]);
       end
     end
 
-    jtag_riscv_agent_pkg::jtag_write_csr(ral.lc_ctrl_regs.transition_target.get_offset(),
+    jtag_riscv_agent_pkg::jtag_write_csr(ral.lc_ctrl.transition_target.get_offset(),
                                          p_sequencer.jtag_sequencer_h,
                                          {DecLcStateNumRep{dest_state}});
-    jtag_riscv_agent_pkg::jtag_write_csr(ral.lc_ctrl_regs.transition_cmd.get_offset(),
+    jtag_riscv_agent_pkg::jtag_write_csr(ral.lc_ctrl.transition_cmd.get_offset(),
                                          p_sequencer.jtag_sequencer_h,
                                          1);
     `uvm_info(`gfn, "Sent LC transition request", UVM_LOW)
@@ -1086,7 +1111,7 @@ class chip_sw_base_vseq extends chip_base_vseq;
   protected task claim_transition_interface();
     `uvm_info(`gfn, "Claiming LC controller transition interface by JTAG...", UVM_MEDIUM)
     jtag_riscv_agent_pkg::jtag_write_csr(
-        ral.lc_ctrl_regs.claim_transition_if.get_offset(),
+        ral.lc_ctrl.claim_transition_if.get_offset(),
         p_sequencer.jtag_sequencer_h,
         prim_mubi_pkg::MuBi8True);
   endtask : claim_transition_interface
@@ -1117,7 +1142,7 @@ class chip_sw_base_vseq extends chip_base_vseq;
     // Switch to external clock via LC controller.
     `uvm_info(`gfn, "Switching to external clock via JTAG...", UVM_MEDIUM)
     jtag_riscv_agent_pkg::jtag_write_csr(
-      ral.lc_ctrl_regs.transition_ctrl.get_offset(),
+      ral.lc_ctrl.transition_ctrl.get_offset(),
       p_sequencer.jtag_sequencer_h,
       1);
 

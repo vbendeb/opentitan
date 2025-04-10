@@ -78,10 +78,7 @@ class chip_base_vseq #(
   // having to rely on a ROM software build prior to running the simulation.
   virtual function void random_rom_init_with_digest();
     bit [TL_DW-1:0] rnd_data;
-    rom_ctrl_bkdr_util rom;
-
     `uvm_info(`gfn, "Random ROM init with digest", UVM_MEDIUM)
-    `downcast(rom, cfg.mem_bkdr_util_h[Rom])
 
     // Randomize the memory contents.
     //
@@ -90,16 +87,18 @@ class chip_base_vseq #(
     // that we also need to pick ECC values that match.
     for (int addr = 0; addr < RomMaxCheckAddr; addr += TL_DW/8) begin
       `DV_CHECK_STD_RANDOMIZE_FATAL(rnd_data)
-      rom.rom_encrypt_write32_integ(addr,
-                                    rnd_data,
-                                    top_earlgrey_rnd_cnst_pkg::RndCnstRomCtrlScrKey,
-                                    top_earlgrey_rnd_cnst_pkg::RndCnstRomCtrlScrNonce,
-                                    1'b1); // Enable scrambling.
+      cfg.mem_bkdr_util_h[Rom].rom_encrypt_write32_integ(
+          addr,
+          rnd_data,
+          top_earlgrey_rnd_cnst_pkg::RndCnstRomCtrlScrKey,
+          top_earlgrey_rnd_cnst_pkg::RndCnstRomCtrlScrNonce,
+          1'b1); // Enable scrambling.
     end
 
     // Update the ROM digest.
-    rom.update_rom_digest(top_earlgrey_rnd_cnst_pkg::RndCnstRomCtrlScrKey,
-                          top_earlgrey_rnd_cnst_pkg::RndCnstRomCtrlScrNonce);
+    cfg.mem_bkdr_util_h[Rom].update_rom_digest(
+        top_earlgrey_rnd_cnst_pkg::RndCnstRomCtrlScrKey,
+        top_earlgrey_rnd_cnst_pkg::RndCnstRomCtrlScrNonce);
   endfunction
 
   // Iniitializes the DUT.
@@ -136,16 +135,16 @@ class chip_base_vseq #(
     void'($value$plusargs("otp_clear_secret1=%0d", otp_clear_secret1));
     void'($value$plusargs("otp_clear_secret2=%0d", otp_clear_secret2));
     if (otp_clear_hw_cfg0) begin
-        otp_clear_hw_cfg0_partition(cfg.mem_bkdr_util_h[Otp]);
+        cfg.mem_bkdr_util_h[Otp].otp_clear_hw_cfg0_partition();
     end
     if (otp_clear_secret0) begin
-        otp_clear_secret0_partition(cfg.mem_bkdr_util_h[Otp]);
+        cfg.mem_bkdr_util_h[Otp].otp_clear_secret0_partition();
     end
     if (otp_clear_secret1) begin
-        otp_clear_secret1_partition(cfg.mem_bkdr_util_h[Otp]);
+        cfg.mem_bkdr_util_h[Otp].otp_clear_secret1_partition();
     end
     if (otp_clear_secret2) begin
-        otp_clear_secret2_partition(cfg.mem_bkdr_util_h[Otp]);
+        cfg.mem_bkdr_util_h[Otp].otp_clear_secret2_partition();
     end
 
     initialize_otp_lc_state();
@@ -194,7 +193,7 @@ class chip_base_vseq #(
     csr_spinwait(.ptr(ral.rom_ctrl_regs.digest[0]), .exp_data(0), .compare_op(CompareOpNe),
                  .backdoor(1), .spinwait_delay_ns(1000));
     `uvm_info(`gfn, "rom_ctrl check done after reset", UVM_HIGH)
-    csr_spinwait(.ptr(ral.lc_ctrl_regs.status.ready), .exp_data(1), .backdoor(1),
+    csr_spinwait(.ptr(ral.lc_ctrl.status.ready), .exp_data(1), .backdoor(1),
                  .spinwait_delay_ns(1000));
     `uvm_info(`gfn, "lc_ctrl has been initialized", UVM_HIGH)
   endtask
@@ -317,7 +316,7 @@ class chip_base_vseq #(
     logic [31:0] chk_vector;
 
     // Set rom_exec_en only when we are not in RAW state.
-    lc_state = otp_read_lc_partition_state(cfg.mem_bkdr_util_h[Otp]);
+    lc_state = cfg.mem_bkdr_util_h[Otp].otp_read_lc_partition_state();
 
     // If we are already 1, we cannot set to 0.
     // This should probably be relocated to mem_bkdr_util eventually as an option for writes
@@ -335,11 +334,9 @@ class chip_base_vseq #(
     int unsigned expected_data[int unsigned];
     int offmax = mem.get_size() - 1;
     int sizemax = offmax / 4;
-    rom_ctrl_bkdr_util rom;
 
     `uvm_info(`gfn, $sformatf("Mem writes to %s %0d times", mem.get_full_name(), max_access),
               UVM_MEDIUM)
-    `downcast(rom, cfg.mem_bkdr_util_h[Rom])
 
     for (int i = 0; i < max_access; ++i) begin
       int unsigned offset = $urandom_range(sizemax, 0);
@@ -354,8 +351,9 @@ class chip_base_vseq #(
       end else begin  // if (mem.get_access() == "RW")
         // deposit random data to rom
         int byte_addr = offset * 4;
-        rom.rom_encrypt_write32_integ(.addr(byte_addr), .data(wdata), .key(RndCnstRomCtrlScrKey),
-                                      .nonce(RndCnstRomCtrlScrNonce), .scramble_data(1));
+        cfg.mem_bkdr_util_h[Rom].rom_encrypt_write32_integ(
+            .addr(byte_addr), .data(wdata), .key(RndCnstRomCtrlScrKey),
+            .nonce(RndCnstRomCtrlScrNonce), .scramble_data(1));
       end
     end
 

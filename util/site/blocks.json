@@ -6,7 +6,7 @@
     },
     "ibex": {
         "name": "Ibex",
-        "data_file": "hw/top_earlgrey/ip_autogen/rv_core_ibex/data/rv_core_ibex.hjson",
+        "data_file": "hw/ip/rv_core_ibex/data/rv_core_ibex.hjson",
         "report": null
     },
     "interrupt-controller": {
@@ -96,8 +96,8 @@
     },
     "otp-fuse-controller": {
         "name": "OTP Fuse Controller",
-        "data_file": "hw/top_earlgrey/ip_autogen/otp_ctrl/data/otp_ctrl.hjson",
-        "report": "/hw/top_earlgrey/ip_autogen/otp_ctrl/dv"
+        "data_file": "hw/ip/otp_ctrl/data/otp_ctrl.hjson",
+        "report": "/hw/ip/otp_ctrl/dv"
     },
     "life-cycle": {
         "name": "Life Cycle",
@@ -121,8 +121,8 @@
     },
     "gpio": {
         "name": "GPIO",
-        "data_file": "hw/top_earlgrey/ip_autogen/gpio/data/gpio.hjson",
-        "report": "/hw/top_earlgrey/ip_autogen/gpio/dv"
+        "data_file": "hw/ip/gpio/data/gpio.hjson",
+        "report": "/hw/ip/gpio/dv"
     },
     "i2c": {
         "name": "I2C",
@@ -141,8 +141,8 @@
     },
     "pwm": {
         "name": "PWM",
-        "data_file": "hw/top_earlgrey/ip_autogen/pwm/data/pwm.hjson",
-        "report": "/hw/top_earlgrey/ip_autogen/pwm/dv"
+        "data_file": "hw/ip/pwm/data/pwm.hjson",
+        "report": "/hw/ip/pwm/dv"
     },
     "retention-sram": {
         "name": "Retention SRAM",
@@ -171,7 +171,7 @@
     },
     "pinmux-padctrl": {
         "name": "PINMUX/PADCTRL",
-        "data_file": "hw/top_earlgrey/ip_autogen/pinmux/data/pinmux.hjson",
+        "data_file": "hw/ip/pinmux/data/pinmux.hjson",
         "report": null
     },
     "adc-controller": {

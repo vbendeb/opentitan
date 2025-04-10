@@ -8,17 +8,22 @@ filesets:
   files_rtl_generic:
     depend:
       # Place the autogen packages first to avoid conflicts
-      - lowrisc:earlgrey_constants:top_racl_pkg
-      - lowrisc:earlgrey_ip:alert_handler_reg
-      - lowrisc:earlgrey_ip:pwrmgr_pkg
+      - lowrisc:opentitan:top_earlgrey_alert_handler_reg
+      - lowrisc:opentitan:top_earlgrey_pwrmgr_pkg
       - lowrisc:ip:uart:0.1
+      - lowrisc:opentitan:top_earlgrey_alert_handler
+      - lowrisc:ip:gpio
+      - lowrisc:ip:rv_core_ibex
       - lowrisc:ip:rv_dm
+      - lowrisc:opentitan:top_earlgrey_rv_plic
+      - lowrisc:ip:pinmux
       - lowrisc:ip:rv_timer
       - lowrisc:ip:tlul
       - lowrisc:ip:spi_device
       - lowrisc:ip:spi_host
       - lowrisc:ip:i2c
       - lowrisc:ip:pattgen
+      - lowrisc:ip:pwm
       - lowrisc:ip:aes
       - lowrisc:ip:entropy_src
       - lowrisc:ip:csrng
@@ -30,36 +35,29 @@ filesets:
       - lowrisc:prim:flash
       - lowrisc:ip:sram_ctrl
       - lowrisc:ip:keymgr
-      - lowrisc:earlgrey_constants:top_pkg
-      - lowrisc:constants:top_earlgrey_jtag_id_pkg
-      - lowrisc:constants:top_earlgrey_ibex_pmp_reset_pkg
+      - lowrisc:constants:top_pkg
+      - lowrisc:constants:jtag_id_pkg
+      - lowrisc:ip:otp_ctrl
       - lowrisc:ip:lc_ctrl
       - lowrisc:ip:usbdev
       - lowrisc:top_earlgrey:xbar_main
       - lowrisc:top_earlgrey:xbar_peri
-      - lowrisc:earlgrey_ip:alert_handler
-      - lowrisc:earlgrey_ip:clkmgr
-      - lowrisc:earlgrey_ip:flash_ctrl
-      - lowrisc:earlgrey_ip:gpio
-      - lowrisc:earlgrey_ip:otp_ctrl
-      - lowrisc:earlgrey_ip:pinmux
-      - lowrisc:earlgrey_ip:pwm
-      - lowrisc:earlgrey_ip:pwrmgr
-      - lowrisc:earlgrey_ip:rstmgr
-      - lowrisc:earlgrey_ip:rv_plic
-      - lowrisc:earlgrey_ip:rv_core_ibex
+      - lowrisc:opentitan:top_earlgrey_clkmgr
+      - lowrisc:opentitan:top_earlgrey_flash_ctrl
+      - lowrisc:opentitan:top_earlgrey_rstmgr
+      - lowrisc:opentitan:top_earlgrey_pwrmgr
       - lowrisc:ip:aon_timer
       - lowrisc:ip:adc_ctrl
       - lowrisc:ip:sysrst_ctrl
       - lowrisc:ip:rom_ctrl
-      - lowrisc:systems:top_earlgrey_sensor_ctrl
+      - lowrisc:systems:sensor_ctrl
       - lowrisc:tlul:headers
       - lowrisc:prim:all
       - lowrisc:prim:usb_diff_rx
       - lowrisc:prim:mubi
       - lowrisc:systems:top_earlgrey_pkg
-      - "fileset_partner  ? (partner:systems:top_earlgrey_ast_pkg)"
-      - "!fileset_partner ? (lowrisc:systems:top_earlgrey_ast_pkg)"
+      - "fileset_partner  ? (partner:systems:ast_pkg)"
+      - "!fileset_partner ? (lowrisc:systems:ast_pkg)"
     files:
       - rtl/autogen/top_earlgrey_rnd_cnst_pkg.sv
       - rtl/autogen/top_earlgrey.sv
@@ -89,13 +87,17 @@ filesets:
       - lowrisc:lint:common
       - lowrisc:lint:comportable
     files:
-      - lint/top_earlgrey.vbl
+      - lint/top_earlgrey.vbw
     file_type: veribleLintWaiver
 
 
 parameters:
   SYNTHESIS:
     datatype: bool
+    paramtype: vlogdefine
+  IBEX_CUSTOM_PMP_RESET_VALUES:
+    datatype: bool
+    default: true
     paramtype: vlogdefine
 
 targets:
@@ -106,6 +108,8 @@ targets:
       - tool_veriblelint ? (files_veriblelint_waiver)
       - files_rtl_generic
     toplevel: top_earlgrey
+    parameters:
+      - IBEX_CUSTOM_PMP_RESET_VALUES
 
   sim:
     default_tool: icarus

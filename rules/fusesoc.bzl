@@ -2,8 +2,7 @@
 # Licensed under the Apache License, Version 2.0, see LICENSE for details.
 # SPDX-License-Identifier: Apache-2.0
 
-load("@bazel_skylib//lib:dicts.bzl", "dicts")
-load("@nonhermetic//:env.bzl", "BIN_PATHS", "ENV")
+load("@nonhermetic//:env.bzl", "ENV")
 
 """Rules for running FuseSoC.
 
@@ -26,16 +25,13 @@ def _corefiles2rootarg(core):
     return core.dirname
 
 def _fusesoc_build_impl(ctx):
-    build_dir = "build.{}".format(ctx.label.name)
-    out_dir = "{}/{}/{}".format(ctx.bin_dir.path, ctx.label.package, build_dir)
+    dirname = "build.{}".format(ctx.label.name)
+    out_dir = ctx.actions.declare_directory(dirname)
     flags = [ctx.expand_location(f, ctx.attr.srcs) for f in ctx.attr.flags]
-    outputs = []
+    outputs = [out_dir]
     groups = {}
 
-    # Vivado expects `HOME` environment variable to exist. Redirect it to a fake directory.
-    home_dir = "{}/homeless-shelter".format(out_dir)
-
-    cache_dir = "{}/fusesoc-cache".format(out_dir)
+    cache_dir = "{}/fusesoc-cache".format(out_dir.path)
     cfg_file_path = "build.{}.fusesoc_config.toml".format(ctx.label.name)
     cfg_file = ctx.actions.declare_file(cfg_file_path)
     cfg_str = "[main]\n  cache_root = {}".format(cache_dir)
@@ -45,13 +41,7 @@ def _fusesoc_build_impl(ctx):
     args.add(cfg_file.path, format = "--config=%s")
 
     for group, files in ctx.attr.output_groups.items():
-        deps = []
-        for file in files:
-            path = "{}/{}".format(build_dir, file)
-            if file.endswith("/"):
-                deps.append(ctx.actions.declare_directory(path))
-            else:
-                deps.append(ctx.actions.declare_file(path))
+        deps = [ctx.actions.declare_file("{}/{}".format(dirname, f)) for f in files]
         outputs.extend(deps)
         groups[group] = depset(deps)
 
@@ -70,17 +60,22 @@ def _fusesoc_build_impl(ctx):
         format_each = "--cores-root=%s",
     )
 
-    args.add("run")
+    args.add_all([
+        "run",
+        "--flag=fileset_top",
+    ])
     args.add(ctx.attr.target, format = "--target=%s")
     args.add_all([
         "--setup",
         "--build",
     ])
-    args.add(out_dir, format = "--build-root=%s")
+    args.add(out_dir.path, format = "--build-root=%s")
 
     args.add_all(ctx.attr.systems)
     args.add_all(flags)
 
+    # Note: the `fileset_top` flag used above is specific to the OpenTitan
+    # project to select the correct RTL fileset.
     ctx.actions.run(
         mnemonic = "FuseSoC",
         outputs = outputs,
@@ -90,15 +85,7 @@ def _fusesoc_build_impl(ctx):
         arguments = [args],
         executable = ctx.executable._fusesoc,
         use_default_shell_env = False,
-        env = dicts.add(
-            # Verilator build doesn't need nonhermetic environment variables
-            ENV if ctx.attr.target == "synth" else {},
-            {
-                "HOME": home_dir,
-                # Obtain the non-hermetic binary path and append Bazel's default PATH.
-                "PATH": BIN_PATHS["vivado" if ctx.attr.target == "synth" else "verilator"] + ":/bin:/usr/bin:/usr/local/bin",
-            },
-        ),
+        env = ENV,
     )
     return [
         DefaultInfo(
@@ -119,14 +106,7 @@ fusesoc_build = rule(
         "flags": attr.string_list(doc = "Flags controlling the FuseSOC system build"),
         "output_groups": attr.string_list_dict(
             allow_empty = True,
-            doc = """
-                Mappings from output group names to lists of paths contained in
-                that group.
-
-                Paths to directories must have a trailing `/`. It is not
-                possible to output both a directory and a file from within that
-                directory.
-            """,
+            doc = "Mapping of group name to lists of files in that named group",
         ),
         "verilator_options": attr.label(),
         "make_options": attr.label(),

@@ -10,7 +10,7 @@ use std::io::Cursor;
 use std::mem::size_of;
 use std::rc::Rc;
 use std::time::Duration;
-use zerocopy::FromBytes;
+use zerocopy::{FromBytes, FromZeroes};
 
 use crate::io::gpio::{
     BitbangEntry, ClockNature, DacBangEntry, Edge, GpioBitbangOperation, GpioBitbanging,
@@ -168,7 +168,7 @@ const USB_MAX_SIZE: usize = 64;
 ///
 /// The source for the HyperDebug firmware generating these responses is here:
 /// https://chromium.googlesource.com/chromiumos/platform/ec/+/refs/heads/main/board/hyperdebug/gpio.c
-#[derive(FromBytes, Debug)]
+#[derive(FromBytes, FromZeroes, Debug)]
 #[repr(C)]
 struct RspGpioMonitoringHeader {
     /// Size of the header as sent by HyperDebug (excluding one byte CMSIS-DAP header), will be at
@@ -316,7 +316,7 @@ impl GpioMonitoring for HyperdebugGpioMonitoring {
                 )
             );
             let resp: RspGpioMonitoringHeader =
-                FromBytes::read_from_prefix(&databytes[1..]).unwrap().0;
+                FromBytes::read_from_prefix(&databytes[1..]).unwrap();
             ensure!(
                 resp.struct_size as usize >= size_of::<RspGpioMonitoringHeader>(),
                 TransportError::CommunicationError(
@@ -1007,7 +1007,7 @@ fn encode_waveform(waveform: &[BitbangEntry], num_pins: usize) -> Result<Vec<u8>
 /// open drain or pure input pins).
 fn decode_waveform(
     waveform: &mut [BitbangEntry],
-    encoded_response: &[u8],
+    encoded_response: &Vec<u8>,
     num_pins: usize,
 ) -> Result<()> {
     ensure!(

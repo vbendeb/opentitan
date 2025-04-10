@@ -12,6 +12,7 @@
  * extent by using the assembly versions.
  */
 
+#include "hw/top_earlgrey/sw/autogen/top_earlgrey_memory.h"
 #include "rv_core_ibex_regs.h"
 
 /**
@@ -22,7 +23,7 @@
   .globl rv_core_ibex_rnd_read_and_immediately_check_status
   .type rv_core_ibex_rnd_read_and_immediately_check_status, @function
 rv_core_ibex_rnd_read_and_immediately_check_status:
-  mv t0, a0 // Load ibex base address
+  li t0, TOP_EARLGREY_RV_CORE_IBEX_CFG_BASE_ADDR // Load ibex base address
   lw t1, RV_CORE_IBEX_RND_DATA_REG_OFFSET(t0) // Read RND data
   lw a0, RV_CORE_IBEX_RND_STATUS_REG_OFFSET(t0) // Get RND status
   ret // Return status
@@ -40,7 +41,7 @@ rv_core_ibex_rnd_read_and_immediately_check_status:
   .globl rv_core_ibex_check_rnd_read_possible_while_status_invalid
   .type rv_core_ibex_check_rnd_read_possible_while_status_invalid, @function
 rv_core_ibex_check_rnd_read_possible_while_status_invalid:
-  mv t0, a0 // Load ibex base address
+  li t0, TOP_EARLGREY_RV_CORE_IBEX_CFG_BASE_ADDR // Load ibex base address
   lw t1, RV_CORE_IBEX_RND_DATA_REG_OFFSET(t0) // Read RND to invalidate status
   lw t2, RV_CORE_IBEX_RND_STATUS_REG_OFFSET(t0) // Get RND status
   lw t3, RV_CORE_IBEX_RND_DATA_REG_OFFSET(t0) // Read RND data

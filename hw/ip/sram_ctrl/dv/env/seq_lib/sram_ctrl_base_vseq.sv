@@ -2,9 +2,7 @@
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 
-class sram_ctrl_base_vseq #(
-    parameter int AddrWidth = `SRAM_WORD_ADDR_WIDTH
-  ) extends cip_base_vseq #(
+class sram_ctrl_base_vseq #(parameter int AddrWidth = `SRAM_ADDR_WIDTH) extends cip_base_vseq #(
     .RAL_T               (sram_ctrl_regs_reg_block),
     .CFG_T               (sram_ctrl_env_cfg#(AddrWidth)),
     .COV_T               (sram_ctrl_env_cov#(AddrWidth)),
@@ -26,16 +24,6 @@ class sram_ctrl_base_vseq #(
 
   int partial_access_pct = 10;
 
-  // Used by the throughput_w_readback test. When 1'b1, the readback feature is
-  // enabled at the beginning of the test.
-  bit init_w_readback = 1'b0;
-
-  // The extra cycles to wait after reset before starting any test, required
-  // to ensure that the tl_agent is properly emptied.
-  // TODO(lowRISC/opentitan#25757): Make sure that the tl_agent pipeline is emptied.
-  // Then, waiting these cycles is not required anymore.
-  int post_apply_reset_cycles = 1;
-
   constraint readback_en_c {
     soft readback_en inside {MuBi4True, MuBi4False};
   }
@@ -44,8 +32,6 @@ class sram_ctrl_base_vseq #(
     super.pre_start();
     void'($value$plusargs("partial_access_pct=%0d", partial_access_pct));
     `DV_CHECK_LE(partial_access_pct, 100)
-    void'($value$plusargs("init_w_readback=%0d", init_w_readback));
-    `DV_CHECK_LE(init_w_readback, 1)
     // Wait for ram initialization to be done, since it blocks memory accesses.
     `DV_WAIT(cfg.in_init == 1'b0, "Timed out waiting for initialization done")
     // Make sure that the sram_readback_en task only runs once during the test.
@@ -63,17 +49,17 @@ class sram_ctrl_base_vseq #(
     if (!readback_running && do_readback_en) sram_readback_en();
   endtask
 
-  // Randomly disable or enable the readback feature during a test run.
-  // If a subclass wants to manually enable the readback feature, it should
-  // directly write to the readback enable register.
+  // Enable readback feature only for non-throughput and non-sec_cm tests. The
+  // readback feature is randomly initialized to on/off at the start of the test
+  // and randomly switched during the tests.
+  // TODO(#23321) Adapt the troughput tests to take the delay caused by the
+  // readback feature into account.
   virtual protected task sram_readback_en();
     readback_running = 1;
     if (uvm_re_match("*throughput*", get_type_name()) &&
         uvm_re_match("*sec_cm*", get_type_name()) &&
-        uvm_re_match("*readback_err*", get_type_name()) &&
         uvm_re_match("*throughput*", common_seq_type) &&
-        uvm_re_match("*sec_cm*", common_seq_type) &&
-        uvm_re_match("*readback_err*", common_seq_type)) begin
+        uvm_re_match("*sec_cm*", common_seq_type)) begin
       // Configure the SRAM TLUL agent to wait at least 2 cycles before dropping
       // a request.
       cfg.m_tl_agent_cfgs[cfg.sram_ral_name].a_valid_len_min = 2;
@@ -121,11 +107,6 @@ class sram_ctrl_base_vseq #(
     cfg.exec_vif.init();
   endtask
 
-  task post_apply_reset(string reset_kind = "HARD");
-    super.post_apply_reset(reset_kind);
-    cfg.clk_rst_vif.wait_clks(post_apply_reset_cycles);
-  endtask
-
   virtual task dut_shutdown();
     // check for pending sram_ctrl operations and wait for them to complete
   endtask
@@ -138,9 +119,9 @@ class sram_ctrl_base_vseq #(
   // Increase the number of cycles to wait for no outstanding accesses, since it is hard
   // to sequence all invocations of pre_start, and that can trigger ram init which blocks
   // accesses for a long time. The RAM has 32K words, and it updates one per cycle, so
-  // 75,000 cycles should be okay.
+  // 50,000 cycles should be okay.
   virtual function int wait_cycles_with_no_outstanding_accesses();
-    return 75_000;
+    return 50_000;
   endfunction
 
   // Request a memory init, and  wait for it to complete. This is a problematic task since

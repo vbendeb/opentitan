@@ -3,7 +3,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 `include "prim_assert.sv"
-`include "prim_fifo_assert.svh"
 
 /**
  * OpenTitan Big Number Accelerator (OTBN)
@@ -52,10 +51,7 @@ module otbn
   output lc_ctrl_pkg::lc_tx_t lc_rma_ack_o,
 
   // Memory configuration
-  input  prim_ram_1p_pkg::ram_1p_cfg_t     ram_cfg_imem_i,
-  input  prim_ram_1p_pkg::ram_1p_cfg_t     ram_cfg_dmem_i,
-  output prim_ram_1p_pkg::ram_1p_cfg_rsp_t ram_cfg_rsp_imem_o,
-  output prim_ram_1p_pkg::ram_1p_cfg_rsp_t ram_cfg_rsp_dmem_o,
+  input prim_ram_1p_pkg::ram_1p_cfg_t ram_cfg_i,
 
   // EDN clock and interface
   input                     clk_edn_i,
@@ -337,7 +333,6 @@ module otbn
   prim_ram_1p_scr #(
     .Width          (39),
     .Depth          (ImemSizeWords),
-    .InstDepth      (ImemSizeWords),
     .DataBitsPerMask(39),
     .EnableParity   (0)
   ) u_imem (
@@ -356,12 +351,11 @@ module otbn
     .wmask_i     (imem_wmask),
     .intg_error_i(locking),
 
-    .rdata_o  (imem_rdata),
-    .rvalid_o (imem_rvalid),
-    .raddr_o  (),
-    .rerror_o (),
-    .cfg_i    (ram_cfg_imem_i),
-    .cfg_rsp_o(ram_cfg_rsp_imem_o),
+    .rdata_o (imem_rdata),
+    .rvalid_o(imem_rvalid),
+    .raddr_o (),
+    .rerror_o(),
+    .cfg_i   (ram_cfg_i),
 
     .wr_collision_o   (imem_wr_collision),
     .write_pending_o  (imem_wpending),
@@ -399,7 +393,6 @@ module otbn
     .wdata_o                    (imem_wdata_bus),
     .wmask_o                    (imem_wmask_bus),
     .intg_error_o               (imem_bus_intg_violation),
-    .user_rsvd_o                (),
     .rdata_i                    (imem_rdata_bus),
     .rvalid_i                   (imem_rvalid_bus),
     .rerror_i                   (imem_rerror_bus),
@@ -553,7 +546,6 @@ module otbn
   prim_ram_1p_scr #(
     .Width             (ExtWLEN),
     .Depth             (DmemSizeWords),
-    .InstDepth         (DmemSizeWords),
     .DataBitsPerMask   (39),
     .EnableParity      (0),
     .ReplicateKeyStream(1)
@@ -573,12 +565,11 @@ module otbn
     .wmask_i     (dmem_wmask),
     .intg_error_i(locking),
 
-    .rdata_o  (dmem_rdata),
-    .rvalid_o (dmem_rvalid),
-    .raddr_o  (),
-    .rerror_o (),
-    .cfg_i    (ram_cfg_dmem_i),
-    .cfg_rsp_o(ram_cfg_rsp_dmem_o),
+    .rdata_o (dmem_rdata),
+    .rvalid_o(dmem_rvalid),
+    .raddr_o (),
+    .rerror_o(),
+    .cfg_i   (ram_cfg_i),
 
     .wr_collision_o   (dmem_wr_collision),
     .write_pending_o  (dmem_wpending),
@@ -652,7 +643,6 @@ module otbn
     .wdata_o                    (dmem_wdata_bus),
     .wmask_o                    (dmem_wmask_bus),
     .intg_error_o               (dmem_bus_intg_violation),
-    .user_rsvd_o                (),
     .rdata_i                    (dmem_rdata_bus),
     .rvalid_i                   (dmem_rvalid_bus),
     .rerror_i                   (dmem_rerror_bus),
@@ -881,9 +871,17 @@ module otbn
   // Only certain combinations of the state variable {locking, busy_execute_d,
   // otbn_dmem_scramble_key_req_busy, otbn_imem_scramble_key_req_busy} are possible.
   //
-  // - Once locking is high, we guarantee never to see a new execution or the start of a key
-  //   rotation. (Assertion: NoStartWhenLocked_A)
+  // (1) When we finish (with a pulse on "done_core", which might stay high in the "locking"
+  //     signal), busy_execute_d is guaranteed to be low. (Assertion: NotBusyAndDone_A)
+  //
+  // (2) There aren't really any other restrictions when locking is low: if there is an error during
+  //     an operation, we'll start rotating memory keys while doing the internal secure wipe, so
+  //     may see all of the signals high except locking.
+  //
+  // (3) Once locking is high, we guarantee never to see a new execution or the start of a key
+  //     rotation. (Assertion: NoStartWhenLocked_A)
 
+  `ASSERT(NotBusyAndDone_A, !((done_core | locking) && busy_execute_d))
   `ASSERT(NoStartWhenLocked_A,
           locking |=> !($rose(busy_execute_d) ||
                         $rose(otbn_dmem_scramble_key_req_busy) ||
@@ -1435,23 +1433,41 @@ module otbn
       u_otbn_core.u_otbn_rf_bignum.gen_rf_bignum_ff.u_otbn_rf_bignum_inner.u_prim_onehot_check,
       alert_tx_o[AlertFatal])
 
-  `ASSERT_PRIM_FIFO_SYNC_ERROR_TRIGGERS_ALERT1(DmemRspFifo,
-                                               u_tlul_adapter_sram_dmem.u_rspfifo,
-                                               alert_tx_o[AlertFatal])
-  `ASSERT_PRIM_FIFO_SYNC_ERROR_TRIGGERS_ALERT1(DmemSramReqFifo,
-                                               u_tlul_adapter_sram_dmem.u_sramreqfifo,
-                                               alert_tx_o[AlertFatal])
-  `ASSERT_PRIM_FIFO_SYNC_ERROR_TRIGGERS_ALERT1(DmemReqFifo,
-                                               u_tlul_adapter_sram_dmem.u_reqfifo,
-                                               alert_tx_o[AlertFatal])
+  `ASSERT_PRIM_COUNT_ERROR_TRIGGER_ALERT(DmemRspFifoWptrCheck_A,
+      u_tlul_adapter_sram_dmem.u_rspfifo.gen_normal_fifo.u_fifo_cnt.gen_secure_ptrs.u_wptr,
+      alert_tx_o[AlertFatal])
+  `ASSERT_PRIM_COUNT_ERROR_TRIGGER_ALERT(DmemRspFifoRptrCheck_A,
+      u_tlul_adapter_sram_dmem.u_rspfifo.gen_normal_fifo.u_fifo_cnt.gen_secure_ptrs.u_rptr,
+      alert_tx_o[AlertFatal])
+  `ASSERT_PRIM_COUNT_ERROR_TRIGGER_ALERT(DmemSramReqFifoWptrCheck_A,
+      u_tlul_adapter_sram_dmem.u_sramreqfifo.gen_normal_fifo.u_fifo_cnt.gen_secure_ptrs.u_wptr,
+      alert_tx_o[AlertFatal])
+  `ASSERT_PRIM_COUNT_ERROR_TRIGGER_ALERT(DmemSramReqFifoRptrCheck_A,
+      u_tlul_adapter_sram_dmem.u_sramreqfifo.gen_normal_fifo.u_fifo_cnt.gen_secure_ptrs.u_rptr,
+      alert_tx_o[AlertFatal])
+    `ASSERT_PRIM_COUNT_ERROR_TRIGGER_ALERT(DmemReqFifoWptrCheck_A,
+      u_tlul_adapter_sram_dmem.u_reqfifo.gen_normal_fifo.u_fifo_cnt.gen_secure_ptrs.u_wptr,
+      alert_tx_o[AlertFatal])
+  `ASSERT_PRIM_COUNT_ERROR_TRIGGER_ALERT(DmemReqFifoRptrCheck_A,
+      u_tlul_adapter_sram_dmem.u_reqfifo.gen_normal_fifo.u_fifo_cnt.gen_secure_ptrs.u_rptr,
+      alert_tx_o[AlertFatal])
 
-  `ASSERT_PRIM_FIFO_SYNC_ERROR_TRIGGERS_ALERT1(ImemRspFifo,
-                                               u_tlul_adapter_sram_imem.u_rspfifo,
-                                               alert_tx_o[AlertFatal])
-  `ASSERT_PRIM_FIFO_SYNC_ERROR_TRIGGERS_ALERT1(ImemSramReqFifo,
-                                               u_tlul_adapter_sram_imem.u_sramreqfifo,
-                                               alert_tx_o[AlertFatal])
-  `ASSERT_PRIM_FIFO_SYNC_ERROR_TRIGGERS_ALERT1(ImemReqFifo,
-                                               u_tlul_adapter_sram_imem.u_reqfifo,
-                                               alert_tx_o[AlertFatal])
+  `ASSERT_PRIM_COUNT_ERROR_TRIGGER_ALERT(ImemRspFifoWptrCheck_A,
+      u_tlul_adapter_sram_imem.u_rspfifo.gen_normal_fifo.u_fifo_cnt.gen_secure_ptrs.u_wptr,
+      alert_tx_o[AlertFatal])
+  `ASSERT_PRIM_COUNT_ERROR_TRIGGER_ALERT(ImemRspFifoRptrCheck_A,
+      u_tlul_adapter_sram_imem.u_rspfifo.gen_normal_fifo.u_fifo_cnt.gen_secure_ptrs.u_rptr,
+      alert_tx_o[AlertFatal])
+  `ASSERT_PRIM_COUNT_ERROR_TRIGGER_ALERT(ImemSramReqFifoWptrCheck_A,
+      u_tlul_adapter_sram_imem.u_sramreqfifo.gen_normal_fifo.u_fifo_cnt.gen_secure_ptrs.u_wptr,
+      alert_tx_o[AlertFatal])
+  `ASSERT_PRIM_COUNT_ERROR_TRIGGER_ALERT(ImemSramReqFifoRptrCheck_A,
+      u_tlul_adapter_sram_imem.u_sramreqfifo.gen_normal_fifo.u_fifo_cnt.gen_secure_ptrs.u_rptr,
+      alert_tx_o[AlertFatal])
+  `ASSERT_PRIM_COUNT_ERROR_TRIGGER_ALERT(ImemReqFifoWptrCheck_A,
+      u_tlul_adapter_sram_imem.u_reqfifo.gen_normal_fifo.u_fifo_cnt.gen_secure_ptrs.u_wptr,
+      alert_tx_o[AlertFatal])
+  `ASSERT_PRIM_COUNT_ERROR_TRIGGER_ALERT(ImemReqFifoRptrCheck_A,
+      u_tlul_adapter_sram_imem.u_reqfifo.gen_normal_fifo.u_fifo_cnt.gen_secure_ptrs.u_rptr,
+      alert_tx_o[AlertFatal])
 endmodule

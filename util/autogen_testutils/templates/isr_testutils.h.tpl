@@ -6,9 +6,6 @@
 #define OPENTITAN_SW_DEVICE_LIB_TESTING_AUTOGEN_ISR_TESTUTILS_H_
 
 ${autogen_banner}
-<%
-  top_name = top["name"]
-%>
 
 /**
  * @file
@@ -18,11 +15,11 @@ ${autogen_banner}
 #include "sw/device/lib/dif/dif_rv_plic.h"
 % for ip in ips_with_difs:
   % if ip.irqs:
-    #include "sw/device/lib/dif/autogen/dif_${ip.name_snake}_autogen.h"
+    #include "sw/device/lib/dif/dif_${ip.name_snake}.h"
   % endif
 % endfor
 
-#include "hw/top_${top_name}/sw/autogen/top_${top_name}.h" // Generated.
+#include "hw/top_earlgrey/sw/autogen/top_earlgrey.h" // Generated.
 
 /**
  * A handle to a PLIC ISR context struct.
@@ -84,7 +81,7 @@ typedef struct plic_isr_ctx {
     % if ip.has_status_type_irqs():
       bool mute_status_irq,
     % endif
-      top_${top_name}_plic_peripheral_t *peripheral_serviced,
+      top_earlgrey_plic_peripheral_t *peripheral_serviced,
       dif_${ip.name_snake}_irq_t *irq_serviced);
 
   % endif

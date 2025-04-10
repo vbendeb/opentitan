@@ -11,14 +11,9 @@ filesets:
       - lowrisc:tlul:socket_1n
       - lowrisc:tlul:socket_m1
       - lowrisc:tlul:adapter_sram
-      - lowrisc:tlul:adapter_sram_racl
       - lowrisc:tlul:adapter_reg
-      - lowrisc:tlul:adapter_reg_racl
-      - lowrisc:tlul:adapter_dmi
-      - lowrisc:tlul:jtag_dtm
       - lowrisc:tlul:sram2tlul
       - lowrisc:tlul:lc_gate
-      - lowrisc:tlul:request_loopback
 
 targets:
   default:

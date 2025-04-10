@@ -198,7 +198,6 @@ module rom_ctrl
     .wdata_o                    (),
     .wmask_o                    (),
     .intg_error_o               (rom_integrity_error),
-    .user_rsvd_o                (),
     .rdata_i                    (bus_rom_rdata),
     .rvalid_i                   (bus_rom_rvalid),
     .rerror_i                   (2'b00),
@@ -515,13 +514,12 @@ module rom_ctrl
           |-> $stable(pwrmgr_data_o.good))
 
   // Check that pwrmgr_data_o.done is never de-asserted once asserted
-  `ASSERT(PwrmgrDataChk_A,
-          pwrmgr_data_o.done == prim_mubi_pkg::MuBi4True |=>
-          pwrmgr_data_o.done == prim_mubi_pkg::MuBi4True,
+  `ASSERT(PwrmgrDataChk_A, $rose(pwrmgr_data_o.done == prim_mubi_pkg::MuBi4True) |->
+          always !$fell(pwrmgr_data_o.done == prim_mubi_pkg::MuBi4True),
           clk_i, !rst_ni || internal_alert)
 
   // Check that keymgr_data_o.valid is never de-asserted once asserted
-  `ASSERT(KeymgrValidChk_A, keymgr_data_o.valid |=> keymgr_data_o.valid,
+  `ASSERT(KeymgrValidChk_A, $rose(keymgr_data_o.valid) |-> always !$fell(keymgr_data_o.valid),
           clk_i, !rst_ni || internal_alert)
 
   // Check that rom_tl_o.d_valid is not asserted unless pwrmgr_data_o.done is asseterd.
@@ -536,12 +534,9 @@ module rom_ctrl
   // to read requests.
   if (!SecDisableScrambling) begin : gen_fsm_scramble_enabled_asserts
 
-    `ASSERT(InvalidStateTerminal_A,
-            gen_fsm_scramble_enabled.u_checker_fsm.state_d == rom_ctrl_pkg::Invalid |=>
-            gen_fsm_scramble_enabled.u_checker_fsm.state_d == rom_ctrl_pkg::Invalid)
     `ASSERT(BusLocalEscChk_A,
-            gen_fsm_scramble_enabled.u_checker_fsm.state_d == rom_ctrl_pkg::Invalid |->
-            !bus_rom_rvalid)
+            (gen_fsm_scramble_enabled.u_checker_fsm.state_d == rom_ctrl_pkg::Invalid)
+            |-> always(!bus_rom_rvalid))
   end
 
   // Alert assertions for reg_we onehot check

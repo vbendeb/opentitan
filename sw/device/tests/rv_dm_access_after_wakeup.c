@@ -18,6 +18,7 @@
 #include "sw/device/lib/testing/test_framework/ottf_utils.h"
 #include "sw/device/lib/testing/test_framework/status.h"
 
+#include "hw/top_earlgrey/sw/autogen/top_earlgrey.h"
 #include "pwrmgr_regs.h"
 
 /*
@@ -28,7 +29,6 @@ OTTF_DEFINE_TEST_CONFIG(.enable_uart_flow_control = true);
 
 enum {
   kSoftwareBarrierTimeoutUsec = 1000000,
-  kPlicTarget = 0,
 };
 
 // This variable will be updated by the DV environment.
@@ -38,16 +38,6 @@ static volatile const uint8_t kSoftwareBarrierDv = 0;
 // This variable will be updated by the test host.
 OT_SECTION(".data")
 static volatile const uint8_t kSoftwareBarrierHost = 0;
-
-static_assert(kDtPwrmgrCount == 1, "this test expects exactly one pwrmgr");
-static const dt_pwrmgr_t kPwrmgrDt = 0;
-static_assert(kDtRvPlicCount == 1, "this test expects exactly one rv_plic");
-static const dt_rv_plic_t kRvPlicDt = 0;
-static_assert(kDtSysrstCtrlCount >= 1,
-              "this test expects at least one sysrst_ctrl");
-static const dt_sysrst_ctrl_t kSysrtCtrlDt = 0;
-static_assert(kDtPinmuxCount == 1, "this test expects exactly one pinmux");
-static const dt_pinmux_t kPinmuxDt = 0;
 
 // Handle to the plic
 dif_rv_plic_t rv_plic;
@@ -59,7 +49,8 @@ dif_rv_plic_t rv_plic;
  */
 void ottf_external_isr(uint32_t *exc_info) {
   dif_rv_plic_irq_id_t plic_irq_id;
-  CHECK_DIF_OK(dif_rv_plic_irq_claim(&rv_plic, kPlicTarget, &plic_irq_id));
+  CHECK_DIF_OK(dif_rv_plic_irq_claim(&rv_plic, kTopEarlgreyPlicTargetIbex0,
+                                     &plic_irq_id));
 }
 
 /**
@@ -71,18 +62,13 @@ void ottf_external_isr(uint32_t *exc_info) {
 static void put_to_sleep(dif_pwrmgr_t *pwrmgr, bool deep_sleep) {
   dif_pwrmgr_domain_config_t cfg;
   CHECK_DIF_OK(dif_pwrmgr_get_domain_config(pwrmgr, &cfg));
-  if (deep_sleep) {
-    cfg &= ~kDifPwrmgrDomainOptionMainPowerInLowPower;
-  } else {
-    cfg |= kDifPwrmgrDomainOptionMainPowerInLowPower;
-  }
+  cfg = (cfg & (kDifPwrmgrDomainOptionIoClockInLowPower |
+                kDifPwrmgrDomainOptionUsbClockInLowPower |
+                kDifPwrmgrDomainOptionUsbClockInActivePower)) |
+        (!deep_sleep ? kDifPwrmgrDomainOptionMainPowerInLowPower : 0);
 
-  dif_pwrmgr_request_sources_t wakeup_sources;
-  CHECK_DIF_OK(dif_pwrmgr_find_request_source(
-      pwrmgr, kDifPwrmgrReqTypeWakeup, dt_sysrst_ctrl_instance_id(kSysrtCtrlDt),
-      kDtSysrstCtrlWakeupWkupReq, &wakeup_sources));
-  CHECK_STATUS_OK(
-      pwrmgr_testutils_enable_low_power(pwrmgr, wakeup_sources, cfg));
+  CHECK_STATUS_OK(pwrmgr_testutils_enable_low_power(
+      pwrmgr, kDifPwrmgrWakeupRequestSourceOne, cfg));
   LOG_INFO("%s",
            deep_sleep ? "Entering deep sleep." : "Entering normal sleep.");
   wait_for_interrupt();
@@ -97,10 +83,15 @@ bool test_main(void) {
   dif_pwrmgr_t pwrmgr;
   dif_sysrst_ctrl_t sysrst_ctrl;
 
-  CHECK_DIF_OK(dif_pinmux_init_from_dt(kPinmuxDt, &pinmux));
-  CHECK_DIF_OK(dif_pwrmgr_init_from_dt(kPwrmgrDt, &pwrmgr));
-  CHECK_DIF_OK(dif_rv_plic_init_from_dt(kRvPlicDt, &rv_plic));
-  CHECK_DIF_OK(dif_sysrst_ctrl_init_from_dt(kSysrtCtrlDt, &sysrst_ctrl));
+  CHECK_DIF_OK(dif_pinmux_init(
+      mmio_region_from_addr(TOP_EARLGREY_PINMUX_AON_BASE_ADDR), &pinmux));
+  CHECK_DIF_OK(dif_pwrmgr_init(
+      mmio_region_from_addr(TOP_EARLGREY_PWRMGR_AON_BASE_ADDR), &pwrmgr));
+  CHECK_DIF_OK(dif_rv_plic_init(
+      mmio_region_from_addr(TOP_EARLGREY_RV_PLIC_BASE_ADDR), &rv_plic));
+  CHECK_DIF_OK(dif_sysrst_ctrl_init(
+      mmio_region_from_addr(TOP_EARLGREY_SYSRST_CTRL_AON_BASE_ADDR),
+      &sysrst_ctrl));
 
   const volatile uint8_t *const software_barrier = (kDeviceType == kDeviceSimDV)
                                                        ? &kSoftwareBarrierDv
@@ -113,10 +104,9 @@ bool test_main(void) {
       OTTF_WAIT_FOR(*software_barrier == 1, kSoftwareBarrierTimeoutUsec);
 
       // Enable all the AON interrupts used in this test.
-      dif_rv_plic_irq_id_t plic_id =
-          dt_pwrmgr_irq_to_plic_id(kPwrmgrDt, kDtPwrmgrIrqWakeup);
-      rv_plic_testutils_irq_range_enable(&rv_plic, kPlicTarget, plic_id,
-                                         plic_id);
+      rv_plic_testutils_irq_range_enable(&rv_plic, kTopEarlgreyPlicTargetIbex0,
+                                         kTopEarlgreyPlicIrqIdPwrmgrAonWakeup,
+                                         kTopEarlgreyPlicIrqIdPwrmgrAonWakeup);
 
       // Enable pwrmgr interrupt.
       CHECK_DIF_OK(dif_pwrmgr_irq_set_enabled(&pwrmgr, kDifPwrmgrIrqWakeup,
@@ -129,10 +119,9 @@ bool test_main(void) {
       };
       CHECK_DIF_OK(
           dif_sysrst_ctrl_input_change_detect_configure(&sysrst_ctrl, config));
-      CHECK_DIF_OK(dif_pinmux_mio_select_input(
-          &pinmux,
-          dt_sysrst_ctrl_periph_io(kSysrtCtrlDt, kDtSysrstCtrlPeriphIoPwrbIn),
-          kDtPadIor13));
+      CHECK_DIF_OK(dif_pinmux_input_select(
+          &pinmux, kTopEarlgreyPinmuxPeripheralInSysrstCtrlAonPwrbIn,
+          kTopEarlgreyPinmuxInselIor13));
 
       // Put the device in a normal sleep.
       put_to_sleep(&pwrmgr, /*deep_sleep=*/false);

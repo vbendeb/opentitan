@@ -51,7 +51,7 @@ def check_bool(x: Union[bool, str], err_prefix: str) -> Tuple[bool, bool]:
     if isinstance(x, bool):
         # if Bool returns as it is
         return x, False
-    if x.lower() not in ["true", "false"]:
+    if not x.lower() in ["true", "false"]:
         log.error(err_prefix + ": Bad field value " + x)
         return False, True
     else:

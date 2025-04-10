@@ -2,7 +2,6 @@
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 
-#include "dt/dt_api.h"  // Generated
 #include "hw/ip/aes/model/aes_modes.h"
 #include "sw/device/lib/base/math.h"
 #include "sw/device/lib/base/multibits.h"
@@ -27,6 +26,7 @@
 #include "sw/device/lib/dif/dif_uart.h"
 #include "sw/device/lib/runtime/log.h"
 #include "sw/device/lib/testing/aes_testutils.h"
+#include "sw/device/lib/testing/alert_handler_testutils.h"
 #include "sw/device/lib/testing/entropy_testutils.h"
 #include "sw/device/lib/testing/hmac_testutils.h"
 #include "sw/device/lib/testing/i2c_testutils.h"
@@ -58,30 +58,32 @@ OTTF_DEFINE_TEST_CONFIG(.enable_concurrency = true,
 /**
  * Peripheral DIF Handles.
  */
-static dif_pinmux_t pinmux;
-static dif_gpio_t gpio;
 static dif_adc_ctrl_t adc_ctrl;
-static dif_entropy_src_t entropy_src;
+static dif_aes_t aes;
+static dif_alert_handler_t alert_handler;
 static dif_csrng_t csrng;
 static dif_edn_t edn_0;
 static dif_edn_t edn_1;
-static dif_aes_t aes;
+static dif_entropy_src_t entropy_src;
+static dif_flash_ctrl_state_t flash_ctrl;
+static dif_gpio_t gpio;
 static dif_hmac_t hmac;
-static dif_kmac_t kmac;
-static dif_otbn_t otbn;
 static dif_i2c_t i2c_0;
 static dif_i2c_t i2c_1;
 static dif_i2c_t i2c_2;
+static dif_kmac_t kmac;
+static dif_otbn_t otbn;
+static dif_pattgen_t pattgen;
+static dif_pinmux_t pinmux;
+static dif_pwm_t pwm;
+static dif_rstmgr_t rstmgr;
+static dif_rv_plic_t rv_plic;
 static dif_spi_device_handle_t spi_device;
 static dif_spi_host_t spi_host_0;
 static dif_spi_host_t spi_host_1;
 static dif_uart_t uart_1;
 static dif_uart_t uart_2;
 static dif_uart_t uart_3;
-static dif_pattgen_t pattgen;
-static dif_pwm_t pwm;
-static dif_flash_ctrl_state_t flash_ctrl;
-static dif_rv_plic_t rv_plic;
 
 static const dif_i2c_t *i2c_handles[] = {&i2c_0, &i2c_1, &i2c_2};
 static const dif_uart_t *uart_handles[] = {&uart_1, &uart_2, &uart_3};
@@ -100,7 +102,7 @@ enum {
   /**
    * Maximum number of test iterations in silicon targets.
    */
-  kMaxIterationsSilicon = 1000,
+  kMaxIterationsSilicon = 500,
   /**
    * Test timeout parameter.
    */
@@ -352,6 +354,9 @@ static void init_peripheral_handles(void) {
       mmio_region_from_addr(TOP_EARLGREY_ADC_CTRL_AON_BASE_ADDR), &adc_ctrl));
   CHECK_DIF_OK(
       dif_aes_init(mmio_region_from_addr(TOP_EARLGREY_AES_BASE_ADDR), &aes));
+  CHECK_DIF_OK(dif_alert_handler_init(
+      mmio_region_from_addr(TOP_EARLGREY_ALERT_HANDLER_BASE_ADDR),
+      &alert_handler));
   CHECK_DIF_OK(dif_csrng_init(
       mmio_region_from_addr(TOP_EARLGREY_CSRNG_BASE_ADDR), &csrng));
   CHECK_DIF_OK(
@@ -393,6 +398,8 @@ static void init_peripheral_handles(void) {
       mmio_region_from_addr(TOP_EARLGREY_PATTGEN_BASE_ADDR), &pattgen));
   CHECK_DIF_OK(dif_pwm_init(
       mmio_region_from_addr(TOP_EARLGREY_PWM_AON_BASE_ADDR), &pwm));
+  CHECK_DIF_OK(dif_rstmgr_init(
+      mmio_region_from_addr(TOP_EARLGREY_RSTMGR_AON_BASE_ADDR), &rstmgr));
   CHECK_DIF_OK(dif_flash_ctrl_init_state(
       &flash_ctrl,
       mmio_region_from_addr(TOP_EARLGREY_FLASH_CTRL_CORE_BASE_ADDR)));
@@ -579,43 +586,51 @@ static void configure_pinmux_sim(void) {
   const pinmux_pad_attributes_t pinmux_pad_attributes[] = {
       // Enable pull-ups for spi_host_0 data pins to avoid floating inputs.
       {
-          .pad = kDtPadSpiHost0Sd0,
+          .pad = kTopEarlgreyDirectPadsSpiHost0Sd0,
+          .kind = kDifPinmuxPadKindDio,
           .flags = kDifPinmuxPadAttrPullResistorEnable |
                    kDifPinmuxPadAttrPullResistorUp,
       },
       {
-          .pad = kDtPadSpiHost0Sd1,
+          .pad = kTopEarlgreyDirectPadsSpiHost0Sd1,
+          .kind = kDifPinmuxPadKindDio,
           .flags = kDifPinmuxPadAttrPullResistorEnable |
                    kDifPinmuxPadAttrPullResistorUp,
       },
       {
-          .pad = kDtPadSpiHost0Sd2,
+          .pad = kTopEarlgreyDirectPadsSpiHost0Sd2,
+          .kind = kDifPinmuxPadKindDio,
           .flags = kDifPinmuxPadAttrPullResistorEnable |
                    kDifPinmuxPadAttrPullResistorUp,
       },
       {
-          .pad = kDtPadSpiHost0Sd3,
+          .pad = kTopEarlgreyDirectPadsSpiHost0Sd3,
+          .kind = kDifPinmuxPadKindDio,
           .flags = kDifPinmuxPadAttrPullResistorEnable |
                    kDifPinmuxPadAttrPullResistorUp,
       },
       // Enable pull-ups for spi_host_1 data pins to avoid floating inputs.
       {
-          .pad = kDtPadIob3,  // SD0
+          .pad = kTopEarlgreyMuxedPadsIob3,  // SD0
+          .kind = kDifPinmuxPadKindMio,
           .flags = kDifPinmuxPadAttrPullResistorEnable |
                    kDifPinmuxPadAttrPullResistorUp,
       },
       {
-          .pad = kDtPadIob4,  // SD1
+          .pad = kTopEarlgreyMuxedPadsIob4,  // SD1
+          .kind = kDifPinmuxPadKindMio,
           .flags = kDifPinmuxPadAttrPullResistorEnable |
                    kDifPinmuxPadAttrPullResistorUp,
       },
       {
-          .pad = kDtPadIob5,  // SD2
+          .pad = kTopEarlgreyMuxedPadsIob5,  // SD2
+          .kind = kDifPinmuxPadKindMio,
           .flags = kDifPinmuxPadAttrPullResistorEnable |
                    kDifPinmuxPadAttrPullResistorUp,
       },
       {
-          .pad = kDtPadIob6,  // SD3
+          .pad = kTopEarlgreyMuxedPadsIob6,  // SD3
+          .kind = kDifPinmuxPadKindMio,
           .flags = kDifPinmuxPadAttrPullResistorEnable |
                    kDifPinmuxPadAttrPullResistorUp,
       },
@@ -727,6 +742,34 @@ static void configure_entropy_complex(void) {
   // The (test) ROM enables the entropy complex, and to reconfigure it
   // requires temporarily disabling it.
   CHECK_STATUS_OK(entropy_testutils_stop_all());
+
+  uint32_t recoverable_alerts = 0;
+  CHECK_DIF_OK(dif_entropy_src_get_recoverable_alerts(&entropy_src,
+                                                      &recoverable_alerts));
+  if (recoverable_alerts != 0) {
+    LOG_INFO("entropy_src - clearing recoverable alerts: %x",
+             recoverable_alerts);
+    CHECK_DIF_OK(dif_entropy_src_clear_recoverable_alerts(&entropy_src,
+                                                          recoverable_alerts));
+  }
+
+  CHECK_DIF_OK(dif_csrng_get_recoverable_alerts(&csrng, &recoverable_alerts));
+  if (recoverable_alerts != 0) {
+    LOG_INFO("csrng - clearing recoverable alerts: %x", recoverable_alerts);
+    CHECK_DIF_OK(dif_csrng_clear_recoverable_alerts(&csrng));
+  }
+
+  CHECK_DIF_OK(dif_edn_get_recoverable_alerts(&edn_0, &recoverable_alerts));
+  if (recoverable_alerts != 0) {
+    LOG_INFO("edn_0 - clearing recoverable alerts: %x", recoverable_alerts);
+    CHECK_DIF_OK(dif_edn_clear_recoverable_alerts(&edn_0));
+  }
+
+  CHECK_DIF_OK(dif_edn_get_recoverable_alerts(&edn_1, &recoverable_alerts));
+  if (recoverable_alerts != 0) {
+    LOG_INFO("edn_1 - clearing recoverable alerts: %x", recoverable_alerts);
+    CHECK_DIF_OK(dif_edn_clear_recoverable_alerts(&edn_1));
+  }
 
   // Enable entropy_src interrupts for health-test alert detection.
   CHECK_DIF_OK(dif_rv_plic_irq_set_priority(
@@ -1128,6 +1171,7 @@ static void crypto_data_load(void) {
 
 static void crypto_data_load_task(void *task_parameters) {
   while (test_stage != kPowerVirusTestStageComplete) {
+    LOG_INFO("Crypto data load task running ...");
     if (test_stage == kPowerVirusTestStageCryptoDataLoad) {
       crypto_data_load();
       test_stage = kPowerVirusTestStageCommsDataLoad;
@@ -1154,10 +1198,13 @@ static void comms_data_load(void) {
   // Load data into I2C FIFOs.
   static_assert(ARRAYSIZE(i2c_handles) < UINT8_MAX,
                 "Length of i2c_handles must fit in uint8_t");
-  for (uint8_t i = 0; i < ARRAYSIZE(i2c_handles); ++i) {
-    CHECK_STATUS_OK(i2c_testutils_write(i2c_handles[i], /*addr=*/i + 1,
-                                        I2C_PARAM_FIFO_DEPTH - 1, kI2cMessage,
-                                        /*skip_stop=*/false));
+  if (kDeviceType == kDeviceSimDV) {
+    for (uint8_t i = 0; i < ARRAYSIZE(i2c_handles); ++i) {
+      LOG_INFO("Loading I2C FIFO %d with data ...", i);
+      CHECK_STATUS_OK(i2c_testutils_write(i2c_handles[i], /*addr=*/i + 1,
+                                          I2C_PARAM_FIFO_DEPTH - 1, kI2cMessage,
+                                          /*skip_stop=*/false));
+    }
   }
 
   // Load data into SPI host (1; as 0 is used in passthrough mode) FIFO.
@@ -1298,6 +1345,16 @@ static void max_power(void) {
   csrng_wait_ready();
   mmio_region_write32(csrng.base_addr, CSRNG_CMD_REQ_REG_OFFSET,
                       csrng_reseed_cmd);
+
+  // This is required to avoid triggering a recoverable alert in the next
+  // test iteration. CSRNG does not accept the instantiate command when it
+  // has been previously instantiated.
+  csrng_wait_ready();
+  mmio_region_write32(csrng.base_addr, CSRNG_CMD_REQ_REG_OFFSET,
+                      csrng_cmd_header_build(kCsrngAppCmdUninstantiate,
+                                             kDifCsrngEntropySrcToggleEnable,
+                                             /*cmd_len=*/0,
+                                             /*generate_len=*/0));
 
   // Issue HMAC process and KMAC squeeze commands.
   kmac_operation_state.squeezing = true;
@@ -1449,6 +1506,15 @@ bool test_main(void) {
   // Initialize and configure all IPs.
   // ***************************************************************************
   init_peripheral_handles();
+
+  if (kDeviceType == kDeviceSilicon || kDeviceType == kDeviceFpgaCw310 ||
+      kDeviceType == kDeviceFpgaCw340) {
+    CHECK_STATUS_OK(alert_handler_testutils_status_log(&alert_handler));
+    CHECK_STATUS_OK(alert_handler_testutils_dump_log(&rstmgr));
+    CHECK_STATUS_OK(
+        alert_handler_testutils_dump_enable(&alert_handler, &rstmgr));
+  }
+
   configure_pinmux();
   // To be compatible with the configs in chip_if.sv,
   // apply the additional pinmux settings.

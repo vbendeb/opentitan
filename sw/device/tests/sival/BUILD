@@ -19,9 +19,6 @@ test_suite(
 test_suite(
     name = "sv2_tests",
     tests = [
-        "//hw/top_earlgrey/sw/autogen/tests:plic_all_irqs_test_0",
-        "//hw/top_earlgrey/sw/autogen/tests:plic_all_irqs_test_10",
-        "//hw/top_earlgrey/sw/autogen/tests:plic_all_irqs_test_20",
         "//sw/device/silicon_creator/lib:otbn_boot_services_functest",
         "//sw/device/tests:aes_smoketest",
         "//sw/device/tests:aon_timer_irq_test",
@@ -66,6 +63,9 @@ test_suite(
         "//sw/device/tests:sram_ctrl_smoketest",
         "//sw/device/tests:uart_smoketest",
         "//sw/device/tests:uart_tx_rx_test",
+        "//sw/device/tests/autogen:plic_all_irqs_test_0",
+        "//sw/device/tests/autogen:plic_all_irqs_test_10",
+        "//sw/device/tests/autogen:plic_all_irqs_test_20",
         "//sw/device/tests/crypto:aes_kwp_functest",
         "//sw/device/tests/crypto:aes_kwp_kat_functest",
         "//sw/device/tests/crypto:ecdh_p256_sideload_functest",
@@ -78,8 +78,6 @@ test_suite(
 test_suite(
     name = "sv3_tests",
     tests = [
-        "//hw/top_earlgrey/sw/autogen/tests:alert_test",
-        "//hw/top_earlgrey/sw/autogen/tests:plic_all_irqs_test_0",
         "//sw/device/silicon_creator/rom/e2e:rom_e2e_smoke",
         "//sw/device/tests:aes_entropy_test",
         "//sw/device/tests:aes_idle_test",
@@ -154,6 +152,7 @@ test_suite(
         "//sw/device/tests:pwrmgr_random_sleep_all_reset_reqs_test",
         "//sw/device/tests:pwrmgr_random_sleep_all_wake_ups",
         "//sw/device/tests:pwrmgr_sleep_disabled_test",
+        "//sw/device/tests:pwrmgr_sleep_wake_5_bug_test",
         "//sw/device/tests:pwrmgr_usb_clk_disabled_when_active_test",
         "//sw/device/tests:pwrmgr_wdog_reset_reqs_test",
         "//sw/device/tests:rstmgr_alert_info_test",
@@ -210,6 +209,8 @@ test_suite(
         "//sw/device/tests:usbdev_stream_test",
         "//sw/device/tests:usbdev_test",
         "//sw/device/tests:usbdev_vbus_test",
+        "//sw/device/tests/autogen:alert_test",
+        "//sw/device/tests/autogen:plic_all_irqs_test_0",
         "//sw/device/tests/crypto:aes_functest",
         "//sw/device/tests/crypto:aes_kwp_sideload_functest",
         "//sw/device/tests/crypto:aes_sideload_functest",

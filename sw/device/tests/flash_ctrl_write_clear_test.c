@@ -38,6 +38,10 @@ enum {
   // The start page used by this test. Points to the start of the owner
   // partition in bank 1, otherwise known as owner partition B.
   kBank1StartPageNum = 256 + kRomExtPageCount,
+
+  // The ROM_EXT protects itself using regions 0-1.
+  kFlashRegionNum = 2,
+
 };
 
 // The `flash_word_verify()` function will need to be updated if this assertion
@@ -59,19 +63,15 @@ static dif_flash_ctrl_state_t flash;
 static void flash_word_write_verify(uintptr_t address,
                                     uint64_t expected_value) {
   size_t kWordSize = sizeof(uint64_t) / sizeof(uint32_t);
-  uint32_t tmp[2] = {(uint32_t)expected_value,
-                     (uint32_t)(expected_value >> 32)};
   CHECK_STATUS_OK(flash_ctrl_testutils_write(
-      &flash, address, kUnusedDataPartitionParam, tmp,
+      &flash, address, kUnusedDataPartitionParam, (uint32_t *)&expected_value,
       kDifFlashCtrlPartitionTypeData, kWordSize));
 
-  uint32_t tmp2[2];
-  CHECK_STATUS_OK(
-      flash_ctrl_testutils_read(&flash, address, kUnusedDataPartitionParam,
-                                tmp2, kDifFlashCtrlPartitionTypeData, kWordSize,
-                                /*delay=*/1));
   uint64_t got_value;
-  memcpy(&got_value, tmp2, sizeof(uint64_t));
+  CHECK_STATUS_OK(flash_ctrl_testutils_read(
+      &flash, address, kUnusedDataPartitionParam, (uint32_t *)&got_value,
+      kDifFlashCtrlPartitionTypeData, kWordSize,
+      /*delay=*/1));
   CHECK(expected_value == got_value);
 }
 
@@ -114,7 +114,7 @@ bool test_main(void) {
   }
 
   LOG_INFO("ECC enabled with high endurance disabled.");
-  flash_ctrl_write_clear_test(/*mp_region_index=*/0,
+  flash_ctrl_write_clear_test(/*mp_region_index=*/kFlashRegionNum,
                               (dif_flash_ctrl_data_region_properties_t){
                                   .base = kBank1StartPageNum,
                                   .size = 1,
@@ -128,7 +128,7 @@ bool test_main(void) {
                                   }});
 
   LOG_INFO("ECC enabled with high endurance enabled.");
-  flash_ctrl_write_clear_test(/*mp_region_index=*/1,
+  flash_ctrl_write_clear_test(/*mp_region_index=*/kFlashRegionNum,
                               (dif_flash_ctrl_data_region_properties_t){
                                   .base = kBank1StartPageNum + 1,
                                   .size = 1,

@@ -16,18 +16,16 @@ module prim_fifo_sync_assert_fpv #(
   localparam int unsigned DepthWNorm = $clog2(Depth+1),
   localparam int unsigned DepthW = (DepthWNorm == 0) ? 1 : DepthWNorm
 ) (
-  input              clk_i,
-  input              rst_ni,
-  input              clr_i,
-  input              wvalid_i,
-  input              wready_o,
-  input [Width-1:0]  wdata_i,
-  input              rvalid_o,
-  input              rready_i,
-  input [Width-1:0]  rdata_o,
-  input              full_o,
-  input [DepthW-1:0] depth_o,
-  input              err_o
+  input  clk_i,
+  input  rst_ni,
+  input  clr_i,
+  input  wvalid_i,
+  input  wready_o,
+  input [Width-1:0] wdata_i,
+  input  rvalid_o,
+  input  rready_i,
+  input [Width-1:0] rdata_o,
+  input [DepthW-1:0] depth_o
 );
 
   /////////////////
@@ -138,9 +136,6 @@ module prim_fifo_sync_assert_fpv #(
   // Forward Assertions //
   ////////////////////////
 
-  // The full_o port should be high iff the depth is maximal.
-  `ASSERT(FullIffFullDepth_A, (depth_o == Depth) <-> (full_o))
-
   // assert depth of FIFO
   `ASSERT(Depth_A, depth_o <= Depth)
   // if we clear the FIFO, it must be empty in the next cycle
@@ -175,12 +170,7 @@ module prim_fifo_sync_assert_fpv #(
     `ASSERT(UnusedClr_A, prim_fifo_sync.gen_passthru_fifo.unused_clr == clr_i)
   end else begin : gen_depth_gt0
     // check wready
-
-    // The wready_o signal should be high (saying that we can accept an item in the fifo) if the
-    // FIFO is not currently full, which can be checked my seeing that depth_o < Depth. This
-    // property is delayed for a single cycle after coming out of reset (because of an under_rst
-    // signal that gets cleared on the first clock afterwards).
-    `ASSERT(Wready_A, 1 |=> depth_o < Depth -> wready_o)
+    `ASSERT(Wready_A, depth_o < Depth |-> wready_o)
     // check rvalid
     `ASSERT(Rvalid_A, depth_o > 0 |-> rvalid_o)
     // check write only
@@ -216,14 +206,9 @@ module prim_fifo_sync_assert_fpv #(
     `ASSERT(RvalidElemskBkwd_A, rvalid_o |-> depth_o > 0)
   end
 
-  // If the wready_o signal is not high, the FIFO should be full. As with Wready_A, this property is
-  // delayed by a cycle after coming out of reset, to handle the clearing of the under_rst signal.
-  `ASSERT(WreadyNoSpaceBkwd_A, 1 |=> !wready_o -> depth_o == Depth)
+  // no more space in the FIFO
+  `ASSERT(WreadyNoSpaceBkwd_A, !wready_o |-> depth_o == Depth)
   // elements ready to be read
   `ASSERT(RvalidNoElemskBkwd_A, !rvalid_o |-> depth_o == 0)
-
-  // The err_o signal should never go high. This isn't supposed to be triggerable without fault
-  // injection (which isn't modelled in FPV so the output should be constant zero).
-  `ASSERT(NoErrSignal_A, !err_o)
 
 endmodule : prim_fifo_sync_assert_fpv

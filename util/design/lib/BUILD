@@ -2,7 +2,7 @@
 # Licensed under the Apache License, Version 2.0, see LICENSE for details.
 # SPDX-License-Identifier: Apache-2.0
 
-load("@ot_python_deps//:requirements.bzl", "requirement")
+load("//third_party/python:requirements.bzl", "requirement")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -49,7 +49,7 @@ py_library(
     # manually (by dvsim.py), and imported by the `gen-flash-img.py` script,
     # which is invoked automatically (via Bazel), we cannot use full package
     # includes within this module yet. Adding `util/design` to the imports path,
-    # temporarily resolves this issue until the entire hw/ subtree can be
+    # temporarily resovles this issue until the entire hw/ subtree can be
     # Bazelfied.
     imports = [
         "../",

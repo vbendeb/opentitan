@@ -28,8 +28,8 @@
   ]
 
   bus_interfaces: [
-    { protocol: "tlul", direction: "device", name: "regs", racl_support: true }
-    { protocol: "tlul", direction: "device", name: "ram" , racl_support: true }
+    { protocol: "tlul", direction: "device", name: "regs" }
+    { protocol: "tlul", direction: "device", name: "ram" },
   ],
 
   ///////////////////////////
@@ -79,20 +79,6 @@
       type:      "int",
       default:   "0x1000"
     },
-    { name:      "InstSize",
-      desc:      "Memory size of a single RAM tile (in bytes).",
-      type:      "int",
-      default:   "4096"
-      local:   "false"
-      expose:  "true"
-    },
-    { name:      "NumRamInst",
-      desc:      "Number of internal RAM instances. Must be the same as ceil(MemSizeRam / InstSize) .",
-      type:      "int",
-      default:   "1"
-      local:     "false"
-      expose:    "true"
-    },
     { name:      "InstrExec",
       desc:      "Support execution from SRAM",
       type:      "bit",
@@ -106,27 +92,6 @@
       local:     "false",
       expose:    "true",
       default:   "3"
-    },
-    { name:      "Outstanding",
-      desc:      "Number of outstanding TLUL transactions",
-      type:      "int",
-      local:     "true",
-      expose:    "true",
-      default:   "2"
-    }
-    { name:      "EccCorrection",
-      desc:      "Enable single-bit error correction and error logging",
-      type:      "bit",
-      local:     "false",
-      expose:    "true",
-      default:   "0"
-    },
-    { name:      "RaclPolicySelRangesRamNum",
-      desc:      "Number of Racl Policy Selection Ranges for the Ram interface",
-      type:      "int",
-      local:     "false",
-      expose:    "true",
-      default:   "1"
     },
   ]
 
@@ -190,15 +155,6 @@
       type:    "uni"
       name:    "cfg"
       act:     "rcv"
-      width:   "NumRamInst",
-      default: "'0"
-      package: "prim_ram_1p_pkg"
-    },
-    { struct:  "ram_1p_cfg_rsp"
-      type:    "uni"
-      name:    "cfg_rsp"
-      act:     "req"
-      width:   "NumRamInst",
       default: "'0"
       package: "prim_ram_1p_pkg"
     },
@@ -224,46 +180,6 @@
       package: "prim_mubi_pkg",
       default: "prim_mubi_pkg::MuBi8False"
     },
-    { struct:  "racl_policy_vec",
-      type:    "uni",
-      name:    "racl_policies",
-      act:     "rcv",
-      package: "top_racl_pkg",
-      desc:    '''
-        Incoming RACL policy vector from a racl_ctrl instance.
-        The policy selection vector (parameter) selects the policy for each register.
-      '''
-    },
-    { struct:  "racl_error_log",
-      type:    "uni",
-      name:    "racl_error",
-      act:     "req",
-      width:   "1"
-      package: "top_racl_pkg",
-      desc:    '''
-        RACL error log information of this module.
-      '''
-    },
-    { struct:  "racl_range_t",
-      type:    "uni",
-      name:    "racl_policy_sel_ranges_ram",
-      act:     "rcv",
-      width:   "RaclPolicySelRangesRamNum"
-      package: "top_racl_pkg",
-      desc:    '''
-        Incoming array of RACL policy ranges.
-      '''
-    }
-    { struct:  "sram_error_t",
-      package: "sram_ctrl_pkg",
-      width:   "1"
-      type:    "uni",
-      name:    "sram_rerror",
-      act:     "req",
-      desc:    '''
-               SRAM read error indicating correctable and uncorrectable ECC errors.
-               '''
-    },
   ]
 
   /////////////////////
@@ -280,9 +196,6 @@
     { name: "EXEC.CONFIG.REGWEN",
       desc: "The SRAM execution enable register is protected by a REGWEN."
     }
-    { name: "READBACK.CONFIG.REGWEN",
-      desc: "The SRAM readback enable register is protected by a REGWEN."
-    }
     { name: "EXEC.CONFIG.MUBI",
       desc: "The SRAM execution enable register is multibit encoded."
     }
@@ -294,9 +207,6 @@
     }
     { name: "LC_HW_DEBUG_EN.INTERSIG.MUBI",
       desc: "The life cycle hardware debug enable signal is multibit encoded."
-    }
-    { name: "PRIM_RAM.CTRL.MUBI",
-      desc: "The control signals inside prim_ram are multibit encoded."
     }
     { name: "MEM.INTEGRITY",
       desc: "End-to-end data/memory integrity scheme."

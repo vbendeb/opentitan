@@ -143,12 +143,7 @@ We use separate style guides for different languages:
 
 If unsure about the style, be consistent with the existing code and do your best to match its style.
 
-Some files can be automatically formatted and will be checked before contributions are merged.
-You are encouraged to run formatting tools on your changes before submitting using the following command:
-
-```sh
-./bazelisk.sh run format
-```
+For C/C++ code, we recommend to run "git-clang-format" on your changes.
 
 ## What should commit messages look like?
 

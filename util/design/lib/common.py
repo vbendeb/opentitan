@@ -56,7 +56,7 @@ def check_bool(x):
     '''
     if isinstance(x, bool):
         return x
-    if x.lower() not in ["true", "false"]:
+    if not x.lower() in ["true", "false"]:
         raise RuntimeError("{} is not a boolean value.".format(x))
     else:
         return (x.lower() == "true")

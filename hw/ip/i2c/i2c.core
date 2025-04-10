@@ -7,13 +7,12 @@ description: "i2c"
 filesets:
   files_rtl:
     depend:
-      - lowrisc:virtual_constants:top_pkg
+      - lowrisc:constants:top_pkg
       - lowrisc:prim:all
       - lowrisc:prim:ram_1p_pkg
       - lowrisc:prim:ram_1p_adv
       - lowrisc:ip:tlul
       - lowrisc:ip:i2c_pkg
-      - lowrisc:virtual_constants:top_racl_pkg
     files:
       - rtl/i2c_reg_pkg.sv
       - rtl/i2c_reg_top.sv

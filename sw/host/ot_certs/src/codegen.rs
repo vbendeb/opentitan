@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! This module is capable of generating C code for generating a binary X.509
-//! certificate according to a [`Template`].
+//! certificate according to a [`Template`](crate::template::Template).
 
 use anyhow::{Context, Result};
 use heck::ToUpperCamelCase;
@@ -421,7 +421,7 @@ fn generate_builder(
     fn_name: &str,
     fn_params_str: &str,
     variables: &IndexMap<String, VariableType>,
-    build: impl FnOnce(&mut codegen::Codegen) -> Result<()>,
+    gen: impl FnOnce(&mut codegen::Codegen) -> Result<()>,
 ) -> Result<(String, CodegenOutput)> {
     let get_var_info = |var_name: &str| -> Result<VariableInfo> {
         let var_type = variables
@@ -455,7 +455,7 @@ fn generate_builder(
             /* buf_name */ "out_buf",
             /* buf_size_name */ "inout_size",
             &get_var_info,
-            build,
+            gen,
         )?;
     } else {
         generate_fn_def = indoc::formatdoc! { r#"
@@ -479,7 +479,7 @@ fn generate_builder(
             /* buf_name */ "out_buf",
             /* buf_size_name */ "inout_size",
             &get_var_info,
-            build,
+            gen,
         )?;
     }
 

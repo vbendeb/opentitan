@@ -5,22 +5,22 @@ CAPI=2:
 name: ${instance_vlnv("lowrisc:ip:flash_ctrl_pkg:0.1")}
 description: "Top specific flash package"
 virtual:
-  - lowrisc:virtual_ip:flash_ctrl_pkg
+  - lowrisc:ip_interfaces:flash_ctrl_pkg
 
 filesets:
   files_rtl:
     depend:
-      - ${instance_vlnv("lowrisc:constants:top_pkg")}
+      - lowrisc:constants:top_pkg
       - lowrisc:prim:util
       - lowrisc:ip:lc_ctrl_pkg
-      - ${instance_vlnv("lowrisc:ip:pwrmgr_pkg")}
+      - lowrisc:ip_interfaces:pwrmgr_pkg
+      - lowrisc:ip_interfaces:flash_ctrl_reg
       - lowrisc:ip:jtag_pkg
       - lowrisc:ip:edn_pkg
       - lowrisc:tlul:headers
       - "fileset_partner  ? (partner:systems:ast_pkg)"
       - "!fileset_partner ? (lowrisc:systems:ast_pkg)"
     files:
-      - rtl/flash_ctrl_reg_pkg.sv
       - rtl/flash_ctrl_pkg.sv
       - rtl/flash_phy_pkg.sv
     file_type: systemVerilogSource

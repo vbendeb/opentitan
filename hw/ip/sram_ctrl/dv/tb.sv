@@ -9,7 +9,7 @@ module tb;
   import sram_ctrl_pkg::*;
   import sram_ctrl_env_pkg::*;
   import sram_ctrl_test_pkg::*;
-  import sram_ctrl_bkdr_util_pkg::sram_ctrl_bkdr_util;
+  import mem_bkdr_util_pkg::mem_bkdr_util;
 
   // macro includes
   `include "uvm_macros.svh"
@@ -54,15 +54,15 @@ module tb;
 
   // DUT
 
-  // The exact number of word address bits.
+  // The exact number of address bits.
   // Will be set to 10 for retention SRAM and 14 for main SRAM.
-`ifndef SRAM_WORD_ADDR_WIDTH
-  `define SRAM_WORD_ADDR_WIDTH 32
+`ifndef SRAM_ADDR_WIDTH
+  `define SRAM_ADDR_WIDTH 32
 `endif
 
   sram_ctrl #(
     // memory size in bytes
-    .MemSizeRam(4 * 2 ** `SRAM_WORD_ADDR_WIDTH),
+    .MemSizeRam(4 * 2 ** `SRAM_ADDR_WIDTH),
     .InstrExec(`INSTR_EXEC),
     // number of PRINCE half rounds for the SRAM scrambling feature
     .NumPrinceRoundsHalf(`NUM_PRINCE_ROUNDS_HALF)
@@ -104,18 +104,18 @@ module tb;
 
   // Instantitate the memory backdoor util instance.
   `define SRAM_CTRL_MEM_HIER \
-    tb.dut.u_prim_ram_1p_scr.u_prim_ram_1p_adv.gen_ram_inst[0].u_mem.gen_generic.u_impl_generic.mem
+      tb.dut.u_prim_ram_1p_scr.u_prim_ram_1p_adv.u_mem.gen_generic.u_impl_generic.mem
 
   initial begin
-    sram_ctrl_bkdr_util m_sram_ctrl_bkdr_util;
-    m_sram_ctrl_bkdr_util = new(.name  ("sram_ctrl_bkdr_util"),
-                           .path  (`DV_STRINGIFY(`SRAM_CTRL_MEM_HIER)),
-                           .depth ($size(`SRAM_CTRL_MEM_HIER)),
-                           .n_bits($bits(`SRAM_CTRL_MEM_HIER)),
-                           // Due to the end-to-end bus integrity scheme, the memory primitive
-                           // itself does not encode and decode the redundancy information.
-                           .err_detection_scheme(mem_bkdr_util_pkg::ErrDetectionNone),
-                           .num_prince_rounds_half(`NUM_PRINCE_ROUNDS_HALF));
+    mem_bkdr_util m_mem_bkdr_util;
+    m_mem_bkdr_util = new(.name  ("mem_bkdr_util"),
+                          .path  (`DV_STRINGIFY(`SRAM_CTRL_MEM_HIER)),
+                          .depth ($size(`SRAM_CTRL_MEM_HIER)),
+                          .n_bits($bits(`SRAM_CTRL_MEM_HIER)),
+                          // Due to the end-to-end bus integrity scheme, the memory primitive itself
+                          // does not encode and decode the redundancy information.
+                          .err_detection_scheme(mem_bkdr_util_pkg::ErrDetectionNone),
+                          .num_prince_rounds_half(`NUM_PRINCE_ROUNDS_HALF));
 
     // drive clk and rst_n from clk_if
     clk_rst_if.set_active();
@@ -135,8 +135,7 @@ module tb;
         null, "*.env.m_tl_agent_sram_ctrl_regs_reg_block*", "vif", tl_if);
     uvm_config_db#(virtual tl_if)::set(
         null, "*.env.m_tl_agent_sram_ctrl_prim_reg_block*", "vif", sram_tl_if);
-    uvm_config_db#(sram_ctrl_bkdr_util)::set(null, "*.env", "sram_ctrl_bkdr_util",
-                                             m_sram_ctrl_bkdr_util);
+    uvm_config_db#(mem_bkdr_util)::set(null, "*.env", "mem_bkdr_util", m_mem_bkdr_util);
 
     $timeformat(-12, 0, " ps", 12);
     run_test();

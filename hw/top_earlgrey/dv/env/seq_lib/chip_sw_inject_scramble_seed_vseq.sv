@@ -33,7 +33,7 @@ class chip_sw_inject_scramble_seed_vseq extends chip_sw_base_vseq;
 
 
     // make sure we are in prod state
-    otp_write_lc_partition_state(cfg.mem_bkdr_util_h[Otp], LcStProd);
+    cfg.mem_bkdr_util_h[Otp].otp_write_lc_partition_state(LcStProd);
 
     // Randomize the expected data and write it into flash.
     `DV_CHECK_STD_RANDOMIZE_FATAL(iso_part_data);

@@ -79,7 +79,6 @@
             `wakeup_en` CSR, bring the chip to normal sleep, optionally disabling the source's
             clock, have the source issue a wakeup event and verify `wake_info` indicates the
             expected wakeup.
-            SiVal: No need to run this, run chip_sw_pwrmgr_random_sleep_all_wake_ups instead.
             '''
       stage: V2
       si_stage: SV3
@@ -135,7 +134,6 @@
             This verifies ALL wake up sources. This also verifies that the pwrmgr sequencing is
             working correctly as expected. X-ref'ed with all individual IP tests. Similar to
             chip_pwrmgr_sleep_all_wake_ups, except `control.main_pd_n` is set to 0.
-            SiVal: No need to run this, run chip_sw_pwrmgr_random_sleep_all_wake_ups instead.
             '''
       stage: V2
       si_stage: SV3

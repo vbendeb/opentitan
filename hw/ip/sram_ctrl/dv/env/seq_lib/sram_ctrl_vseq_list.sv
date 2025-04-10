@@ -15,5 +15,3 @@
 `include "sram_ctrl_regwen_vseq.sv"
 `include "sram_ctrl_ram_cfg_vseq.sv"
 `include "sram_ctrl_stress_all_vseq.sv"
-`include "sram_ctrl_readback_err_vseq.sv"
-`include "sram_ctrl_mubi_enc_err_vseq.sv"

@@ -4,7 +4,7 @@
 
 package(default_visibility = ["//visibility:public"])
 
-load("//rules/opentitan:defs.bzl", "OPENTITAN_CPU")
+load("//rules:opentitan.bzl", "OPENTITAN_CPU")
 load(
     "//rules/opentitan:defs.bzl",
     "EARLGREY_TEST_ENVS",
@@ -24,7 +24,7 @@ cc_library(
     hdrs = ["aes.h"],
     deps = [
         ":entropy",
-        "//hw/top:aes_c_regs",
+        "//hw/ip/aes/data:aes_c_regs",
         "//hw/top_earlgrey/sw/autogen:top_earlgrey",
         "//sw/device/lib/base:abs_mmio",
         "//sw/device/lib/base:bitfield",
@@ -59,7 +59,7 @@ cc_library(
     ],
     deps = [
         ":entropy",
-        "//hw/top:keymgr_c_regs",
+        "//hw/ip/keymgr/data:keymgr_c_regs",
         "//hw/top_earlgrey/sw/autogen:top_earlgrey",
         "//sw/device/lib/base:abs_mmio",
         "//sw/device/lib/base:bitfield",
@@ -103,7 +103,7 @@ cc_library(
     ],
     deps = [
         ":entropy",
-        "//hw/top:kmac_c_regs",
+        "//hw/ip/kmac/data:kmac_c_regs",
         "//hw/top_earlgrey/sw/autogen:top_earlgrey",
         "//sw/device/lib/base:abs_mmio",
         "//sw/device/lib/base:bitfield",
@@ -118,9 +118,9 @@ cc_library(
     srcs = ["entropy.c"],
     hdrs = ["entropy.h"],
     deps = [
-        "//hw/top:csrng_c_regs",
-        "//hw/top:edn_c_regs",
-        "//hw/top:entropy_src_c_regs",
+        "//hw/ip/csrng/data:csrng_c_regs",
+        "//hw/ip/edn/data:edn_c_regs",
+        "//hw/ip/entropy_src/data:entropy_src_c_regs",
         "//hw/top_earlgrey/sw/autogen:top_earlgrey",
         "//sw/device/lib/base:abs_mmio",
         "//sw/device/lib/base:bitfield",
@@ -138,7 +138,7 @@ cc_library(
     hdrs = ["entropy_kat.h"],
     deps = [
         ":entropy",
-        "//hw/top:csrng_c_regs",
+        "//hw/ip/csrng/data:csrng_c_regs",
         "//hw/top_earlgrey/sw/autogen:top_earlgrey",
         "//sw/device/lib/base:abs_mmio",
         "//sw/device/lib/base:bitfield",
@@ -175,7 +175,7 @@ cc_library(
     srcs = ["hmac.c"],
     hdrs = ["hmac.h"],
     deps = [
-        "//hw/top:hmac_c_regs",
+        "//hw/ip/hmac/data:hmac_c_regs",
         "//hw/top_earlgrey/sw/autogen:top_earlgrey",
         "//sw/device/lib/base:abs_mmio",
         "//sw/device/lib/base:bitfield",
@@ -183,6 +183,7 @@ cc_library(
         "//sw/device/lib/base:macros",
         "//sw/device/lib/base:memory",
         "//sw/device/lib/crypto/impl:status",
+        "//sw/device/lib/runtime:ibex",
     ],
 )
 
@@ -192,7 +193,7 @@ cc_library(
     hdrs = ["otbn.h"],
     deps = [
         ":entropy",
-        "//hw/top:otbn_c_regs",
+        "//hw/ip/otbn/data:otbn_c_regs",
         "//hw/top_earlgrey/sw/autogen:top_earlgrey",
         "//sw/device/lib/base:abs_mmio",
         "//sw/device/lib/base:bitfield",

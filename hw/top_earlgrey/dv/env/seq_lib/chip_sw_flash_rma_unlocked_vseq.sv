@@ -64,15 +64,13 @@ class chip_sw_flash_rma_unlocked_vseq extends chip_sw_base_vseq;
     // Flip a coin and either select Dev or Prod to start and override the state in OTP.
     if ($urandom_range(0, 1)) src_lc_state = DecLcStDev;
     else                      src_lc_state = DecLcStProd;
-    otp_write_lc_partition_state(cfg.mem_bkdr_util_h[Otp], encode_lc_state(src_lc_state));
+    cfg.mem_bkdr_util_h[Otp].otp_write_lc_partition_state(encode_lc_state(src_lc_state));
 
     // Override Device ID and Manufacturing state with random values.
-    otp_write_hw_cfg0_partition(
-      .mem_bkdr_util_h(cfg.mem_bkdr_util_h[Otp]),
+    cfg.mem_bkdr_util_h[Otp].otp_write_hw_cfg0_partition(
       .device_id(device_id),
       .manuf_state(manuf_state));
-    otp_write_hw_cfg1_partition(
-      .mem_bkdr_util_h(cfg.mem_bkdr_util_h[Otp]),
+    cfg.mem_bkdr_util_h[Otp].otp_write_hw_cfg1_partition(
       // Use same default config as in otp_ctrl_img_hw_cfg.hjson
       .en_sram_ifetch(prim_mubi_pkg::MuBi8False),
       .en_csrng_sw_app_read(prim_mubi_pkg::MuBi8True),
@@ -109,7 +107,7 @@ class chip_sw_flash_rma_unlocked_vseq extends chip_sw_base_vseq;
     // acquire access for JTAG to LC CTRL
     wait_lc_initialized(.allow_err(1));
     // check LC state is correct
-    jtag_riscv_agent_pkg::jtag_read_csr(ral.lc_ctrl_regs.lc_state.get_offset(),
+    jtag_riscv_agent_pkg::jtag_read_csr(ral.lc_ctrl.lc_state.get_offset(),
                                         p_sequencer.jtag_sequencer_h, state);
     `DV_CHECK_EQ(state, {DecLcStateNumRep{exp_state}})
   endtask
@@ -121,23 +119,23 @@ class chip_sw_flash_rma_unlocked_vseq extends chip_sw_base_vseq;
     wait_lc_initialized(.allow_err(1));
 
     // Check Revision
-    jtag_riscv_agent_pkg::jtag_read_csr(ral.lc_ctrl_regs.hw_revision0.get_offset(),
+    jtag_riscv_agent_pkg::jtag_read_csr(ral.lc_ctrl.hw_revision0.get_offset(),
                                         p_sequencer.jtag_sequencer_h, word);
     `DV_CHECK_EQ(word, {silicon_creator_id, product_id})
-    jtag_riscv_agent_pkg::jtag_read_csr(ral.lc_ctrl_regs.hw_revision1.get_offset(),
+    jtag_riscv_agent_pkg::jtag_read_csr(ral.lc_ctrl.hw_revision1.get_offset(),
                                         p_sequencer.jtag_sequencer_h, word);
     `DV_CHECK_EQ(word, {revision_id})
 
     // Check Device ID
     for (int k = 0; k < lc_ctrl_reg_pkg::NumDeviceIdWords; k++) begin
-      jtag_riscv_agent_pkg::jtag_read_csr(ral.lc_ctrl_regs.device_id[k].get_offset(),
+      jtag_riscv_agent_pkg::jtag_read_csr(ral.lc_ctrl.device_id[k].get_offset(),
                                           p_sequencer.jtag_sequencer_h, word);
       `DV_CHECK_EQ(word, device_id[k*BUS_DW +: BUS_DW])
     end
 
     // Check Manuf State
     for (int k = 0; k < lc_ctrl_reg_pkg::NumManufStateWords; k++) begin
-      jtag_riscv_agent_pkg::jtag_read_csr(ral.lc_ctrl_regs.manuf_state[k].get_offset(),
+      jtag_riscv_agent_pkg::jtag_read_csr(ral.lc_ctrl.manuf_state[k].get_offset(),
                                           p_sequencer.jtag_sequencer_h, word);
       `DV_CHECK_EQ(word, manuf_state[k*BUS_DW +: BUS_DW])
     end
@@ -145,8 +143,7 @@ class chip_sw_flash_rma_unlocked_vseq extends chip_sw_base_vseq;
 
   virtual task provision_secret2_partition();
     // Override the rma unlock token to match SW test's input token.
-    otp_write_secret2_partition(
-        .mem_bkdr_util_h(cfg.mem_bkdr_util_h[Otp]),
+    cfg.mem_bkdr_util_h[Otp].otp_write_secret2_partition(
         .rma_unlock_token(dec_otp_token_from_lc_csrs(rma_unlock_token)),
         .creator_root_key0(get_otp_key(creator_root_key0)),
         .creator_root_key1(get_otp_key(creator_root_key1)));

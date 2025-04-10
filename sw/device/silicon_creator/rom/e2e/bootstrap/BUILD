@@ -9,8 +9,14 @@ load(
     "fpga_params",
     "opentitan_test",
 )
-load("//rules/opentitan:keyutils.bzl", "ECDSA_ONLY_KEY_STRUCTS")
-load("//rules:const.bzl", "CONST")
+load(
+    "//rules:opentitan.bzl",
+    "ECDSA_ONLY_KEY_STRUCTS",
+)
+load(
+    "//rules:const.bzl",
+    "CONST",
+)
 load(
     "//rules:otp.bzl",
     "STD_OTP_OVERLAYS",
@@ -56,7 +62,7 @@ otp_json(
 # lifecycle state in order to test the transition from PROD to RMA.
 otp_image(
     name = "otp_img_bootstrap_rma",
-    src = "//hw/top_earlgrey/data/otp:otp_json_prod",
+    src = "//hw/ip/otp_ctrl/data:otp_json_prod",
     overlays = STD_OTP_OVERLAYS + [
         ":otp_json_bootstrap_rma",
     ],
@@ -103,7 +109,7 @@ opentitan_test(
         binaries = {
             "//sw/device/silicon_creator/rom/e2e:new_empty_test_slot_a": "firmware",
         },
-        otp = "//hw/top_earlgrey/data/otp:img_bootstrap_disabled",
+        otp = "//hw/ip/otp_ctrl/data:img_bootstrap_disabled",
         test_harness = "//sw/host/tests/rom/e2e_bootstrap_disabled",
     ),
     manifest = None,

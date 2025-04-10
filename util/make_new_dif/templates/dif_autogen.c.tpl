@@ -37,7 +37,7 @@ ${autogen_banner}
   #include <assert.h>
 
   % for irq in ip.irqs:
-    static_assert(${ip.name_upper}_INTR_STATE_${irq.name_upper}_BIT ==
+    static_assert(${ip.name_upper}_INTR_STATE_${irq.name_upper}_BIT == 
                   ${ip.name_upper}_INTR_TEST_${irq.name_upper}_BIT,
                   "Expected IRQ bit offsets to match across STATE/TEST regs.");
   % endfor
@@ -46,10 +46,10 @@ ${autogen_banner}
   #include <assert.h>
 
   % for irq in ip.irqs:
-    static_assert(${ip.name_upper}_INTR_STATE0_IS_${loop.index}_BIT ==
+    static_assert(${ip.name_upper}_INTR_STATE0_IS_${loop.index}_BIT == 
                   ${ip.name_upper}_INTR_ENABLE0_IE_${loop.index}_BIT,
                   "Expected IRQ bit offsets to match across STATE/ENABLE regs.");
-    static_assert(${ip.name_upper}_INTR_STATE0_IS_${loop.index}_BIT ==
+    static_assert(${ip.name_upper}_INTR_STATE0_IS_${loop.index}_BIT == 
                   ${ip.name_upper}_INTR_TEST0_T_${loop.index}_BIT,
                   "Expected IRQ bit offsets to match across STATE/ENABLE regs.");
   % endfor
@@ -63,33 +63,8 @@ dif_result_t dif_${ip.name_snake}_init(
     return kDifBadArg;
   }
 
-  ${ip.name_snake}->dt = kDt${ip.name_camel}Count;
   ${ip.name_snake}->base_addr = base_addr;
 
-  return kDifOk;
-}
-
-OT_WARN_UNUSED_RESULT
-dif_result_t dif_${ip.name_snake}_init_from_dt(
-  dt_${ip.name_snake}_t dt,
-  dif_${ip.name_snake}_t *${ip.name_snake}) {
-  if (${ip.name_snake} == NULL) {
-    return kDifBadArg;
-  }
-
-  ${ip.name_snake}->dt = dt;
-  ${ip.name_snake}->base_addr = mmio_region_from_addr(dt_${ip.name_snake}_primary_reg_block(dt));
-
-  return kDifOk;
-}
-
-dif_result_t dif_${ip.name_snake}_get_dt(
-  const dif_${ip.name_snake}_t *${ip.name_snake},
-  dt_${ip.name_snake}_t *dt) {
-  if (${ip.name_snake}->dt == kDt${ip.name_camel}Count || dt == NULL) {
-    return kDifBadArg;
-  }
-  *dt = ${ip.name_snake}->dt;
   return kDifOk;
 }
 
@@ -172,22 +147,19 @@ dif_result_t dif_${ip.name_snake}_get_dt(
     ## This handles the GPIO IP case where there is a multi-bit interrupt.
     % if irq.width > 1:
       % for irq_idx in range(irq.width):
-        case kDt${ip.name_camel}Irq${irq.name_camel}${irq_idx}:
+        case kDif${ip.name_camel}Irq${irq.name_camel}${irq_idx}:
           *index_out = ${irq_idx};
           break;
       % endfor
     ## This handles all other IPs.
     % else:
-      case kDt${ip.name_camel}Irq${irq.name_camel}:
+      case kDif${ip.name_camel}Irq${irq.name_camel}:
       ## This handles the RV Timer IP.
       % if ip.name_snake == "aon_timer":
         *index_out = ${ip.name_upper}_INTR_STATE_${irq.name_upper}_BIT;
       ## This handles the RV Timer IP.
       % elif ip.name_snake == "rv_timer":
         *index_out = ${ip.name_upper}_INTR_STATE0_IS_${loop.index}_BIT;
-      ## This handles the RACL Controller IP.
-      % elif ip.name_snake == "racl_ctrl":
-        *index_out = ${ip.name_upper}_INTR_STATE_${irq.name_upper}_BIT;
       ## This handles all other IPs that do not have the "no_auto_intr_regs" in
       ## their HJSON files.
       % else:
@@ -229,18 +201,15 @@ dif_result_t dif_${ip.name_snake}_get_dt(
     dif_${ip.name_snake}_irq_t irq,
     dif_irq_type_t *type) {
 
-    <%
-      first_irq_name = "kDif{}Irq{}".format(ip.name_camel, ip.irqs[0].name_camel)
-      last_irq_name = "kDif{}Irq{}".format(ip.name_camel, ip.irqs[-1].name_camel)
-      if ip.irqs[0].width > 1:
-        first_irq_name += "0"
-      if ip.irqs[-1].width > 1:
-        last_irq_name += str(ip.irqs[-1].width - 1)
-    %>
-    if (${ip.name_snake} == NULL ||
-        type == NULL ||
-        irq < ${first_irq_name} ||
-        irq > ${last_irq_name}) {
+    % if ip.irqs[-1].width == 1:
+      if (${ip.name_snake} == NULL ||
+          type == NULL ||
+          irq == kDif${ip.name_camel}Irq${ip.irqs[-1].name_camel} + 1) {
+    % else:
+      if (${ip.name_snake} == NULL ||
+          type == NULL ||
+          irq == kDif${ip.name_camel}Irq${ip.irqs[-1].name_camel}${ip.irqs[-1].width - 1} + 1) {
+    % endif
       return kDifBadArg;
     }
 
@@ -436,7 +405,7 @@ dif_result_t dif_${ip.name_snake}_get_dt(
     const dif_${ip.name_snake}_t *${ip.name_snake},
     dif_${ip.name_snake}_irq_t irq,
     dif_toggle_t *state) {
-
+    
     if (${ip.name_snake} == NULL || state == NULL) {
       return kDifBadArg;
     }
@@ -459,7 +428,7 @@ dif_result_t dif_${ip.name_snake}_get_dt(
   % endif
 
     bool is_enabled = bitfield_bit32_read(intr_enable_reg, index);
-    *state = is_enabled ?
+    *state = is_enabled ? 
       kDifToggleEnabled : kDifToggleDisabled;
 
     return kDifOk;

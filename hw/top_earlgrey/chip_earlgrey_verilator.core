@@ -11,8 +11,8 @@ filesets:
       - lowrisc:systems:top_earlgrey_pkg
       - lowrisc:ibex:ibex_tracer
       - lowrisc:prim:clock_div
-      - lowrisc:systems:top_earlgrey_ast
-      - lowrisc:earlgrey_systems:scan_role_pkg
+      - lowrisc:systems:ast
+      - lowrisc:systems:scan_role_pkg
 
     files:
       - rtl/chip_earlgrey_verilator.sv: { file_type: systemVerilogSource }
@@ -21,12 +21,17 @@ parameters:
   AST_BYPASS_CLK:
     datatype: bool
     paramtype: vlogdefine
+  IBEX_CUSTOM_PMP_RESET_VALUES:
+    datatype: bool
+    default: true
+    paramtype: vlogdefine
 
 targets:
   default: &default_target
     filesets:
       - files_sim_verilator
     parameters:
+      - IBEX_CUSTOM_PMP_RESET_VALUES
       - AST_BYPASS_CLK=true
     toplevel: chip_earlgrey_verilator
 

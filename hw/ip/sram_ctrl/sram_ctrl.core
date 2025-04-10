@@ -13,13 +13,11 @@ filesets:
       - lowrisc:prim:lc_sync
       - lowrisc:prim:count
       - lowrisc:prim:ram_1p_scr
-      - lowrisc:prim:racl_error_arb
       - lowrisc:tlul:adapter_sram
       - lowrisc:ip:tlul
       - lowrisc:ip:sram_ctrl_pkg
       - lowrisc:ip:lc_ctrl_pkg
       - lowrisc:ip:otp_ctrl_pkg
-      - lowrisc:virtual_constants:top_racl_pkg
     files:
       - rtl/sram_ctrl_regs_reg_top.sv
       - rtl/sram_ctrl.sv
@@ -43,15 +41,6 @@ filesets:
       - lint/sram_ctrl.waiver
     file_type: waiver
 
-  files_veriblelint_waiver:
-    depend:
-      # common waivers
-      - lowrisc:lint:common
-      - lowrisc:lint:comportable
-    files:
-      - lint/sram_ctrl.vbl
-    file_type: veribleLintWaiver
-
 parameters:
   SYNTHESIS:
     datatype: bool
@@ -63,7 +52,6 @@ targets:
     filesets:
       - tool_verilator  ? (files_verilator_waiver)
       - tool_ascentlint ? (files_ascentlint_waiver)
-      - tool_veriblelint ? (files_veriblelint_waiver)
       - files_rtl
     toplevel: sram_ctrl
 

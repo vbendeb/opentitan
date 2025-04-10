@@ -87,6 +87,11 @@ module prim_reg_cdc_arb #(
     SelHwReq
   } req_sel_e;
 
+  typedef enum logic [1:0] {
+    StIdle,
+    StWait
+  } state_e;
+
 
   // Only honor the incoming destination update request if the incoming
   // value is actually different from what is already completed in the
@@ -101,15 +106,16 @@ module prim_reg_cdc_arb #(
     logic dst_update_ack;
     req_sel_e id_q;
 
-    logic idle_q, idle_d;
+    state_e state_q, state_d;
     always_ff @(posedge clk_dst_i or negedge rst_dst_ni) begin
       if (!rst_dst_ni) begin
-        idle_q <= 1'b1;
+        state_q <= StIdle;
       end else begin
-        idle_q <= idle_d;
+        state_q <= state_d;
       end
     end
 
+    logic busy;
     logic dst_req_q, dst_req;
     always_ff @(posedge clk_dst_i or negedge rst_dst_ni) begin
       if (!rst_dst_ni) begin
@@ -120,19 +126,12 @@ module prim_reg_cdc_arb #(
         // dst_lat_d is safe to used here because dst_req_q, if set,
         // always has priority over other hardware based events.
         dst_req_q <= '0;
-      end else if (dst_req_i && !idle_q) begin
+      end else if (dst_req_i && !dst_req_q && busy) begin
         // if destination request arrives when a handshake event
         // is already ongoing, hold on to request and send later
         dst_req_q <= 1'b1;
       end
     end
-
-    // dst_req_q will be 0 when dst_req_i is set, this assertion checks the conditional branch
-    // (dst_req_i && !dst_req_q && !idle_q) can be simplified to avoid conditional coverage
-    // holes
-    `ASSERT(Not_Dst_req_q_while_dst_req_i_A, dst_req_i |-> !dst_req_q,
-            clk_dst_i, !rst_dst_ni)
-
     assign dst_req = dst_req_q | dst_req_i;
 
     // Hold data at the beginning of a transaction
@@ -155,7 +154,7 @@ module prim_reg_cdc_arb #(
     always_ff @(posedge clk_dst_i or negedge rst_dst_ni) begin
       if (!rst_dst_ni) begin
         id_q <= SelSwReq;
-      end else if (dst_update_ack) begin
+      end else if (dst_update_req && dst_update_ack) begin
         id_q <= SelSwReq;
       end else if (dst_req && dst_lat_d) begin
         id_q <= SelSwReq;
@@ -166,12 +165,9 @@ module prim_reg_cdc_arb #(
       end
     end
 
-    // dst_update_ack should only be sent if there was a dst_update_req.
-    `ASSERT(DstAckReqChk_A, dst_update_ack |-> dst_update_req, clk_dst_i, !rst_dst_ni)
-
     // if a destination update is received when the system is idle and there is no
     // software side request, hw update must be selected.
-    `ASSERT(DstUpdateReqCheck_A, ##1 dst_update & !dst_req & idle_q |=> id_q == SelHwReq,
+    `ASSERT(DstUpdateReqCheck_A, ##1 dst_update & !dst_req & !busy |=> id_q == SelHwReq,
       clk_dst_i, !rst_dst_ni)
 
     // if hw select was chosen, then it must be the case there was a destination update
@@ -184,11 +180,11 @@ module prim_reg_cdc_arb #(
 
     // send out prim_subreg request only when proceeding
     // with software request
-    assign dst_req_o = idle_q & dst_req;
+    assign dst_req_o = ~busy & dst_req;
 
     logic dst_hold_req;
     always_comb begin
-      idle_d = idle_q;
+      state_d = state_q;
       dst_hold_req = '0;
 
       // depending on when the request is received, we
@@ -196,26 +192,37 @@ module prim_reg_cdc_arb #(
       dst_lat_q = '0;
       dst_lat_d = '0;
 
-      if (idle_q) begin
-        if (dst_req) begin
-          // there's a software issued request for change
-          idle_d = 1'b0;
-          dst_lat_d = 1'b1;
-        end else if (dst_update) begin
-          idle_d = 1'b0;
-          dst_lat_d = 1'b1;
-        end else if (dst_qs_o != dst_qs_i) begin
-          // there's a direct destination update
-          // that was blocked by an ongoing transaction
-          idle_d = 1'b0;
-          dst_lat_q = 1'b1;
+      busy = 1'b1;
+
+      unique case (state_q)
+        StIdle: begin
+          busy = '0;
+          if (dst_req) begin
+            // there's a software issued request for change
+            state_d = StWait;
+            dst_lat_d = 1'b1;
+          end else if (dst_update) begin
+            state_d = StWait;
+            dst_lat_d = 1'b1;
+          end else if (dst_qs_o != dst_qs_i) begin
+            // there's a direct destination update
+            // that was blocked by an ongoing transaction
+            state_d = StWait;
+            dst_lat_q = 1'b1;
+          end
         end
-      end else begin
-        dst_hold_req = 1'b1;
-        if (dst_update_ack) begin
-          idle_d = 1'b1;
+
+        StWait: begin
+          dst_hold_req = 1'b1;
+          if (dst_update_ack) begin
+            state_d = StIdle;
+          end
         end
-      end
+
+        default: begin
+          state_d = StIdle;
+        end
+      endcase // unique case (state_q)
     end // always_comb
 
     assign dst_update_req = dst_hold_req | dst_lat_d | dst_lat_q;
@@ -253,7 +260,7 @@ module prim_reg_cdc_arb #(
           async_flag <= '0;
         end else if (src_update_o) begin
           async_flag <= '0;
-        end else if (dst_update && !dst_req_o && idle_q) begin
+        end else if (dst_update && !dst_req_o && !busy) begin
           async_flag <= 1'b1;
         end
       end

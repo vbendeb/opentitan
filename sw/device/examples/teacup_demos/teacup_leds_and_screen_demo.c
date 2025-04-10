@@ -2,7 +2,6 @@
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 
-#include "dt/dt_api.h"  // Generated
 #include "sw/device/examples/teacup_demos/data/bitmaps.h"
 #include "sw/device/lib/arch/device.h"
 #include "sw/device/lib/boards/teacup_v1_3_0/leds.h"
@@ -78,17 +77,20 @@ static const led_rgb_color_t kLedColorGreen = {
  */
 static const pinmux_pad_attributes_t kPinmuxPadAttrs[] = {
     {
-        .pad = kDtPadIoa2,  // CS
+        .pad = kTopEarlgreyMuxedPadsIoa2,  // CS
+        .kind = kDifPinmuxPadKindMio,
         .flags = kDifPinmuxPadAttrPullResistorEnable |
                  kDifPinmuxPadAttrPullResistorUp,
     },
     {
-        .pad = kDtPadIob7,  // SCK
+        .pad = kTopEarlgreyMuxedPadsIob7,  // SCK
+        .kind = kDifPinmuxPadKindMio,
         .flags = kDifPinmuxPadAttrPullResistorEnable |
                  kDifPinmuxPadAttrPullResistorUp,
     },
     {
-        .pad = kDtPadIob2,  // SD0
+        .pad = kTopEarlgreyMuxedPadsIob2,  // SD0
+        .kind = kDifPinmuxPadKindMio,
         .flags = kDifPinmuxPadAttrPullResistorEnable |
                  kDifPinmuxPadAttrPullResistorUp,
     },

@@ -127,8 +127,7 @@ if (FpgaSram == 1) begin : g_sram_fpga
     .b_wmask_i (r_sram_wmask ),
     .b_rdata_o (r_sram_rdata ),
 
-    .cfg_i     ('0),
-    .cfg_rsp_o ()
+    .cfg_i ('0)
   );
 end else begin : g_sram_ff
   logic [SramDw-1:0] mem [2**SramAw];

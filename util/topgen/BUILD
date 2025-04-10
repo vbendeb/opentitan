@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 load("@rules_python//python:defs.bzl", "py_library")
-load("@ot_python_deps//:requirements.bzl", "requirement")
+load("//third_party/python:requirements.bzl", "requirement")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -17,7 +17,6 @@ py_library(
     ],
     deps = [
         ":merge",
-        ":typing",
         requirement("tabulate"),
         requirement("pycryptodome"),
     ],
@@ -28,14 +27,6 @@ py_library(
     srcs = ["c_test.py"],
     deps = [
         ":lib",
-    ],
-)
-
-py_library(
-    name = "typing",
-    srcs = ["typing.py"],
-    deps = [
-        "//util/reggen:ip_block",
     ],
 )
 
@@ -51,6 +42,7 @@ py_library(
         "//util/reggen:params",
         "//util/reggen:window",
         requirement("mako"),
+        requirement("importlib_resources"),
     ],
 )
 
@@ -64,10 +56,8 @@ py_library(
         "rust.py",
     ],
     deps = [
-        "//util:version_file",
         "//util/reggen:inter_signal",
         "//util/reggen:ip_block",
-        "//util/reggen:md_helpers",
         "//util/reggen:validate",
         requirement("hjson"),
         requirement("mako"),

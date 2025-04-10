@@ -50,7 +50,6 @@ rust_binary(
         "@crate_index//:humantime",
         "@crate_index//:log",
         "@crate_index//:rusb",
-        "@crate_index//:strum",
     ],
 )
 
@@ -83,5 +82,23 @@ rust_binary(
         "@crate_index//:log",
         "@crate_index//:rusb",
         "@crate_index//:serialport",
+    ],
+)
+
+rust_binary(
+    name = "silicon_creator_harness",
+    srcs = [
+        "silicon_creator_harness.rs",
+    ],
+    deps = [
+        ":usb",
+        "//sw/host/opentitanlib",
+        "@crate_index//:anyhow",
+        "@crate_index//:clap",
+        "@crate_index//:hex",
+        "@crate_index//:humantime",
+        "@crate_index//:log",
+        "@crate_index//:rand",
+        "@crate_index//:rusb",
     ],
 )

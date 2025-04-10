@@ -3,7 +3,6 @@
 # SPDX-License-Identifier: Apache-2.0
 '''Code representing an IP block for reggen'''
 
-import logging as log
 from typing import Dict, List, Optional, Sequence, Set, Tuple
 
 import hjson  # type: ignore
@@ -11,7 +10,6 @@ from reggen.alert import Alert
 from reggen.bus_interfaces import BusInterfaces
 from reggen.clocking import Clocking, ClockingItem
 from reggen.countermeasure import CounterMeasure
-from reggen.feature import Feature
 from reggen.inter_signal import InterSignal
 from reggen.interrupt import Interrupt
 from reggen.lib import (check_bool, check_int, check_keys, check_list,
@@ -63,10 +61,7 @@ KNOWN_CIP_IDS = {
     37: 'mbx',
     38: 'soc_proxy',
     39: 'keymgr_dpe',
-    40: 'ascon',
-    41: 'ac_range_check',
-    42: 'soc_dbg_ctrl',
-    43: 'racl_ctrl'
+    40: 'ascon'
 }
 
 REQUIRED_ALIAS_FIELDS = {
@@ -185,7 +180,6 @@ class IpBlock:
                  scan_reset: bool,
                  scan_en: bool,
                  countermeasures: List[CounterMeasure],
-                 features: List[Feature],
                  node: str = ''):
         assert reg_blocks
 
@@ -228,7 +222,6 @@ class IpBlock:
         self.scan_reset = scan_reset
         self.scan_en = scan_en
         self.countermeasures = countermeasures
-        self.features = features
 
     @staticmethod
     def from_raw(param_defaults: List[Tuple[str, str]],
@@ -272,9 +265,6 @@ class IpBlock:
 
         countermeasures = CounterMeasure.from_raw_list(
             'countermeasure list for block {}'.format(name), raw_cms)
-
-        features = Feature.from_raw_list(
-            'feature list for block {}'.format(name), rd.get('features', []))
 
         # Ensure that the countermeasures are unique
         for x in countermeasures:
@@ -341,8 +331,7 @@ class IpBlock:
                     LocalParam(name='NumAlerts',
                                desc='Number of alerts',
                                param_type='int',
-                               value=str(len(alerts)),
-                               unpacked_dimensions=None))
+                               value=str(len(alerts))))
 
         scan = check_bool(rd.get('scan', False), 'scan field of ' + what)
 
@@ -350,7 +339,6 @@ class IpBlock:
                                      'inter_signal_list field')
         inter_signals = [
             InterSignal.from_raw(
-                params,
                 'entry {} of the inter_signal_list field'.format(idx + 1),
                 entry) for idx, entry in enumerate(r_inter_signals)
         ]
@@ -402,7 +390,7 @@ class IpBlock:
                        None, interrupts, no_auto_intr, alerts, no_auto_alert,
                        scan, inter_signals, bus_interfaces, clocking, xputs,
                        wakeups, rst_reqs, expose_reg_if, scan_reset, scan_en,
-                       countermeasures, features, node)
+                       countermeasures, node)
 
     @staticmethod
     def from_text(txt: str,
@@ -629,40 +617,3 @@ class IpBlock:
         return CounterMeasure.check_annotation_list(self.name, hjson_path,
                                                     rtl_names,
                                                     self.countermeasures)
-
-    def check_regwens(self) -> bool:
-        """Checks all regwens are used in at least one other CSR
-
-        This relies on the regwen having the string "REGWEN" in its name.
-        The uses should be in the "regwen" field of a CSR.
-        """
-        log.debug(f"Checking regwens for IP {self.name}")
-        status: bool = True
-        for rb in self.reg_blocks.values():
-            rb_name = rb.name if rb.name else "default"
-            log.debug(f"Register block: {rb_name}")
-            regwen_names: List[str] = [reg.name for reg in rb.registers
-                                       if "REGWEN" in reg.name]
-            unused_regwens: List[str] = []
-            for regwen in regwen_names:
-                regwen_users = []
-                for reg in rb.registers:
-                    if reg.regwen == regwen:
-                        regwen_users.append(reg)
-                for multi_reg in rb.multiregs:
-                    for reg in multi_reg.regs:
-                        if reg.regwen == regwen:
-                            regwen_users.append(reg)
-                if not regwen_users:
-                    unused_regwens.append(regwen)
-                else:
-                    log.debug(
-                        f"Regwen {regwen} in {self.name}'s {rb_name} register "
-                        "block controls the following registers:")
-                    for r in regwen_users:
-                        log.debug(f"  {r.name}")
-            if unused_regwens:
-                log.error(f"Unused regwen(s) in {self.name} {rb_name} "
-                          f"register block: {', '.join(unused_regwens)}")
-                status = False
-        return status

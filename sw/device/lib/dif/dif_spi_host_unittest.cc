@@ -130,13 +130,13 @@ TEST_F(ConfigTest, Default) {
   ExpectDeviceReset();
   EXPECT_WRITE32(SPI_HOST_CONFIGOPTS_REG_OFFSET,
                  {
-                     {SPI_HOST_CONFIGOPTS_CLKDIV_OFFSET, 0},
-                     {SPI_HOST_CONFIGOPTS_CSNIDLE_OFFSET, 0},
-                     {SPI_HOST_CONFIGOPTS_CSNTRAIL_OFFSET, 0},
-                     {SPI_HOST_CONFIGOPTS_CSNLEAD_OFFSET, 0},
-                     {SPI_HOST_CONFIGOPTS_FULLCYC_BIT, false},
-                     {SPI_HOST_CONFIGOPTS_CPHA_BIT, false},
-                     {SPI_HOST_CONFIGOPTS_CPOL_BIT, false},
+                     {SPI_HOST_CONFIGOPTS_CLKDIV_0_OFFSET, 0},
+                     {SPI_HOST_CONFIGOPTS_CSNIDLE_0_OFFSET, 0},
+                     {SPI_HOST_CONFIGOPTS_CSNTRAIL_0_OFFSET, 0},
+                     {SPI_HOST_CONFIGOPTS_CSNLEAD_0_OFFSET, 0},
+                     {SPI_HOST_CONFIGOPTS_FULLCYC_0_BIT, false},
+                     {SPI_HOST_CONFIGOPTS_CPHA_0_BIT, false},
+                     {SPI_HOST_CONFIGOPTS_CPOL_0_BIT, false},
                  });
 
   EXPECT_READ32(SPI_HOST_CONTROL_REG_OFFSET, 0);
@@ -172,13 +172,13 @@ TEST_F(ConfigTest, ClockRate) {
   ExpectDeviceReset();
   EXPECT_WRITE32(SPI_HOST_CONFIGOPTS_REG_OFFSET,
                  {
-                     {SPI_HOST_CONFIGOPTS_CLKDIV_OFFSET, 0},
-                     {SPI_HOST_CONFIGOPTS_CSNIDLE_OFFSET, 0},
-                     {SPI_HOST_CONFIGOPTS_CSNTRAIL_OFFSET, 0},
-                     {SPI_HOST_CONFIGOPTS_CSNLEAD_OFFSET, 0},
-                     {SPI_HOST_CONFIGOPTS_FULLCYC_BIT, false},
-                     {SPI_HOST_CONFIGOPTS_CPHA_BIT, false},
-                     {SPI_HOST_CONFIGOPTS_CPOL_BIT, false},
+                     {SPI_HOST_CONFIGOPTS_CLKDIV_0_OFFSET, 0},
+                     {SPI_HOST_CONFIGOPTS_CSNIDLE_0_OFFSET, 0},
+                     {SPI_HOST_CONFIGOPTS_CSNTRAIL_0_OFFSET, 0},
+                     {SPI_HOST_CONFIGOPTS_CSNLEAD_0_OFFSET, 0},
+                     {SPI_HOST_CONFIGOPTS_FULLCYC_0_BIT, false},
+                     {SPI_HOST_CONFIGOPTS_CPHA_0_BIT, false},
+                     {SPI_HOST_CONFIGOPTS_CPOL_0_BIT, false},
                  });
   EXPECT_READ32(SPI_HOST_CONTROL_REG_OFFSET, 0);
   EXPECT_WRITE32(SPI_HOST_CONTROL_REG_OFFSET, 0);
@@ -201,13 +201,13 @@ TEST_F(ConfigTest, ChipSelectOptions) {
   ExpectDeviceReset();
   EXPECT_WRITE32(SPI_HOST_CONFIGOPTS_REG_OFFSET,
                  {
-                     {SPI_HOST_CONFIGOPTS_CLKDIV_OFFSET, 0},
-                     {SPI_HOST_CONFIGOPTS_CSNIDLE_OFFSET, 1},
-                     {SPI_HOST_CONFIGOPTS_CSNTRAIL_OFFSET, 2},
-                     {SPI_HOST_CONFIGOPTS_CSNLEAD_OFFSET, 3},
-                     {SPI_HOST_CONFIGOPTS_FULLCYC_BIT, false},
-                     {SPI_HOST_CONFIGOPTS_CPHA_BIT, false},
-                     {SPI_HOST_CONFIGOPTS_CPOL_BIT, false},
+                     {SPI_HOST_CONFIGOPTS_CLKDIV_0_OFFSET, 0},
+                     {SPI_HOST_CONFIGOPTS_CSNIDLE_0_OFFSET, 1},
+                     {SPI_HOST_CONFIGOPTS_CSNTRAIL_0_OFFSET, 2},
+                     {SPI_HOST_CONFIGOPTS_CSNLEAD_0_OFFSET, 3},
+                     {SPI_HOST_CONFIGOPTS_FULLCYC_0_BIT, false},
+                     {SPI_HOST_CONFIGOPTS_CPHA_0_BIT, false},
+                     {SPI_HOST_CONFIGOPTS_CPOL_0_BIT, false},
                  });
   EXPECT_READ32(SPI_HOST_CONTROL_REG_OFFSET, 0);
   EXPECT_WRITE32(SPI_HOST_CONTROL_REG_OFFSET, 0);
@@ -230,13 +230,13 @@ TEST_F(ConfigTest, SpiOptions) {
   ExpectDeviceReset();
   EXPECT_WRITE32(SPI_HOST_CONFIGOPTS_REG_OFFSET,
                  {
-                     {SPI_HOST_CONFIGOPTS_CLKDIV_OFFSET, 0},
-                     {SPI_HOST_CONFIGOPTS_CSNIDLE_OFFSET, 0},
-                     {SPI_HOST_CONFIGOPTS_CSNTRAIL_OFFSET, 0},
-                     {SPI_HOST_CONFIGOPTS_CSNLEAD_OFFSET, 0},
-                     {SPI_HOST_CONFIGOPTS_FULLCYC_BIT, true},
-                     {SPI_HOST_CONFIGOPTS_CPHA_BIT, true},
-                     {SPI_HOST_CONFIGOPTS_CPOL_BIT, true},
+                     {SPI_HOST_CONFIGOPTS_CLKDIV_0_OFFSET, 0},
+                     {SPI_HOST_CONFIGOPTS_CSNIDLE_0_OFFSET, 0},
+                     {SPI_HOST_CONFIGOPTS_CSNTRAIL_0_OFFSET, 0},
+                     {SPI_HOST_CONFIGOPTS_CSNLEAD_0_OFFSET, 0},
+                     {SPI_HOST_CONFIGOPTS_FULLCYC_0_BIT, true},
+                     {SPI_HOST_CONFIGOPTS_CPHA_0_BIT, true},
+                     {SPI_HOST_CONFIGOPTS_CPOL_0_BIT, true},
                  });
   EXPECT_READ32(SPI_HOST_CONTROL_REG_OFFSET, 0);
   EXPECT_WRITE32(SPI_HOST_CONTROL_REG_OFFSET, 0);
@@ -257,13 +257,13 @@ TEST_F(ConfigTest, SpiTxRxWatermark) {
   ExpectDeviceReset();
   EXPECT_WRITE32(SPI_HOST_CONFIGOPTS_REG_OFFSET,
                  {
-                     {SPI_HOST_CONFIGOPTS_CLKDIV_OFFSET, 0},
-                     {SPI_HOST_CONFIGOPTS_CSNIDLE_OFFSET, 0},
-                     {SPI_HOST_CONFIGOPTS_CSNTRAIL_OFFSET, 0},
-                     {SPI_HOST_CONFIGOPTS_CSNLEAD_OFFSET, 0},
-                     {SPI_HOST_CONFIGOPTS_FULLCYC_BIT, false},
-                     {SPI_HOST_CONFIGOPTS_CPHA_BIT, false},
-                     {SPI_HOST_CONFIGOPTS_CPOL_BIT, false},
+                     {SPI_HOST_CONFIGOPTS_CLKDIV_0_OFFSET, 0},
+                     {SPI_HOST_CONFIGOPTS_CSNIDLE_0_OFFSET, 0},
+                     {SPI_HOST_CONFIGOPTS_CSNTRAIL_0_OFFSET, 0},
+                     {SPI_HOST_CONFIGOPTS_CSNLEAD_0_OFFSET, 0},
+                     {SPI_HOST_CONFIGOPTS_FULLCYC_0_BIT, false},
+                     {SPI_HOST_CONFIGOPTS_CPHA_0_BIT, false},
+                     {SPI_HOST_CONFIGOPTS_CPOL_0_BIT, false},
                  });
   EXPECT_READ32(SPI_HOST_CONTROL_REG_OFFSET, 0);
   EXPECT_WRITE32(SPI_HOST_CONTROL_REG_OFFSET,
@@ -278,13 +278,13 @@ TEST_F(ConfigTest, SpiTxRxWatermark) {
   EXPECT_DIF_OK(dif_spi_host_configure(&spi_host_, config_));
 }
 
-class TransactionStartTest : public SpiHostTest {
+class TransactionTest : public SpiHostTest {
  protected:
   MockFifo fifo_;
 };
 
 // Checks that an opcode segment is sent correctly.
-TEST_F(TransactionStartTest, IssueOpcode) {
+TEST_F(TransactionTest, IssueOpcode) {
   dif_spi_host_segment segment;
   segment.type = kDifSpiHostSegmentTypeOpcode;
   segment.opcode.opcode = 0x5a;
@@ -302,7 +302,7 @@ TEST_F(TransactionStartTest, IssueOpcode) {
 }
 
 // Checks that an address segment is sent correctly in 3-byte mode.
-TEST_F(TransactionStartTest, IssueAddressMode3b) {
+TEST_F(TransactionTest, IssueAddressMode3b) {
   dif_spi_host_segment segment;
   segment.type = kDifSpiHostSegmentTypeAddress;
   segment.address.width = kDifSpiHostWidthStandard;
@@ -321,7 +321,7 @@ TEST_F(TransactionStartTest, IssueAddressMode3b) {
 }
 
 // Checks that an address segment is sent correctly in 4-byte mode.
-TEST_F(TransactionStartTest, IssueAddressMode4b) {
+TEST_F(TransactionTest, IssueAddressMode4b) {
   dif_spi_host_segment segment;
   segment.type = kDifSpiHostSegmentTypeAddress;
   segment.address.width = kDifSpiHostWidthStandard;
@@ -340,7 +340,7 @@ TEST_F(TransactionStartTest, IssueAddressMode4b) {
 }
 
 // Checks that a dummy segment is sent correctly.
-TEST_F(TransactionStartTest, IssueDummy) {
+TEST_F(TransactionTest, IssueDummy) {
   dif_spi_host_segment segment;
   segment.type = kDifSpiHostSegmentTypeDummy;
   segment.dummy.width = kDifSpiHostWidthStandard;
@@ -353,11 +353,6 @@ TEST_F(TransactionStartTest, IssueDummy) {
 
   EXPECT_DIF_OK(dif_spi_host_transaction(&spi_host_, 0, &segment, 1));
 }
-
-class TransactionTest : public SpiHostTest {
- protected:
-  MockFifo fifo_;
-};
 
 // Checks that a transmit segment is sent correctly.
 TEST_F(TransactionTest, TransmitDual) {

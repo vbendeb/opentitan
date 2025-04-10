@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 load("@rules_python//python:defs.bzl", "py_library")
-load("@ot_python_deps//:requirements.bzl", "requirement")
+load("//third_party/python:requirements.bzl", "requirement")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -23,6 +23,7 @@ py_library(
     deps = [
         "//util/reggen:validate",
         requirement("mako"),
+        requirement("importlib_resources"),
     ],
 )
 

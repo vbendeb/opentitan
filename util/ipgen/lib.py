@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Union
 
 import hjson  # type: ignore
-from reggen.lib import check_bool, check_int, check_keys, check_list, check_name, check_str
+from reggen.lib import check_int, check_keys, check_list, check_name, check_str
 from reggen.params import BaseParam, Params
 
 
@@ -33,7 +33,6 @@ class TemplateRenderError(Exception):
 class TemplateParameter(BaseParam):
     """ A template parameter. """
     VALID_PARAM_TYPES = (
-        'bool',
         'int',
         'string',
         'object',
@@ -43,7 +42,7 @@ class TemplateParameter(BaseParam):
                  default: str):
         assert param_type in self.VALID_PARAM_TYPES
 
-        super().__init__(name, desc, param_type, None)
+        super().__init__(name, desc, param_type)
         self.default = default
         self.value = None
 
@@ -54,13 +53,6 @@ class TemplateParameter(BaseParam):
 
 
 def _parse_template_parameter(where: str, raw: object) -> TemplateParameter:
-    """Check and parse the parameter in raw.
-
-    raw must be a dictionary with specific keys. The type must be valid,
-    and the hjson value itself must translate to a valid python object of
-    the required type. For 'object' types we just check the value can be
-    de-serialized by hjson. Perhaps this could perform a type-check instead.
-    """
     rd = check_keys(raw, where, ['name', 'desc', 'type'], ['default'])
 
     name = check_str(rd['name'], 'name field of ' + where)
@@ -79,11 +71,7 @@ def _parse_template_parameter(where: str, raw: object) -> TemplateParameter:
                          f'{", ".join(TemplateParameter.VALID_PARAM_TYPES)}.')
 
     r_default = rd.get('default')
-    param_type: Union[bool, int, str, Dict[str, Any]]
-    if param_type == 'bool':
-        default = check_bool(r_default,
-                             f'default field of {name}, (a boolean parameter)')
-    elif param_type == 'int':
+    if param_type == 'int':
         default = check_int(
             r_default, f'default field of {name}, (an integer parameter)')
     elif param_type == 'string':
@@ -143,11 +131,9 @@ class IpTemplate:
         - The IP template name (TEMPLATE_NAME) is equal to the directory name.
         - It contains a file 'data/TEMPLATE_NAME.tpldesc.hjson' containing all
           configuration information related to the template.
-        - It contains some files ending in '.tpl', which are Mako templates
-          and are rendered into a file in the same relative location without
+        - It contains zero or more files ending in '.tpl'. These files are
+          Mako templates and rendered into an file in the same location without
           the '.tpl' file extension.
-
-        Raise an exception if checks fail for the raw template parameters.
         """
 
         # Check if the directory structure matches expectations.
@@ -230,6 +216,8 @@ class IpConfig:
         Returns the parameter values in typed form if successful, and throws
         a ValueError otherwise.
         """
+        VALID_PARAM_TYPES = ('string', 'int', 'object')
+
         param_values_typed = {}
         for key, value in param_values.items():
             if not isinstance(key, str):
@@ -243,16 +231,12 @@ class IpConfig:
                     "valid parameter.")
 
             param_type = template_params[key].param_type
-            if param_type not in TemplateParameter.VALID_PARAM_TYPES:
+            if param_type not in VALID_PARAM_TYPES:
                 raise ValueError(
                     f"Unknown template parameter type {param_type!r}. "
-                    "Allowed types: "
-                    ', '.join(TemplateParameter.VALID_PARAM_TYPES))
+                    "Allowed types: " + ', '.join(VALID_PARAM_TYPES))
 
-            if param_type == 'bool':
-                param_value_typed = check_bool(
-                    value, f"the key {key} of the IP configuration")
-            elif param_type == 'string':
+            if param_type == 'string':
                 param_value_typed = check_str(
                     value, f"the key {key} of the IP configuration")
             elif param_type == 'int':

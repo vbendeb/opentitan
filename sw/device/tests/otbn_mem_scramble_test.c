@@ -10,14 +10,7 @@
 #include "sw/device/lib/testing/test_framework/check.h"
 #include "sw/device/lib/testing/test_framework/ottf_main.h"
 
-static_assert(kDtOtbnCount >= 1,
-              "This test requires at least one OTBN instance");
-// rv_core_ibex wrapper around the Ibex CPU provides additional functionality.
-static_assert(kDtRvCoreIbexCount >= 1,
-              "This test requires at least one rv_core_ibex instance");
-
-static dt_otbn_t kTestOtbn = (dt_otbn_t)0;
-static dt_rv_core_ibex_t kTestRvCoreIbex = (dt_rv_core_ibex_t)0;
+#include "hw/top_earlgrey/sw/autogen/top_earlgrey.h"
 
 OTTF_DEFINE_TEST_CONFIG();
 
@@ -192,11 +185,14 @@ static void otbn_check_mem_words(const dif_otbn_t *otbn, const int num,
 bool test_main(void) {
   // Init OTBN DIF.
   dif_otbn_t otbn;
-  CHECK_DIF_OK(dif_otbn_init_from_dt(kTestOtbn, &otbn));
+  mmio_region_t otbn_addr = mmio_region_from_addr(TOP_EARLGREY_OTBN_BASE_ADDR);
+  CHECK_DIF_OK(dif_otbn_init(otbn_addr, &otbn));
 
   // Init Ibex DIF.
   dif_rv_core_ibex_t ibex;
-  CHECK_DIF_OK(dif_rv_core_ibex_init_from_dt(kTestRvCoreIbex, &ibex));
+  mmio_region_t ibex_addr =
+      mmio_region_from_addr(TOP_EARLGREY_RV_CORE_IBEX_CFG_BASE_ADDR);
+  CHECK_DIF_OK(dif_rv_core_ibex_init(ibex_addr, &ibex));
 
   uint32_t imem_offsets[kNumAddrs];
   uint32_t dmem_offsets[kNumAddrs];

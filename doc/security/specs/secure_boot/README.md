@@ -33,8 +33,7 @@ On boot, the ROM code does the following:
 1. Initialize any additional ePMP settings beyond what is set by hardware at startup, plus initialize the C runtime and hardware peripherals (e.g. pinmux, UART).
 2. Load the "manifest" for `ROM_EXT`, which includes the start and end address of `ROM_EXT` code, a cryptographic signature, a public key modulus, and "selector bits" for hardware information.
     * The manifest's modulus field identifies which of the stored [Silicon Creator keys][silicon-creator-keys] should be used for signature verification. If there is no matching stored key, or the matching key is not suitable for the device's lifecycle state, then the boot fails.
-    * There are two slots for `ROM_EXT` implementations. ROM will choose a primary boot slot and a secondary one for `ROM_EXT`. If the signature verification for the primary slot fails, then ROM will attempt to boot from the secondary slot.
-    * ROM determines the primary boot slot by choosing the `ROM_EXT` implementation with the higher security version. In case the security version is equal for both implementations, ROM will pick the one with the higher major/minor version tuple.
+    * There are two slots for `ROM_EXT` implementations; the ROM will first try the one with the newest security version. If the signature verification for that slot fails, the ROM will attempt to boot from the other slot.
 3. Read usage constraints from hardware according to the selector bits from the manifest.
     * The selector bits can choose all or part of the device ID, and/or information about the state of the device. Because the selected constraints are included in the digest, this means the signer of a `ROM_EXT` image can restrict their signature to only certain devices/states.
 4. Compute the SHA2-256 digest of the selected usage constraints concatenated with the contents of memory between the `ROM_EXT` start and end address given in the manifest.
@@ -200,6 +199,7 @@ However, these are the requirements that the manifest format is required to supp
 [key-manager]: ../../../../hw/ip/keymgr/README.md
 [manifest-format]: ../../../../sw/device/silicon_creator/rom_ext/doc/manifest.md
 [rom-epmp]: ../../../../sw/device/silicon_creator/rom/doc/memory_protection.md
+[otp-mmap]: ../../../../hw/ip/otp_ctrl/README.md#direct-access-memory-map
 [ot-flash]: #
 [ot-unlock-flow]: #
 [ownership-transfer]: ../ownership_transfer/README.md

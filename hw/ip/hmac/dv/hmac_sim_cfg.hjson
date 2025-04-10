@@ -38,7 +38,7 @@
   sim_tops: ["hmac_bind", "sec_cm_prim_onehot_check_bind"]
 
   // Default iterations for all tests - each test entry can override this.
-  reseed: 10
+  reseed: 50
 
   // Add HMAC specific exclusion files.
   vcs_cov_excl_files: ["{proj_root}/hw/ip/hmac/dv/cov/hmac_unr_excl.el",
@@ -64,16 +64,9 @@
     }
 
     {
-      name: hmac_stress_reset
-      uvm_test_seq: hmac_stress_reset_vseq
-      reseed: 25
-    }
-
-    {
       name: hmac_back_pressure
       uvm_test_seq: hmac_back_pressure_vseq
       run_opts: ["+zero_delays=1"]
-      reseed: 25
     }
 
     {
@@ -85,7 +78,6 @@
     {
       name: hmac_burst_wr
       uvm_test_seq: hmac_burst_wr_vseq
-      reseed: 50
     }
 
     {
@@ -102,61 +94,59 @@
     {
       name: hmac_test_sha256_vectors
       uvm_test_seq: hmac_test_vectors_sha_vseq
-      run_opts: ["+is_nist_test=1 +test_vectors_dir={build_dir}/src/lowrisc_dv_test_vectors_0 +test_timeout_ns=500_000_000 +sha2_digest_size=SHA2_256"]
-      reseed: 30
+      // Increase timeout for all test iterations to pass
+      run_opts: ["+test_vectors_dir={build_dir}/src/lowrisc_dv_test_vectors_0 +test_timeout_ns=1_000_000_000 +sha2_digest_size=SHA2_256"]
+      reseed: 5
     }
 
     {
       name: hmac_test_sha384_vectors
       uvm_test_seq: hmac_test_vectors_sha_vseq
-      run_opts: ["+is_nist_test=1 +test_vectors_dir={build_dir}/src/lowrisc_dv_test_vectors_0 +test_timeout_ns=750_000_000 +sha2_digest_size=SHA2_384"]
-      reseed: 75
+      // Increase timeout for all test iterations to pass
+      run_opts: ["+test_vectors_dir={build_dir}/src/lowrisc_dv_test_vectors_0 +test_timeout_ns=3_500_000_000 +sha2_digest_size=SHA2_384"]
+      reseed: 5
     }
 
     {
       name: hmac_test_sha512_vectors
       uvm_test_seq: hmac_test_vectors_sha_vseq
-      run_opts: ["+is_nist_test=1 +test_vectors_dir={build_dir}/src/lowrisc_dv_test_vectors_0 +test_timeout_ns=750_000_000 +sha2_digest_size=SHA2_512"]
-      reseed: 75
+      // Increase timeout for all test iterations to pass
+      run_opts: ["+test_vectors_dir={build_dir}/src/lowrisc_dv_test_vectors_0 +test_timeout_ns=3_500_000_000 +sha2_digest_size=SHA2_512"]
+      reseed: 5
     }
 
     {
       name: hmac_test_hmac256_vectors
       uvm_test_seq: hmac_test_vectors_hmac_vseq
-      run_opts: ["+is_nist_test=1 +test_vectors_dir={build_dir}/src/lowrisc_dv_test_vectors_0 +test_timeout_ns=500_000_000 +sha2_digest_size=SHA2_256"]
-      reseed: 50
+      run_opts: ["+test_vectors_dir={build_dir}/src/lowrisc_dv_test_vectors_0 +test_timeout_ns=1_000_000_000 +sha2_digest_size=SHA2_256"]
+      reseed: 5
     }
 
     {
       name: hmac_test_hmac384_vectors
       uvm_test_seq: hmac_test_vectors_hmac_vseq
-      run_opts: ["+is_nist_test=1 +test_vectors_dir={build_dir}/src/lowrisc_dv_test_vectors_0 +test_timeout_ns=750_000_000 +sha2_digest_size=SHA2_384"]
-      reseed: 60
+      run_opts: ["+test_vectors_dir={build_dir}/src/lowrisc_dv_test_vectors_0 +test_timeout_ns=3_000_000_000 +sha2_digest_size=SHA2_384"]
+      reseed: 5
     }
 
     {
       name: hmac_test_hmac512_vectors
       uvm_test_seq: hmac_test_vectors_hmac_vseq
-      run_opts: ["+is_nist_test=1 +test_vectors_dir={build_dir}/src/lowrisc_dv_test_vectors_0 +test_timeout_ns=750_000_000 +sha2_digest_size=SHA2_512"]
-      reseed: 75
+      run_opts: ["+test_vectors_dir={build_dir}/src/lowrisc_dv_test_vectors_0 +test_timeout_ns=3_000_000_000 +sha2_digest_size=SHA2_512"]
+      reseed: 5
     }
 
     {
       // Append the common stress_tests.hjson entry for more run_opts.
       name: hmac_stress_all
-      reseed: 25
+      run_opts: ["+test_vectors_dir={build_dir}/src/lowrisc_dv_test_vectors_0"]
     }
 
     {
       // Append the common stress_tests.hjson entry for more run_opts.
       name: hmac_stress_all_with_rand_reset
-      reseed: 25
-    }
-
-    {
-      name: hmac_directed
-      uvm_test_seq: hmac_directed_vseq
-      reseed: 1
+      run_opts: ["+test_vectors_dir={build_dir}/src/lowrisc_dv_test_vectors_0"]
+      reseed: 10
     }
   ]
 

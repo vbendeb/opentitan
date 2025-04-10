@@ -33,7 +33,6 @@ ${autogen_banner}
 #include "sw/device/lib/base/macros.h"
 #include "sw/device/lib/base/mmio.h"
 #include "sw/device/lib/dif/dif_base.h"
-#include "dt/dt_${ip.name_snake}.h" // Generated.
 
 #ifdef __cplusplus
 extern "C" {
@@ -44,16 +43,11 @@ extern "C" {
  *
  * This type should be treated as opaque by users.
  */
-typedef struct dif_${ip.name_snake} {
+typedef struct dif_${ip.name_snake} { 
   /**
    * The base address for the ${ip.name_snake} hardware registers.
    */
   mmio_region_t base_addr;
-  /**
-   * The instance, set to `kDt${ip.name_camel}Count` if not initialized
-   * through `dif_${ip.name_snake}_init_from_dt`.
-   */
-  dt_${ip.name_snake}_t dt;
 } dif_${ip.name_snake}_t;
 
 /**
@@ -64,43 +58,11 @@ typedef struct dif_${ip.name_snake} {
  * @param base_addr The MMIO base address of the ${ip.name_snake} peripheral.
  * @param[out] ${ip.name_snake} Out param for the initialized handle.
  * @return The result of the operation.
- *
- * DEPRECATED This function exists solely for the transition to
- * dt-based DIFs and will be removed in the future.
  */
 OT_WARN_UNUSED_RESULT
 dif_result_t dif_${ip.name_snake}_init(
   mmio_region_t base_addr,
   dif_${ip.name_snake}_t *${ip.name_snake});
-
-/**
- * Creates a new handle for a(n) ${ip.name_snake} peripheral.
- *
- * This function does not actuate the hardware.
- *
- * @param dt The devicetable description of the device.
- * @param[out] ${ip.name_snake} Out param for the initialized handle.
- * @return The result of the operation.
- */
-OT_WARN_UNUSED_RESULT
-dif_result_t dif_${ip.name_snake}_init_from_dt(
-  dt_${ip.name_snake}_t dt,
-  dif_${ip.name_snake}_t *${ip.name_snake});
-
-/**
- * Get the DT handle from this DIF.
- *
- * If this DIF was initialized by `dif_${ip.name_snake}_init_from_dt(dt, ..)`
- * then this function will return `dt`. Otherwise it will return an error.
- *
- * @param dt A ${ip.name_snake} handle.
- * @param[out] dt DT handle.
- * @return `kDifBadArg` if the DIF has no DT information, `kDifOk` otherwise.
- */
-OT_WARN_UNUSED_RESULT
-dif_result_t dif_${ip.name_snake}_get_dt(
-  const dif_${ip.name_snake}_t *${ip.name_snake},
-  dt_${ip.name_snake}_t *dt);
 
 % if ip.alerts:
   /**
@@ -130,19 +92,10 @@ dif_result_t dif_${ip.name_snake}_get_dt(
 % endif
 
 % if ip.irqs:
-  // DEPRECATED This typedef exists solely for the transition to
-  // dt-based interrupt numbers and will be removed in the future.
-  typedef dt_${ip.name_snake}_irq_t dif_${ip.name_snake}_irq_t;
-
   /**
    * A ${ip.name_snake} interrupt request type.
-   *
-   * DEPRECATED Use `dt_${ip.name_snake}_irq_t` instead.
-   * This enumeration exists solely for the transition to
-   * dt-based interrupt numbers and will be removed in the future.
-   *
-   * The following are defines to keep the types consistent with DT.
    */
+  typedef enum dif_${ip.name_snake}_irq {
   % for irq in ip.irqs:
     /**
      * ${irq.description}
@@ -150,13 +103,18 @@ dif_result_t dif_${ip.name_snake}_get_dt(
     ## This handles the GPIO IP case where there is a multi-bit interrupt.
     % if irq.width > 1:
       % for irq_idx in range(irq.width):
-#define kDif${ip.name_camel}Irq${irq.name_camel}${irq_idx} kDt${ip.name_camel}Irq${irq.name_camel}${irq_idx}
+        kDif${ip.name_camel}Irq${irq.name_camel}${irq_idx} = ${loop.index},
       % endfor
-    ## This handles all other cases.
+    ## This handles the RV Timer IP where there are different ENABLE/STATE/TEST
+    ## IRQ registers per hart.
+    % elif ip.name_snake == "rv_timer":
+      kDif${ip.name_camel}Irq${irq.name_camel} = ${loop.index % int(ip.parameters["N_TIMERS"].default)},
+    ## This handles all other IPs.
     % else:
-#define kDif${ip.name_camel}Irq${irq.name_camel} kDt${ip.name_camel}Irq${irq.name_camel}
+      kDif${ip.name_camel}Irq${irq.name_camel} = ${loop.index},
     % endif
   % endfor
+  } dif_${ip.name_snake}_irq_t;
 
   /**
    * A snapshot of the state of the interrupts for this IP.
@@ -177,7 +135,7 @@ dif_result_t dif_${ip.name_snake}_get_dt(
   OT_WARN_UNUSED_RESULT
   dif_result_t dif_${ip.name_snake}_irq_get_type(
     const dif_${ip.name_snake}_t *${ip.name_snake},
-    dif_${ip.name_snake}_irq_t,
+    dif_${ip.name_snake}_irq_t irq,
     dif_irq_type_t *type);
 
   /**
@@ -209,7 +167,7 @@ dif_result_t dif_${ip.name_snake}_get_dt(
   OT_WARN_UNUSED_RESULT
   dif_result_t dif_${ip.name_snake}_irq_is_pending(
     const dif_${ip.name_snake}_t *${ip.name_snake},
-    dif_${ip.name_snake}_irq_t,
+    dif_${ip.name_snake}_irq_t irq,
     bool *is_pending);
 
   /**
@@ -257,7 +215,7 @@ dif_result_t dif_${ip.name_snake}_get_dt(
   OT_WARN_UNUSED_RESULT
   dif_result_t dif_${ip.name_snake}_irq_acknowledge(
     const dif_${ip.name_snake}_t *${ip.name_snake},
-    dif_${ip.name_snake}_irq_t);
+    dif_${ip.name_snake}_irq_t irq);
 
   /**
    * Forces a particular interrupt, causing it to be serviced as if hardware had
@@ -271,7 +229,7 @@ dif_result_t dif_${ip.name_snake}_get_dt(
   OT_WARN_UNUSED_RESULT
   dif_result_t dif_${ip.name_snake}_irq_force(
     const dif_${ip.name_snake}_t *${ip.name_snake},
-    dif_${ip.name_snake}_irq_t,
+    dif_${ip.name_snake}_irq_t irq,
     const bool val);
 
 % if ip.name_snake != "aon_timer":
@@ -295,7 +253,7 @@ dif_result_t dif_${ip.name_snake}_get_dt(
   OT_WARN_UNUSED_RESULT
   dif_result_t dif_${ip.name_snake}_irq_get_enabled(
     const dif_${ip.name_snake}_t *${ip.name_snake},
-    dif_${ip.name_snake}_irq_t,
+    dif_${ip.name_snake}_irq_t irq,
     dif_toggle_t *state);
 
   /**
@@ -309,7 +267,7 @@ dif_result_t dif_${ip.name_snake}_get_dt(
   OT_WARN_UNUSED_RESULT
   dif_result_t dif_${ip.name_snake}_irq_set_enabled(
     const dif_${ip.name_snake}_t *${ip.name_snake},
-    dif_${ip.name_snake}_irq_t,
+    dif_${ip.name_snake}_irq_t irq,
     dif_toggle_t state);
 
   /**

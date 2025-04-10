@@ -84,9 +84,6 @@ static status_t trigger_hmac(uint8_t key_buf[], uint8_t mask_buf[],
 }
 
 status_t handle_hmac_pentest_init(ujson_t *uj) {
-  penetrationtest_cpuctrl_t uj_data;
-  TRY(ujson_deserialize_penetrationtest_cpuctrl_t(uj, &uj_data));
-
   // Setup trigger and enable peripherals needed for the test.
   pentest_select_trigger_type(kPentestTriggerTypeSw);
   // Enable the HMAC module and disable unused IP blocks to improve
@@ -97,17 +94,12 @@ status_t handle_hmac_pentest_init(ujson_t *uj) {
                    kPentestPeripheralEdn | kPentestPeripheralHmac);
 
   // Disable the instruction cache and dummy instructions for SCA.
-  penetrationtest_device_info_t uj_output;
-  TRY(pentest_configure_cpu(
-      uj_data.icache_disable, uj_data.dummy_instr_disable,
-      uj_data.enable_jittery_clock, uj_data.enable_sram_readback,
-      &uj_output.clock_jitter_locked, &uj_output.clock_jitter_en,
-      &uj_output.sram_main_readback_locked, &uj_output.sram_ret_readback_locked,
-      &uj_output.sram_main_readback_en, &uj_output.sram_ret_readback_en));
+  pentest_configure_cpu();
 
   // Read device ID and return to host.
+  penetrationtest_device_id_t uj_output;
   TRY(pentest_read_device_id(uj_output.device_id));
-  RESP_OK(ujson_serialize_penetrationtest_device_info_t, uj, &uj_output);
+  RESP_OK(ujson_serialize_penetrationtest_device_id_t, uj, &uj_output);
 
   return OK_STATUS();
 }

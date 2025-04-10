@@ -13,20 +13,18 @@ class rv_dm_halt_resume_whereto_vseq extends rv_dm_base_vseq;
     csr_wr(.ptr(tl_mem_ral.halted), .value(hartsel));
   endtask
 
-  // Check whether the debugger reports itself to be busy through the abstractcs register. Exit
-  // without the check if there is a system reset.
+  // Check whether the debugger reports itself to be busy through the abstractcs register
   task check_busy(bit exp_busy);
     abstractcs_t abstractcs;
     read_abstractcs(abstractcs);
-    if (cfg.clk_rst_vif.rst_n) `DV_CHECK_EQ(abstractcs.busy, exp_busy);
+    `DV_CHECK_EQ(abstractcs.busy, exp_busy);
   endtask
 
-  // Read a FLAGS register over TL-UL and check it matches the expected state. Exit without the
-  // check if there is a system reset.
+  // Read a FLAGS register over TL-UL and check it matches the expected state
   task check_flags(input bit exp_resume, input bit exp_go, input int unsigned hartsel);
     uvm_reg_data_t rdata;
     csr_rd(.ptr(tl_mem_ral.flags[hartsel]), .value(rdata));
-    if (cfg.clk_rst_vif.rst_n) `DV_CHECK_EQ(rdata, {exp_resume, exp_go})
+    `DV_CHECK_EQ(rdata, {exp_resume, exp_go})
   endtask
 
   // Read the WHERETO register over TL-UL and check it contains the expected instruction, which
@@ -35,8 +33,6 @@ class rv_dm_halt_resume_whereto_vseq extends rv_dm_base_vseq;
   // AbstractCmdBaseAddr or (as a shortcut) it might be stored at "ProgBufBaseAddr" (the start of
   // the program buffer). Here, we don't model which case we're in, so we just check that it points
   // to one of those addresses.
-  //
-  // Skip the check if there is a system reset.
   task check_whereto();
     // The address of the start of the program buffer is an implementation detail of the pulp debug
     // module: we've picked it out of the code to match, and the same for the offset to the start of
@@ -51,9 +47,6 @@ class rv_dm_halt_resume_whereto_vseq extends rv_dm_base_vseq;
 
     uvm_reg_data_t rdata;
     csr_rd(.ptr(tl_mem_ral.whereto), .value(rdata));
-
-    if (!cfg.clk_rst_vif.rst_n) return;
-
     `DV_CHECK(rdata inside {prog_buf_jal, abs_cmd_jal},
               $sformatf({"The whereto register reads as %0x, which is not either ",
                          "of the jumps we expected (%0x, %0x)"},
@@ -67,7 +60,7 @@ class rv_dm_halt_resume_whereto_vseq extends rv_dm_base_vseq;
     bit [3:0]       regno;
     bit             write, transfer;
 
-    regno = $urandom_range(0, 32'h3fff);
+    regno = $urandom_range(0, 16'h3fff);
 
     // We want to generate writes with or without the transfer flag. We also want to generate reads
     // (and occasionally set the transfer flag, even though it won't actually do anything)
@@ -96,7 +89,6 @@ class rv_dm_halt_resume_whereto_vseq extends rv_dm_base_vseq;
 
     // Send an abstract command over DMI (access a register)
     csr_wr(.ptr(jtag_dmi_ral.command), .value(access_register_cmd()));
-    if (!cfg.clk_rst_vif.rst_n) return;
 
     check_busy(1'b1);
 
@@ -106,7 +98,6 @@ class rv_dm_halt_resume_whereto_vseq extends rv_dm_base_vseq;
     // Write to the "going" address to tell the debug module the core is executing again. The actual
     // value that is written doesn't matter.
     csr_wr(.ptr(tl_mem_ral.going), .value(0));
-    if (!cfg.clk_rst_vif.rst_n) return;
 
     check_busy(1'b1);
 
@@ -115,7 +106,6 @@ class rv_dm_halt_resume_whereto_vseq extends rv_dm_base_vseq;
 
     // Write the expected value to HALTED. This should be the ID of the hart that is halting
     write_halted(hartsel);
-    if (!cfg.clk_rst_vif.rst_n) return;
 
     // Now the hart has responded to say that it's entering debug mode, the debug module shouldn't
     // think that it's busy any more.
@@ -125,7 +115,6 @@ class rv_dm_halt_resume_whereto_vseq extends rv_dm_base_vseq;
     // to halt and now want to ask the hart to resume.
     csr_wr(.ptr(jtag_dmi_ral.dmcontrol.haltreq), .value(0));
     csr_wr(.ptr(jtag_dmi_ral.dmcontrol.resumereq), .value(1));
-    if (!cfg.clk_rst_vif.rst_n) return;
 
     // Now we've told the debug module to ask the hart to resume, the debug module should say it's
     // busy until the hart responds to say that it is indeed resuming.
@@ -136,7 +125,6 @@ class rv_dm_halt_resume_whereto_vseq extends rv_dm_base_vseq;
 
     // Finally respond (as the hart) to tell the debug module that we are resuming.
     csr_wr(.ptr(tl_mem_ral.resuming), .value(hartsel));
-    if (!cfg.clk_rst_vif.rst_n) return;
 
     // Now that the hart has responded, the debug module should no longer be busy.
     check_busy(1'b0);

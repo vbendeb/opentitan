@@ -2,7 +2,7 @@
 # Licensed under the Apache License, Version 2.0, see LICENSE for details.
 # SPDX-License-Identifier: Apache-2.0
 
-load("@ot_python_deps//:requirements.bzl", "requirement")
+load("//third_party/python:requirements.bzl", "requirement")
 load("@rules_python//python:defs.bzl", "py_binary")
 
 package(default_visibility = ["//visibility:public"])
@@ -27,7 +27,6 @@ py_binary(
         "//util/design/lib:common",
         "//util/design/lib:otp_mem_map",
         "//util/design/lib:present",
-        "//util/topgen",
         requirement("pyfinite"),
     ],
 )
@@ -58,16 +57,6 @@ py_binary(
 )
 
 py_binary(
-    name = "gen-otp-mmap",
-    srcs = ["gen-otp-mmap.py"],
-    deps = [
-        "//util/design/lib:common",
-        "//util/design/lib:otp_mem_map",
-        requirement("hjson"),
-    ],
-)
-
-py_binary(
     name = "gen-otp-rot-auth-json",
     srcs = ["gen-otp-rot-auth-json.py"],
     imports = ["."],
@@ -80,16 +69,6 @@ py_binary(
 py_binary(
     name = "gen-otp-immutable-rom-ext-json",
     srcs = ["gen-otp-immutable-rom-ext-json.py"],
-    imports = ["."],
-    deps = [
-        "//util/design/lib:immutable_section_processor",
-        requirement("hjson"),
-    ],
-)
-
-py_binary(
-    name = "update-manifest-json",
-    srcs = ["update-manifest-json.py"],
     imports = ["."],
     deps = [
         "//util/design/lib:immutable_section_processor",

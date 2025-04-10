@@ -48,21 +48,11 @@ static bool dif_pinmux_get_sleep_status_bit(dif_pinmux_pad_kind_t kind,
   switch (kind) {
     case kDifPinmuxPadKindMio:
       num_pads = PINMUX_PARAM_N_MIO_PADS;
-      // Only platforms with few MIOs, there is a single register with no index.
-#ifdef PINMUX_MIO_PAD_SLEEP_STATUS_0_REG_OFFSET
       reg_base = PINMUX_MIO_PAD_SLEEP_STATUS_0_REG_OFFSET;
-#else
-      reg_base = PINMUX_MIO_PAD_SLEEP_STATUS_REG_OFFSET;
-#endif
       break;
     case kDifPinmuxPadKindDio:
       num_pads = PINMUX_PARAM_N_DIO_PADS;
-      // Only platforms with few DIOs, there is a single register with no index.
-#ifdef PINMUX_DIO_PAD_SLEEP_STATUS_0_REG_OFFSET
-      reg_base = PINMUX_DIO_PAD_SLEEP_STATUS_0_REG_OFFSET;
-#else
       reg_base = PINMUX_DIO_PAD_SLEEP_STATUS_REG_OFFSET;
-#endif
       break;
     default:
       return false;
@@ -203,28 +193,6 @@ dif_result_t dif_pinmux_output_select(const dif_pinmux_t *pinmux,
   return kDifOk;
 }
 
-dif_result_t dif_pinmux_mio_select_input(const dif_pinmux_t *pinmux,
-                                         dt_periph_io_t periph_io,
-                                         dt_pad_t pad) {
-  if (dt_pad_type(pad) != kDtPadTypeMio ||
-      dt_periph_io_type(periph_io) != kDtPeriphIoTypeMio) {
-    return kDifBadArg;
-  }
-  return dif_pinmux_input_select(
-      pinmux, dt_periph_io_mio_periph_input(periph_io), dt_pad_mio_insel(pad));
-}
-
-dif_result_t dif_pinmux_mio_select_output(const dif_pinmux_t *pinmux,
-                                          dt_pad_t pad,
-                                          dt_periph_io_t periph_io) {
-  if (dt_pad_type(pad) != kDtPadTypeMio ||
-      dt_periph_io_type(periph_io) != kDtPeriphIoTypeMio) {
-    return kDifBadArg;
-  }
-  return dif_pinmux_output_select(pinmux, dt_pad_mio_out(pad),
-                                  dt_periph_io_mio_outsel(periph_io));
-}
-
 static dif_pinmux_pad_attr_t dif_pinmux_reg_to_pad_attr(uint32_t reg_value) {
   dif_pinmux_pad_attr_t pad_attrs = {0};
   pad_attrs.slew_rate = (dif_pinmux_pad_slew_rate_t)bitfield_field32_read(
@@ -348,38 +316,6 @@ dif_result_t dif_pinmux_pad_write_attrs(const dif_pinmux_t *pinmux,
   return kDifOk;
 }
 
-dif_result_t dif_pinmux_pad_from_dt_pad(dt_pad_t pad,
-                                        dif_pinmux_index_t *index_out,
-                                        dif_pinmux_pad_kind_t *type_out) {
-  if (index_out == NULL || type_out == NULL) {
-    return kDifBadArg;
-  }
-  switch (dt_pad_type(pad)) {
-    case kDtPadTypeMio:
-      *type_out = kDifPinmuxPadKindMio;
-      *index_out = dt_pad_mio_pad_index(pad);
-      return kDifOk;
-    case kDtPadTypeDio:
-      *type_out = kDifPinmuxPadKindDio;
-      *index_out = dt_pad_dio_pad_index(pad);
-      return kDifOk;
-    default:
-      return kDifError;
-  }
-}
-
-dif_result_t dif_pinmux_pad_write_attrs_dt(const dif_pinmux_t *pinmux,
-                                           dt_pad_t pad,
-                                           dif_pinmux_pad_attr_t attrs_in,
-                                           dif_pinmux_pad_attr_t *attrs_out) {
-  dif_pinmux_index_t index;
-  dif_pinmux_pad_kind_t type;
-  DIF_RETURN_IF_ERROR(dif_pinmux_pad_from_dt_pad(pad, &index, &type));
-  DIF_RETURN_IF_ERROR(
-      dif_pinmux_pad_write_attrs(pinmux, index, type, attrs_in, attrs_out));
-  return kDifOk;
-}
-
 dif_result_t dif_pinmux_pad_get_attrs(const dif_pinmux_t *pinmux,
                                       dif_pinmux_index_t pad,
                                       dif_pinmux_pad_kind_t type,
@@ -395,16 +331,6 @@ dif_result_t dif_pinmux_pad_get_attrs(const dif_pinmux_t *pinmux,
   }
   uint32_t reg_value = mmio_region_read32(pinmux->base_addr, reg_offset);
   *attrs = dif_pinmux_reg_to_pad_attr(reg_value);
-  return kDifOk;
-}
-
-dif_result_t dif_pinmux_pad_get_attrs_dt(const dif_pinmux_t *pinmux,
-                                         dt_pad_t pad,
-                                         dif_pinmux_pad_attr_t *attrs) {
-  dif_pinmux_index_t index;
-  dif_pinmux_pad_kind_t type;
-  DIF_RETURN_IF_ERROR(dif_pinmux_pad_from_dt_pad(pad, &index, &type));
-  DIF_RETURN_IF_ERROR(dif_pinmux_pad_get_attrs(pinmux, index, type, attrs));
   return kDifOk;
 }
 

@@ -8,7 +8,7 @@ use std::cell::Cell;
 use std::mem::size_of;
 use std::rc::Rc;
 use std::time::Duration;
-use zerocopy::{FromBytes, Immutable, IntoBytes};
+use zerocopy::{AsBytes, FromBytes, FromZeroes};
 
 use crate::io::eeprom;
 use crate::io::gpio::GpioPin;
@@ -24,7 +24,6 @@ pub struct HyperdebugSpiTarget {
     target_enable_cmd: u8,
     target_idx: u8,
     feature_bitmap: u16,
-    supports_tpm_poll: bool,
     max_sizes: MaxSizes,
     cs_asserted_count: Cell<u32>,
 }
@@ -74,8 +73,6 @@ const EEPROM_FLAGS_WIDTH_4WIRE: u32 = 0x00000100;
 const EEPROM_FLAGS_WIDTH_8WIRE: u32 = 0x00000180;
 const EEPROM_FLAGS_DTR: u32 = 0x00000200;
 const EEPROM_FLAGS_DUMMY_CYCLES_POS: u8 = 10;
-const EEPROM_FLAGS_GSC_READY: u32 = 0x04000000;
-const EEPROM_FLAGS_TPM: u32 = 0x08000000;
 const EEPROM_FLAGS_WRITE_ENABLE: u32 = 0x10000000;
 const EEPROM_FLAGS_POLL_BUSY: u32 = 0x20000000;
 const EEPROM_FLAGS_DOUBLE_BUFFER: u32 = 0x40000000;
@@ -114,7 +111,7 @@ fn status_code_description(status_code: u16) -> String {
     .to_string()
 }
 
-#[derive(Immutable, IntoBytes, FromBytes, Debug, Default)]
+#[derive(AsBytes, FromBytes, FromZeroes, Debug, Default)]
 #[repr(C)]
 struct RspUsbSpiConfig {
     packet_id: u16,
@@ -123,7 +120,7 @@ struct RspUsbSpiConfig {
     feature_bitmap: u16,
 }
 
-#[derive(Immutable, IntoBytes, FromBytes, Debug)]
+#[derive(AsBytes, FromBytes, FromZeroes, Debug)]
 #[repr(C)]
 struct CmdTransferStart {
     packet_id: u16,
@@ -142,7 +139,7 @@ impl CmdTransferStart {
     }
 }
 
-#[derive(Immutable, IntoBytes, FromBytes, Debug)]
+#[derive(AsBytes, FromBytes, FromZeroes, Debug)]
 #[repr(C)]
 struct CmdEepromTransferStart {
     packet_id: u16,
@@ -161,7 +158,7 @@ impl CmdEepromTransferStart {
     }
 }
 
-#[derive(Immutable, IntoBytes, FromBytes, Debug)]
+#[derive(AsBytes, FromBytes, FromZeroes, Debug)]
 #[repr(C)]
 struct CmdTransferContinue {
     packet_id: u16,
@@ -178,7 +175,7 @@ impl CmdTransferContinue {
     }
 }
 
-#[derive(Immutable, IntoBytes, FromBytes, Debug)]
+#[derive(AsBytes, FromBytes, FromZeroes, Debug)]
 #[repr(C)]
 struct RspTransferStart {
     packet_id: u16,
@@ -195,7 +192,7 @@ impl RspTransferStart {
     }
 }
 
-#[derive(Immutable, IntoBytes, FromBytes, Debug)]
+#[derive(AsBytes, FromBytes, FromZeroes, Debug)]
 #[repr(C)]
 struct RspTransferContinue {
     packet_id: u16,
@@ -212,7 +209,7 @@ impl RspTransferContinue {
     }
 }
 
-#[derive(Immutable, IntoBytes, FromBytes, Debug)]
+#[derive(AsBytes, FromBytes, FromZeroes, Debug)]
 #[repr(C)]
 struct CmdChipSelect {
     packet_id: u16,
@@ -227,7 +224,7 @@ impl CmdChipSelect {
     }
 }
 
-#[derive(Immutable, IntoBytes, FromBytes, Debug, Default)]
+#[derive(AsBytes, FromBytes, FromZeroes, Debug, Default)]
 #[repr(C)]
 struct RspChipSelect {
     packet_id: u16,
@@ -254,9 +251,8 @@ impl HyperdebugSpiTarget {
         spi_interface: &BulkInterface,
         enable_cmd: u8,
         idx: u8,
-        supports_tpm_poll: bool,
     ) -> Result<Self> {
-        let mut usb_handle = inner.usb_device.borrow_mut();
+        let usb_handle = inner.usb_device.borrow_mut();
 
         // Tell HyperDebug to enable SPI bridge, and to address particular SPI device.
         inner.selected_spi.set(idx);
@@ -277,7 +273,7 @@ impl HyperdebugSpiTarget {
             &USB_SPI_PKT_ID_CMD_GET_USB_SPI_CONFIG.to_le_bytes(),
         )?;
         let mut resp: RspUsbSpiConfig = Default::default();
-        let rc = usb_handle.read_bulk(spi_interface.in_endpoint, resp.as_mut_bytes())?;
+        let rc = usb_handle.read_bulk(spi_interface.in_endpoint, resp.as_bytes_mut())?;
         ensure!(
             rc == size_of::<RspUsbSpiConfig>(),
             TransportError::CommunicationError(
@@ -297,7 +293,6 @@ impl HyperdebugSpiTarget {
             target_enable_cmd: enable_cmd,
             target_idx: idx,
             feature_bitmap: resp.feature_bitmap,
-            supports_tpm_poll,
             max_sizes: MaxSizes {
                 read: resp.max_read_chunk as usize,
                 write: resp.max_write_chunk as usize,
@@ -342,56 +337,10 @@ impl HyperdebugSpiTarget {
         Ok(())
     }
 
-    /// Preform TPM transactions, that is, send four bytes of header/address, then repeatedly poll
-    /// for ready statys from the device, before sending/receiving the data bytes.  Optionally
-    /// wait for falling edge on "GSC ready" pin, at appropriate time during tracsation.
-    fn tpm_transmit(&self, wbuf: &[u8], rbuf_len: usize, await_gsc_ready: bool) -> Result<()> {
-        const TPM_HEADER_SIZE: usize = 4;
-        let mut req = CmdEepromTransferStart::new();
-        if rbuf_len == 0 {
-            req.flags |= EEPROM_FLAGS_WRITE;
-            req.count = (wbuf.len() - TPM_HEADER_SIZE) as u16;
-            ensure!(
-                wbuf.len() > TPM_HEADER_SIZE,
-                SpiError::InvalidDataLength(wbuf.len())
-            );
-        } else {
-            req.count = rbuf_len as u16;
-            ensure!(
-                wbuf.len() == TPM_HEADER_SIZE,
-                SpiError::InvalidDataLength(wbuf.len())
-            );
-        }
-
-        req.flags |= (TPM_HEADER_SIZE as u32) << EEPROM_FLAGS_ADDR_LEN_POS;
-        req.flags |= EEPROM_FLAGS_TPM;
-        if await_gsc_ready {
-            req.flags |= EEPROM_FLAGS_GSC_READY;
-        }
-
-        let data_start_offset = 0;
-        // Optional write data bytes
-        let databytes = std::cmp::min(USB_MAX_SIZE - 8 - data_start_offset, wbuf.len());
-        req.data[data_start_offset..data_start_offset + databytes]
-            .clone_from_slice(&wbuf[0..databytes]);
-        self.usb_write_bulk(&req.as_bytes()[0..8 + data_start_offset + databytes])?;
-        let mut index = databytes;
-
-        while index < wbuf.len() {
-            let mut req = CmdTransferContinue::new();
-            req.data_index = index as u16;
-            let databytes = std::cmp::min(USB_MAX_SIZE - 4, wbuf.len() - index);
-            req.data[0..databytes].clone_from_slice(&wbuf[index..index + databytes]);
-            self.usb_write_bulk(&req.as_bytes()[0..4 + databytes])?;
-            index += databytes;
-        }
-        Ok(())
-    }
-
     /// Receive data for a single SPI operation, using one or more USB packets.
     fn receive(&self, rbuf: &mut [u8]) -> Result<()> {
         let mut resp = RspTransferStart::new();
-        let bytecount = self.usb_read_bulk_timeout(resp.as_mut_bytes(), TRANSFER_START_TIMEOUT)?;
+        let bytecount = self.usb_read_bulk_timeout(resp.as_bytes_mut(), TRANSFER_START_TIMEOUT)?;
         ensure!(
             bytecount >= 4,
             TransportError::CommunicationError("Short reponse to TRANSFER_START".to_string())
@@ -415,7 +364,7 @@ impl HyperdebugSpiTarget {
         let mut index = databytes;
         while index < rbuf.len() {
             let mut resp = RspTransferContinue::new();
-            let bytecount = self.usb_read_bulk(resp.as_mut_bytes())?;
+            let bytecount = self.usb_read_bulk(resp.as_bytes_mut())?;
             ensure!(
                 bytecount > 4,
                 TransportError::CommunicationError(
@@ -444,7 +393,7 @@ impl HyperdebugSpiTarget {
 
     fn receive_first_streaming(&self) -> Result<()> {
         let mut resp = RspTransferStart::new();
-        let bytecount = self.usb_read_bulk(resp.as_mut_bytes())?;
+        let bytecount = self.usb_read_bulk(resp.as_bytes_mut())?;
         ensure!(
             bytecount >= 4,
             TransportError::CommunicationError("Short reponse to TRANSFER_START".to_string())
@@ -657,7 +606,7 @@ impl HyperdebugSpiTarget {
         self.usb_write_bulk(req.as_bytes())?;
 
         let mut resp = RspChipSelect::new();
-        let bytecount = self.usb_read_bulk(resp.as_mut_bytes())?;
+        let bytecount = self.usb_read_bulk(resp.as_bytes_mut())?;
         ensure!(
             bytecount >= 4,
             TransportError::CommunicationError("Unrecognized reponse to CHIP_SELECT".to_string())
@@ -735,17 +684,12 @@ impl Target for HyperdebugSpiTarget {
         Ok((self.feature_bitmap & FEATURE_BIT_FULL_DUPLEX) != 0)
     }
 
-    fn supports_tpm_poll(&self) -> Result<bool> {
-        Ok(self.supports_tpm_poll)
-    }
-
     fn set_pins(
         &self,
         serial_clock: Option<&Rc<dyn GpioPin>>,
         host_out_device_in: Option<&Rc<dyn GpioPin>>,
         host_in_device_out: Option<&Rc<dyn GpioPin>>,
         chip_select: Option<&Rc<dyn GpioPin>>,
-        gsc_ready: Option<&Rc<dyn GpioPin>>,
     ) -> Result<()> {
         if serial_clock.is_some() || host_out_device_in.is_some() || host_in_device_out.is_some() {
             bail!(SpiError::InvalidPin);
@@ -753,13 +697,6 @@ impl Target for HyperdebugSpiTarget {
         if let Some(pin) = chip_select {
             self.inner.cmd_no_output(&format!(
                 "spi set cs {} {}",
-                &self.target_idx,
-                pin.get_internal_pin_name().ok_or(SpiError::InvalidPin)?
-            ))?;
-        }
-        if let Some(pin) = gsc_ready {
-            self.inner.cmd_no_output(&format!(
-                "spi set ready {} {}",
                 &self.target_idx,
                 pin.get_internal_pin_name().ok_or(SpiError::InvalidPin)?
             ))?;
@@ -775,14 +712,6 @@ impl Target for HyperdebugSpiTarget {
 
     fn get_max_transfer_sizes(&self) -> Result<MaxSizes> {
         Ok(self.max_sizes)
-    }
-
-    fn get_flashrom_programmer(&self) -> Result<String> {
-        Ok(format!(
-            "raiden_debug_spi:serial={},target={}",
-            self.inner.usb_device.borrow().get_serial_number(),
-            self.target_idx
-        ))
     }
 
     fn run_transaction(&self, transaction: &mut [Transfer]) -> Result<()> {
@@ -809,36 +738,6 @@ impl Target for HyperdebugSpiTarget {
                 self.receive(rbuf)?;
                 return Ok(());
             }
-            [Transfer::Write(wbuf), Transfer::TpmPoll, Transfer::Read(rbuf), Transfer::GscReady] => {
-                // Hyperdebug can do SPI TPM transaction as a single USB
-                // request/reply.
-                ensure!(
-                    wbuf.len() <= self.max_sizes.write,
-                    SpiError::InvalidDataLength(wbuf.len())
-                );
-                ensure!(
-                    rbuf.len() <= self.max_sizes.read,
-                    SpiError::InvalidDataLength(rbuf.len())
-                );
-                self.tpm_transmit(wbuf, rbuf.len(), true)?;
-                self.receive(rbuf)?;
-                return Ok(());
-            }
-            [Transfer::Write(wbuf), Transfer::TpmPoll, Transfer::Read(rbuf)] => {
-                // Hyperdebug can do SPI TPM transaction as a single USB
-                // request/reply.
-                ensure!(
-                    wbuf.len() <= self.max_sizes.write,
-                    SpiError::InvalidDataLength(wbuf.len())
-                );
-                ensure!(
-                    rbuf.len() <= self.max_sizes.read,
-                    SpiError::InvalidDataLength(rbuf.len())
-                );
-                self.tpm_transmit(wbuf, rbuf.len(), false)?;
-                self.receive(rbuf)?;
-                return Ok(());
-            }
             [Transfer::Write(wbuf)] => {
                 ensure!(
                     wbuf.len() <= self.max_sizes.write,
@@ -857,35 +756,6 @@ impl Target for HyperdebugSpiTarget {
                     self.receive(&mut [])?;
                     return Ok(());
                 }
-            }
-            [Transfer::Write(wbuf1), Transfer::TpmPoll, Transfer::Write(wbuf2), Transfer::GscReady] =>
-            {
-                // Hyperdebug can do SPI TPM transaction as a single USB
-                // request/reply.
-                ensure!(
-                    wbuf1.len() + wbuf2.len() <= self.max_sizes.write,
-                    SpiError::InvalidDataLength(wbuf1.len() + wbuf2.len())
-                );
-                let mut combined_buf = vec![0u8; wbuf1.len() + wbuf2.len()];
-                combined_buf[..wbuf1.len()].clone_from_slice(wbuf1);
-                combined_buf[wbuf1.len()..].clone_from_slice(wbuf2);
-                self.tpm_transmit(&combined_buf, 0, true)?;
-                self.receive(&mut [])?;
-                return Ok(());
-            }
-            [Transfer::Write(wbuf1), Transfer::TpmPoll, Transfer::Write(wbuf2)] => {
-                // Hyperdebug can do SPI TPM transaction as a single USB
-                // request/reply.
-                ensure!(
-                    wbuf1.len() + wbuf2.len() <= self.max_sizes.write,
-                    SpiError::InvalidDataLength(wbuf1.len() + wbuf2.len())
-                );
-                let mut combined_buf = vec![0u8; wbuf1.len() + wbuf2.len()];
-                combined_buf[..wbuf1.len()].clone_from_slice(wbuf1);
-                combined_buf[wbuf1.len()..].clone_from_slice(wbuf2);
-                self.tpm_transmit(&combined_buf, 0, false)?;
-                self.receive(&mut [])?;
-                return Ok(());
             }
             [Transfer::Read(rbuf)] => {
                 ensure!(
@@ -954,8 +824,6 @@ impl Target for HyperdebugSpiTarget {
                     self.transmit(wbuf, FULL_DUPLEX)?;
                     self.receive(rbuf)?;
                 }
-                [Transfer::TpmPoll, ..] => bail!(TransportError::UnsupportedOperation),
-                [Transfer::GscReady, ..] => bail!(TransportError::UnsupportedOperation),
                 [] => (),
             }
             idx += 1;
@@ -1004,7 +872,7 @@ impl Target for HyperdebugSpiTarget {
                         self.eeprom_transmit(None, cmd, &[], &mut [], false, stream_state)?;
                     transactions = rest;
                 }
-                [eeprom::Transaction::Read(cmd, rbuf), rest @ ..] => {
+                [eeprom::Transaction::Read(cmd, ref mut rbuf), rest @ ..] => {
                     stream_state =
                         self.eeprom_transmit(None, cmd, &[], rbuf, false, stream_state)?;
                     transactions = rest;

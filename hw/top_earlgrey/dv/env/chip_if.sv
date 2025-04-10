@@ -585,8 +585,7 @@ interface chip_if;
                   .clk  (`CLKMGR_HIER.clocks_o.clk_aon_powerup),
                   .rst_n(`RSTMGR_HIER.resets_o.rst_lc_aon_n[0]),
 `endif
-                  .start_cntr (`PWM_HIER.u_pwm_core.clr_phase_cntr),
-                  .pwm        (mios[AssignedPwmIos[i]]));
+                  .pwm  (mios[AssignedPwmIos[i]]));
 
     initial begin
       uvm_config_db#(virtual pwm_if)::set(null, $sformatf("*.env.m_pwm_monitor%0d*", i), "vif",
@@ -667,7 +666,7 @@ interface chip_if;
 `ifdef GATE_LEVEL
   wire lc_ready = !`LC_CTRL_HIER.u_lc_ctrl_fsm.idle_o_BAR;
 `else
-  wire lc_ready = `LC_CTRL_HIER.u_reg_regs.u_status_ready.qs;
+  wire lc_ready = `LC_CTRL_HIER.u_reg.u_status_ready.qs;
 `endif
 
   wire pwrmgr_low_power = `PWRMGR_HIER.low_power_o;
@@ -687,8 +686,8 @@ interface chip_if;
 
   wire flash_core1_host_req = 0;
 `else
-  wire rom_ctrl_done = `PWRMGR_HIER.rom_ctrl_i[0].done == prim_mubi_pkg::MuBi4True;
-  wire rom_ctrl_good = `PWRMGR_HIER.rom_ctrl_i[0].good == prim_mubi_pkg::MuBi4True;
+  wire rom_ctrl_done = `PWRMGR_HIER.rom_ctrl_i.done == prim_mubi_pkg::MuBi4True;
+  wire rom_ctrl_good = `PWRMGR_HIER.rom_ctrl_i.good == prim_mubi_pkg::MuBi4True;
 
   wire rv_core_ibex_icache_otp_key_req = `RV_CORE_IBEX_HIER.icache_otp_key_o.req;
   wire rv_core_ibex_icache_otp_key_ack = `RV_CORE_IBEX_HIER.icache_otp_key_i.ack;

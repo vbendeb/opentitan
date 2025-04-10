@@ -7,10 +7,7 @@
 
 module aon_timer import aon_timer_reg_pkg::*;
 #(
-  parameter logic [NumAlerts-1:0]           AlertAsyncOn              = {NumAlerts{1'b1}},
-  parameter bit                             EnableRacl                = 1'b0,
-  parameter bit                             RaclErrorRsp              = EnableRacl,
-  parameter top_racl_pkg::racl_policy_sel_t RaclPolicySelVec[NumRegs] = '{NumRegs{0}}
+  parameter logic [NumAlerts-1:0] AlertAsyncOn = {NumAlerts{1'b1}}
 ) (
   input  logic                clk_i,
   input  logic                clk_aon_i,
@@ -24,10 +21,6 @@ module aon_timer import aon_timer_reg_pkg::*;
   // Alerts
   input  prim_alert_pkg::alert_rx_t [NumAlerts-1:0] alert_rx_i,
   output prim_alert_pkg::alert_tx_t [NumAlerts-1:0] alert_tx_o,
-
-  // RACL interface
-  input  top_racl_pkg::racl_policy_vec_t racl_policies_i,
-  output top_racl_pkg::racl_error_log_t  racl_error_o,
 
   // clk_i domain
   input  lc_ctrl_pkg::lc_tx_t lc_escalate_en_i,
@@ -93,11 +86,7 @@ module aon_timer import aon_timer_reg_pkg::*;
   assign hw2reg.wdog_count.d  = aon_wdog_count_wr_data;
 
   // registers instantiation
-  aon_timer_reg_top #(
-    .EnableRacl(EnableRacl),
-    .RaclErrorRsp(RaclErrorRsp),
-    .RaclPolicySelVec(RaclPolicySelVec)
-  ) u_reg (
+  aon_timer_reg_top u_reg (
     .clk_i,
     .rst_ni,
     .clk_aon_i,
@@ -108,9 +97,6 @@ module aon_timer import aon_timer_reg_pkg::*;
 
     .reg2hw,
     .hw2reg,
-
-    .racl_policies_i,
-    .racl_error_o,
 
     // SEC_CM: BUS.INTEGRITY
     .intg_err_o (alerts[0])
@@ -212,16 +198,8 @@ module aon_timer import aon_timer_reg_pkg::*;
   );
 
   // Registers to interrupt
-  assign intr_test_qe           = reg2hw.intr_test.wkup_timer_expired.qe;
-
-  // The fields of a register all have the same value for their qe signals, so we just pick one of
-  // them. This assertion checks that we don't miss writes if the register top changes and the
-  // unused_extra_qe signal avoids a lint error (because the lint tool doesn't expand the assertion)
-  `ASSERT(IntrTestFieldsQeMatch_A,
-          reg2hw.intr_test.wkup_timer_expired.qe == reg2hw.intr_test.wdog_timer_bark.qe)
-  logic unused_extra_qe;
-  assign unused_extra_qe = reg2hw.intr_test.wdog_timer_bark.qe;
-
+  assign intr_test_qe           = reg2hw.intr_test.wkup_timer_expired.qe |
+                                  reg2hw.intr_test.wdog_timer_bark.qe;
   assign intr_test_q [AON_WKUP] = reg2hw.intr_test.wkup_timer_expired.q;
   assign intr_state_q[AON_WKUP] = reg2hw.intr_state.wkup_timer_expired.q;
   assign intr_test_q [AON_WDOG] = reg2hw.intr_test.wdog_timer_bark.q;
@@ -282,7 +260,6 @@ module aon_timer import aon_timer_reg_pkg::*;
   `ASSERT_KNOWN(AlertsKnown_A, alert_tx_o)
   `ASSERT_KNOWN(IntrWkupKnown_A, intr_wkup_timer_expired_o)
   `ASSERT_KNOWN(IntrWdogKnown_A, intr_wdog_timer_bark_o)
-  `ASSERT_KNOWN(RaclErrorKnown_A, racl_error_o.valid)
   // clk_aon_i domain
   `ASSERT_KNOWN(WkupReqKnown_A, wkup_req_o, clk_aon_i, !rst_aon_ni)
   `ASSERT_KNOWN(RstReqKnown_A, aon_timer_rst_req_o, clk_aon_i, !rst_aon_ni)

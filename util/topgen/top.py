@@ -1,9 +1,10 @@
 # Copyright lowRISC contributors (OpenTitan project).
 # Licensed under the Apache License, Version 2.0, see LICENSE for details.
 # SPDX-License-Identifier: Apache-2.0
+
 '''Code representing the entire chip for reggen'''
 
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 
 from reggen.ip_block import IpBlock
 from reggen.params import ReggenParams
@@ -24,10 +25,13 @@ class Top:
 
     '''
 
-    def __init__(self, name: str, regwidth: int, addr_spaces: Set[str],
-                 blocks: Dict[str, IpBlock], instances: Dict[str, str],
-                 if_addrs: Dict[Tuple[str, Optional[str]], Dict[str, int]],
-                 windows: List[Window], attrs: Dict[str, str]):
+    def __init__(self,
+                 regwidth: int,
+                 blocks: Dict[str, IpBlock],
+                 instances: Dict[str, str],
+                 if_addrs: Dict[Tuple[str, Optional[str]], int],
+                 windows: List[Window],
+                 attrs: Dict[str, str]):
         '''Class initializer.
 
         regwidth is the width of the registers (which must match for all the
@@ -51,9 +55,7 @@ class Top:
 
         '''
 
-        self.name = name
         self.regwidth = regwidth
-        self.addr_spaces = addr_spaces
         self.blocks = blocks
         self.instances = instances
         self.if_addrs = if_addrs
@@ -64,10 +66,9 @@ class Top:
         # Generate one list of base addresses and objects (with each object
         # either a block name and interface name or a window). While we're at
         # it, construct inst_to_block_name and if_addrs.
-        merged = [
-        ]  # type: List[Tuple[Dict[str, int], Union[_IFName, Window]]]
-        for full_if_name, addrs in if_addrs.items():
-            merged.append((addrs, full_if_name))
+        merged = []  # type: List[Tuple[int, Union[_IFName, Window]]]
+        for full_if_name, addr in if_addrs.items():
+            merged.append((addr, full_if_name))
 
             inst_name, if_name = full_if_name
 
@@ -91,39 +92,31 @@ class Top:
         # their interfaces. The entries are added into the dict in the same
         # order, so an iteration over items() will give blocks ordered by their
         # first occurrence in the address map.
-        # One such dictionary per address space.
-        self.block_instances: Dict[str, List[str]] = {}
+        self.block_instances = {}  # type: Dict[str, List[str]]
 
-        for asid in self.addr_spaces:
-            self.block_instances[asid]: Dict[str, List[str]] = {}
-            # Walk the merged list in order of increasing base address. Check for
-            # overlaps and construct block_instances.
-            offset = 0
-            extracted = [(x[0][asid], x[1]) for x in merged if asid in x[0]]
-            for base_addr, item in sorted(extracted, key=lambda pr: pr[0]):
-                # Make sure that this item doesn't overlap with the previous one
-                assert offset <= base_addr, item
+        # Walk the merged list in order of increasing base address. Check for
+        # overlaps and construct block_instances.
+        offset = 0
+        for base_addr, item in sorted(merged, key=lambda pr: pr[0]):
+            # Make sure that this item doesn't overlap with the previous one
+            assert offset <= base_addr, item
 
-                if isinstance(item, Window):
-                    addrsep = (regwidth + 7) // 8
-                    offset = item.next_offset(addrsep)
-                    continue
+            if isinstance(item, Window):
+                addrsep = (regwidth + 7) // 8
+                offset = item.next_offset(addrsep)
+                continue
 
-                inst_name, if_name = item
-                block_name = instances[inst_name]
-                block = blocks[block_name]
+            inst_name, if_name = item
+            block_name = instances[inst_name]
+            block = blocks[block_name]
 
-                lst = self.block_instances[asid].setdefault(block_name, [])
-                if inst_name not in lst:
-                    lst.append(inst_name)
+            lst = self.block_instances.setdefault(block_name, [])
+            if inst_name not in lst:
+                lst.append(inst_name)
 
-                # This should be guaranteed by the fact that we've already checked
-                # the existence of a device interface.
-                assert if_name in block.reg_blocks
-                reg_block = block.reg_blocks[if_name]
+            # This should be guaranteed by the fact that we've already checked
+            # the existence of a device interface.
+            assert if_name in block.reg_blocks
+            reg_block = block.reg_blocks[if_name]
 
-                offset = base_addr + reg_block.offset
-
-    def get_blocks_in_addr_space(self, addr_space: str) -> Dict[str, IpBlock]:
-        ret = {}
-        return ret
+            offset = base_addr + reg_block.offset

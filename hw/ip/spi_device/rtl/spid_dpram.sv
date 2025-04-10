@@ -45,13 +45,8 @@ module spid_dpram
   output logic [SramDw-1:0]  spi_rdata_o,
   output logic [1:0]         spi_rerror_o,
 
-  // When using a dual port RAM primitive only this RAM config port is used
-  input  ram_2p_cfg_t        cfg_sys2spi_i,
-  output ram_2p_cfg_rsp_t    cfg_rsp_sys2spi_o,
-  // When using a 1R1W RAM primitive, both RAM config ports are used
-  input  ram_2p_cfg_t        cfg_spi2sys_i,
-  output ram_2p_cfg_rsp_t    cfg_rsp_spi2sys_o
-);
+  input ram_2p_cfg_t         cfg_i
+  );
 
   // SYS Wr, SPI Rd is for eFlash, Mailbox, and SFDP
   localparam sram_addr_t     Sys2SpiOffset   = SramEgressIdx;
@@ -163,8 +158,7 @@ module spid_dpram
       .b_rdata_o  (spi_rdata_o),
       .b_rerror_o (spi_rerror_o),
 
-      .cfg_i      (cfg_sys2spi_i),
-      .cfg_rsp_o  (cfg_rsp_sys2spi_o)
+      .cfg_i
     );
 
     logic sys2spi_unused;
@@ -180,10 +174,8 @@ module spid_dpram
       spi2sys_wr_req,
       spi2sys_wr_addr,
       spi2sys_rd_req,
-      spi2sys_rd_addr,
-      cfg_spi2sys_i
+      spi2sys_rd_addr
     };
-    assign cfg_rsp_spi2sys_o = '0;
   end else if (SramType == SramType1r1w) begin : gen_ram1r1w
     prim_ram_1r1w_async_adv #(
       .Depth                     (Sys2SpiDepth),
@@ -210,8 +202,7 @@ module spid_dpram
       .b_rvalid_o                (spi_rvalid_o),
       .b_rerror_o                (spi_rerror_o),
 
-      .cfg_i                     (cfg_sys2spi_i),
-      .cfg_rsp_o                 (cfg_rsp_sys2spi_o)
+      .cfg_i
     );
 
     prim_ram_1r1w_async_adv #(
@@ -240,8 +231,7 @@ module spid_dpram
       .b_rvalid_o                (sys_rvalid_o),
       .b_rerror_o                (sys_rerror_o),
 
-      .cfg_i                     (cfg_spi2sys_i),
-      .cfg_rsp_o                 (cfg_rsp_spi2sys_o)
+      .cfg_i
     );
   end
 

@@ -5,7 +5,6 @@
 """Rules for assembling Tock binaries.
 """
 
-load("@rules_cc//cc:action_names.bzl", "OBJ_COPY_ACTION_NAME")
 load("@rules_cc//cc:find_cc_toolchain.bzl", "find_cc_toolchain")
 load(
     "//rules:rv.bzl",
@@ -99,16 +98,6 @@ opt_mode = transition(
 
 def _tock_image_impl(ctx):
     cc_toolchain = find_cc_toolchain(ctx)
-    feature_config = cc_common.configure_features(
-        ctx = ctx,
-        cc_toolchain = cc_toolchain,
-        requested_features = ctx.features,
-        unsupported_features = ctx.disabled_features,
-    )
-    objcopy = cc_common.get_tool_for_action(
-        feature_configuration = feature_config,
-        action_name = OBJ_COPY_ACTION_NAME,
-    )
 
     kernel_binary = ctx.actions.declare_file("{}_kernel.bin".format(ctx.attr.name))
     images = [ctx.actions.declare_file("{}0.bin".format(ctx.attr.name))]
@@ -121,7 +110,7 @@ def _tock_image_impl(ctx):
             ctx.file.kernel.path,
             kernel_binary.path,
         ],
-        executable = objcopy,
+        executable = cc_toolchain.objcopy_executable,
     )
 
     ctx.actions.run(
@@ -148,8 +137,7 @@ def _tock_image_impl(ctx):
 
         ctx.actions.run_shell(
             outputs = [output_image],
-            inputs = [input_image, tab],
-            tools = [ctx.executable._tockloader],
+            inputs = [input_image, tab, ctx.executable._tockloader],
             command = "\
               cp {} {} &&\
               chmod +rw {} &&\
@@ -198,6 +186,5 @@ tock_image = rv_rule(
             cfg = "exec",
         ),
     },
-    fragments = ["cpp"],
     toolchains = ["@rules_cc//cc:toolchain_type"],
 )

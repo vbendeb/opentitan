@@ -11,6 +11,7 @@ use std::path::PathBuf;
 
 use anyhow::{bail, Context, Result};
 use bindgen::status::{ot_status_create_record_t, status_create, status_err, status_extract};
+use num_enum::TryFromPrimitive;
 use object::{Object, ObjectSection};
 use zerocopy::FromBytes;
 
@@ -19,7 +20,7 @@ pub use bindgen::status::status_t as RawStatus;
 
 // FIXME: is there a better way of doing this? bindgen CLI does not
 // support adding custom derive to a type.
-#[derive(Debug, serde::Serialize, serde::Deserialize, strum::FromRepr, PartialEq, Eq)]
+#[derive(Debug, serde::Serialize, serde::Deserialize, TryFromPrimitive, PartialEq, Eq)]
 #[repr(u32)]
 pub enum StatusCode {
     Ok = bindgen::status::absl_status_code_kOk,
@@ -93,8 +94,7 @@ impl Status {
             true => {
                 // SAFETY: nothing unsafe except that it's an FFI call.
                 let raw_code = unsafe { status_err(status) };
-                StatusCode::from_repr(raw_code)
-                    .with_context(|| format!("invalid status code value {raw_code}"))?
+                StatusCode::try_from(raw_code)?
             }
         };
         Ok(Status {
@@ -203,7 +203,7 @@ impl StatusCreateRecords {
         let iter = self
             .records
             .iter()
-            .filter(|rec| rec.get_module_id().is_ok_and(|id| id == *mod_id))
+            .filter(|rec| rec.get_module_id().map_or(false, |id| id == *mod_id))
             .map(|rec| rec.filename.clone());
         std::collections::HashSet::<String>::from_iter(iter)
             .into_iter()
@@ -235,7 +235,7 @@ pub fn load_elf(elf_file: &PathBuf) -> Result<StatusCreateRecords> {
     // it really is safe.
     let records = status_create_records
         .chunks(RECORD_SIZE)
-        .map(|chunk| ot_status_create_record_t::read_from_bytes(chunk).unwrap())
+        .map(|chunk| ot_status_create_record_t::read_from(chunk).unwrap())
         .map(StatusCreateRecord::try_from)
         .collect::<Result<_>>()?;
     Ok(StatusCreateRecords { records })

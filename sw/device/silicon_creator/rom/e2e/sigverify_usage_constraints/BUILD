@@ -18,8 +18,14 @@ load(
     "hex_digits",
     "lcv_hw_to_sw",
 )
-load("//rules/opentitan:keyutils.bzl", "ECDSA_ONLY_KEY_STRUCTS")
-load("//rules:manifest.bzl", "manifest")
+load(
+    "//rules:opentitan.bzl",
+    "ECDSA_ONLY_KEY_STRUCTS",
+)
+load(
+    "//rules:manifest.bzl",
+    "manifest",
+)
 load(
     "//rules:otp.bzl",
     "STD_OTP_OVERLAYS",
@@ -27,8 +33,14 @@ load(
     "otp_json",
     "otp_partition",
 )
-load("//rules:rom_e2e.bzl", "maybe_skip_in_ci")
-load("@bazel_skylib//lib:structs.bzl", "structs")
+load(
+    "//rules:rom_e2e.bzl",
+    "maybe_skip_in_ci",
+)
+load(
+    "@bazel_skylib//lib:structs.bzl",
+    "structs",
+)
 load(
     "//sw/device/silicon_creator/rom/e2e:defs.bzl",
     "MSG_TEMPLATE_BFV",
@@ -79,7 +91,7 @@ otp_json(
 [
     otp_image(
         name = "otp_img_sigverify_usage_constraints_{}".format(lc_state),
-        src = "//hw/top_earlgrey/data/otp:otp_json_{}".format(lc_state),
+        src = "//hw/ip/otp_ctrl/data:otp_json_{}".format(lc_state),
         overlays = STD_OTP_OVERLAYS + [":otp_json_set_usage_constraint_params_overlay"],
         visibility = ["//visibility:private"],
     )

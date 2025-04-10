@@ -69,7 +69,7 @@ typedef enum uart_direction {
  * placed in .data section in the main SRAM. We cannot backdoor write anything
  * in SRAM at the start of the test because the CRT init code wipes it to 0s.
  */
-OTTF_BACKDOOR_VAR_DV uint8_t kUartIdxDv = 0xff;
+static volatile const uint8_t kUartIdxDv = 0xff;
 /**
  * Outside of DV simulation environments, the `kUartIdx` symbol needs to be
  * _non_ `const` so that we can modify it via OTTF commands. `kUartIdx` is used
@@ -77,17 +77,6 @@ OTTF_BACKDOOR_VAR_DV uint8_t kUartIdxDv = 0xff;
  * to here if it has been set.
  */
 static volatile uint8_t kUartIdx = 0xff;
-
-/**
- * Indicates the baud rate of the UART under test; this is set within the
- * `dv_sim` environment but the override is not used on physical hardware.
- */
-OTTF_BACKDOOR_VAR_DV uint64_t kUartBaudrateDV = 0u;
-/**
- * Indicates the clock frequency of the UART under test; this is set within
- * the `dv_sim` environment but the override is not used on physical hardware.
- */
-OTTF_BACKDOOR_VAR_DV uint64_t kUartClockFreqHzDV = 0u;
 
 /**
  * Indicates if ext_clk is used and what speed.
@@ -101,7 +90,7 @@ static volatile const bool kUseLowSpeedSel = false;
 //
 // The first byte must be FF so we can differentiate this blob from ASCII sent
 // by the ROM when it starts. FF is not UTF-8 / ASCII.
-static volatile const uint8_t kUartTxData[UART_DATASET_SIZE] = {
+static const uint8_t kUartTxData[UART_DATASET_SIZE] = {
     0xff, 0x50, 0xc6, 0xb4, 0xbe, 0x16, 0xed, 0x55, 0x16, 0x1d, 0xe6,
     0x1c, 0xde, 0x9f, 0xfd, 0x24, 0x89, 0x81, 0x4d, 0x0d, 0x1a, 0x12,
     0x4f, 0x57, 0xea, 0xd6, 0x6f, 0xc0, 0x7d, 0x46, 0xe7, 0x37, 0x81,
@@ -111,7 +100,7 @@ static volatile const uint8_t kUartTxData[UART_DATASET_SIZE] = {
 };
 
 // The set of bytes expected to be received over RX.
-static volatile const uint8_t kExpUartRxData[UART_DATASET_SIZE] = {
+static const uint8_t kExpUartRxData[UART_DATASET_SIZE] = {
     0x1b, 0x95, 0xc5, 0xb5, 0x8a, 0xa4, 0xa8, 0x9f, 0x6a, 0x7d, 0x6b,
     0x0c, 0xcd, 0xd5, 0xa6, 0x8f, 0x07, 0x3a, 0x9e, 0x82, 0xe6, 0xa2,
     0x2b, 0xe0, 0x0c, 0x30, 0xe8, 0x5a, 0x05, 0x14, 0x79, 0x8a, 0xFf,
@@ -159,7 +148,7 @@ void ottf_external_isr(uint32_t *exc_info) {
   top_earlgrey_plic_peripheral_t peripheral = (top_earlgrey_plic_peripheral_t)
       top_earlgrey_plic_interrupt_for_peripheral[plic_irq_id];
   CHECK(peripheral == uart_cfg.peripheral_id,
-        "Interrupt from unexpected peripheral: %d", peripheral);
+        "Interurpt from unexpected peripheral: %d", peripheral);
 
   // Correlate the interrupt fired at PLIC with UART.
   dif_uart_irq_t uart_irq;
@@ -214,19 +203,22 @@ void ottf_external_isr(uint32_t *exc_info) {
 /**
  * Initializes UART and enables the relevant interrupts.
  */
-static void uart_init_with_irqs(mmio_region_t base_addr, dif_uart_t *uart,
-                                uint32_t uartBaudrate, uint32_t uartFreqHz) {
+static void uart_init_with_irqs(mmio_region_t base_addr, dif_uart_t *uart) {
   LOG_INFO("Initializing the UART.");
 
   CHECK_DIF_OK(dif_uart_init(base_addr, uart));
-  CHECK_DIF_OK(dif_uart_configure(uart, (dif_uart_config_t){
-                                            .baudrate = (uint32_t)uartBaudrate,
-                                            .clk_freq_hz = (uint32_t)uartFreqHz,
-                                            .parity_enable = kDifToggleDisabled,
-                                            .parity = kDifUartParityEven,
-                                            .tx_enable = kDifToggleEnabled,
-                                            .rx_enable = kDifToggleEnabled,
-                                        }));
+  CHECK(kUartBaudrate <= UINT32_MAX, "kUartBaudrate must fit in uint32_t");
+  CHECK(kClockFreqPeripheralHz <= UINT32_MAX,
+        "kClockFreqPeripheralHz must fit in uint32_t");
+  CHECK_DIF_OK(dif_uart_configure(
+      uart, (dif_uart_config_t){
+                .baudrate = (uint32_t)kUartBaudrate,
+                .clk_freq_hz = (uint32_t)kClockFreqPeripheralHz,
+                .parity_enable = kDifToggleDisabled,
+                .parity = kDifUartParityEven,
+                .tx_enable = kDifToggleEnabled,
+                .rx_enable = kDifToggleEnabled,
+            }));
 
   // Set the TX and RX watermark to 16 bytes.
   CHECK_DIF_OK(dif_uart_watermark_tx_set(uart, kDifUartWatermarkByte16));
@@ -368,7 +360,7 @@ static void execute_test(const dif_uart_t *uart) {
   exp_uart_irq_tx_watermark = true;
   exp_uart_irq_tx_empty = true;
   // Set the flag below to true to allow TX data to be sent the first time in
-  // the if condition below. Subsequently, TX watermark interrupt will trigger
+  // the if comdition below. Subsequently, TX watermark interrupt will trigger
   // more data to be sent.
   uart_irq_tx_watermark_fired = true;
   exp_uart_irq_tx_done = false;
@@ -378,7 +370,7 @@ static void execute_test(const dif_uart_t *uart) {
   size_t uart_rx_bytes_read = 0;
   exp_uart_irq_rx_watermark = true;
   // Set the flag below to true to allow RX data to be received the first time
-  // in the if condition below. Subsequently, RX watermark interrupt will
+  // in the if comdition below. Subsequently, RX watermark interrupt will
   // trigger more data to be received.
   uart_irq_rx_watermark_fired = true;
   exp_uart_irq_rx_overflow = false;
@@ -466,7 +458,7 @@ static void execute_test(const dif_uart_t *uart) {
 void config_external_clock(const dif_clkmgr_t *clkmgr) {
   dif_lc_ctrl_t lc;
   mmio_region_t lc_ctrl_base_addr =
-      mmio_region_from_addr(TOP_EARLGREY_LC_CTRL_REGS_BASE_ADDR);
+      mmio_region_from_addr(TOP_EARLGREY_LC_CTRL_BASE_ADDR);
   CHECK_DIF_OK(dif_lc_ctrl_init(lc_ctrl_base_addr, &lc));
 
   LOG_INFO("Read and check LC state.");
@@ -496,22 +488,6 @@ bool test_main(void) {
     OTTF_WAIT_FOR(kUartIdx != 0xff, kCommandTimeout);
   }
 
-  // Use the default UART baud rate and clock frequency for the target device.
-  uint64_t uartBaudrate = kUartBaudrate;
-  uint64_t uartFreqHz = kClockFreqPeripheralHz;
-
-  // Collect the target baud rate and the clock frequency of the UART
-  // peripheral, since the `sim_dv` environment may have modified these for
-  // more extensive testing.
-  if (kUartBaudrateDV) {
-    uartBaudrate = kUartBaudrateDV;
-  }
-  if (kUartClockFreqHzDV) {
-    uartFreqHz = kUartClockFreqHzDV;
-  }
-  CHECK(uartBaudrate <= UINT32_MAX, "uartBaudrate must fit in uint32_t");
-  CHECK(uartFreqHz <= UINT32_MAX, "uartFreqHz must fit in uint32_t");
-
   // If we're testing UART0 we need to move the console to UART1.
   if (kUartIdx == 0 && kDeviceType != kDeviceSimDV) {
     CHECK_STATUS_OK(
@@ -536,8 +512,7 @@ bool test_main(void) {
 
   // Initialize the UART.
   mmio_region_t chosen_uart_region = mmio_region_from_addr(uart_cfg.base_addr);
-  uart_init_with_irqs(chosen_uart_region, &uart, (uint32_t)uartBaudrate,
-                      (uint32_t)uartFreqHz);
+  uart_init_with_irqs(chosen_uart_region, &uart);
 
   // Initialize the PLIC.
   mmio_region_t plic_base_addr =

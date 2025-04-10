@@ -51,7 +51,7 @@
       pinmux_aon
       otp_ctrl.core
       otp_ctrl.prim
-      lc_ctrl.regs
+      lc_ctrl
       sensor_ctrl_aon
       alert_handler
       ast
@@ -68,7 +68,6 @@
     {
       name: main
       type: host
-      addr_space: hart
       clock: clk_peri_i
       reset: rst_peri_ni
       xbar: true
@@ -88,10 +87,7 @@
       addr_range:
       [
         {
-          base_addrs:
-          {
-            hart: 0x40000000
-          }
+          base_addr: 0x40000000
           size_byte: 0x40
         }
       ]
@@ -109,10 +105,7 @@
       addr_range:
       [
         {
-          base_addrs:
-          {
-            hart: 0x40010000
-          }
+          base_addr: 0x40010000
           size_byte: 0x40
         }
       ]
@@ -130,10 +123,7 @@
       addr_range:
       [
         {
-          base_addrs:
-          {
-            hart: 0x40020000
-          }
+          base_addr: 0x40020000
           size_byte: 0x40
         }
       ]
@@ -151,10 +141,7 @@
       addr_range:
       [
         {
-          base_addrs:
-          {
-            hart: 0x40030000
-          }
+          base_addr: 0x40030000
           size_byte: 0x40
         }
       ]
@@ -172,10 +159,7 @@
       addr_range:
       [
         {
-          base_addrs:
-          {
-            hart: 0x40080000
-          }
+          base_addr: 0x40080000
           size_byte: 0x80
         }
       ]
@@ -193,10 +177,7 @@
       addr_range:
       [
         {
-          base_addrs:
-          {
-            hart: 0x40090000
-          }
+          base_addr: 0x40090000
           size_byte: 0x80
         }
       ]
@@ -214,10 +195,7 @@
       addr_range:
       [
         {
-          base_addrs:
-          {
-            hart: 0x400a0000
-          }
+          base_addr: 0x400a0000
           size_byte: 0x80
         }
       ]
@@ -235,10 +213,7 @@
       addr_range:
       [
         {
-          base_addrs:
-          {
-            hart: 0x400e0000
-          }
+          base_addr: 0x400e0000
           size_byte: 0x40
         }
       ]
@@ -256,10 +231,7 @@
       addr_range:
       [
         {
-          base_addrs:
-          {
-            hart: 0x40450000
-          }
+          base_addr: 0x40450000
           size_byte: 0x80
         }
       ]
@@ -277,11 +249,8 @@
       addr_range:
       [
         {
-          base_addrs:
-          {
-            hart: 0x40040000
-          }
-          size_byte: 0x80
+          base_addr: 0x40040000
+          size_byte: 0x40
         }
       ]
       xbar: false
@@ -298,10 +267,7 @@
       addr_range:
       [
         {
-          base_addrs:
-          {
-            hart: 0x40050000
-          }
+          base_addr: 0x40050000
           size_byte: 0x2000
         }
       ]
@@ -319,10 +285,7 @@
       addr_range:
       [
         {
-          base_addrs:
-          {
-            hart: 0x40100000
-          }
+          base_addr: 0x40100000
           size_byte: 0x200
         }
       ]
@@ -340,10 +303,7 @@
       addr_range:
       [
         {
-          base_addrs:
-          {
-            hart: 0x40400000
-          }
+          base_addr: 0x40400000
           size_byte: 0x80
         }
       ]
@@ -361,10 +321,7 @@
       addr_range:
       [
         {
-          base_addrs:
-          {
-            hart: 0x40410000
-          }
+          base_addr: 0x40410000
           size_byte: 0x80
         }
       ]
@@ -382,10 +339,7 @@
       addr_range:
       [
         {
-          base_addrs:
-          {
-            hart: 0x40420000
-          }
+          base_addr: 0x40420000
           size_byte: 0x80
         }
       ]
@@ -403,10 +357,7 @@
       addr_range:
       [
         {
-          base_addrs:
-          {
-            hart: 0x40460000
-          }
+          base_addr: 0x40460000
           size_byte: 0x1000
         }
       ]
@@ -424,10 +375,7 @@
       addr_range:
       [
         {
-          base_addrs:
-          {
-            hart: 0x40130000
-          }
+          base_addr: 0x40130000
           size_byte: 0x1000
         }
       ]
@@ -445,10 +393,7 @@
       addr_range:
       [
         {
-          base_addrs:
-          {
-            hart: 0x40138000
-          }
+          base_addr: 0x40138000
           size_byte: 0x20
         }
       ]
@@ -457,7 +402,7 @@
       req_fifo_pass: true
     }
     {
-      name: lc_ctrl.regs
+      name: lc_ctrl
       type: device
       clock: clk_peri_i
       reset: rst_peri_ni
@@ -466,10 +411,7 @@
       addr_range:
       [
         {
-          base_addrs:
-          {
-            hart: 0x40140000
-          }
+          base_addr: 0x40140000
           size_byte: 0x100
         }
       ]
@@ -487,10 +429,7 @@
       addr_range:
       [
         {
-          base_addrs:
-          {
-            hart: 0x40490000
-          }
+          base_addr: 0x40490000
           size_byte: 0x80
         }
       ]
@@ -508,10 +447,7 @@
       addr_range:
       [
         {
-          base_addrs:
-          {
-            hart: 0x40150000
-          }
+          base_addr: 0x40150000
           size_byte: 0x800
         }
       ]
@@ -529,10 +465,7 @@
       addr_range:
       [
         {
-          base_addrs:
-          {
-            hart: 0x40500000
-          }
+          base_addr: 0x40500000
           size_byte: 0x40
         }
       ]
@@ -550,10 +483,7 @@
       addr_range:
       [
         {
-          base_addrs:
-          {
-            hart: 0x40600000
-          }
+          base_addr: 0x40600000
           size_byte: 0x1000
         }
       ]
@@ -571,10 +501,7 @@
       addr_range:
       [
         {
-          base_addrs:
-          {
-            hart: 0x40470000
-          }
+          base_addr: 0x40470000
           size_byte: 0x40
         }
       ]
@@ -592,10 +519,7 @@
       addr_range:
       [
         {
-          base_addrs:
-          {
-            hart: 0x40430000
-          }
+          base_addr: 0x40430000
           size_byte: 0x100
         }
       ]
@@ -613,10 +537,7 @@
       addr_range:
       [
         {
-          base_addrs:
-          {
-            hart: 0x40440000
-          }
+          base_addr: 0x40440000
           size_byte: 0x80
         }
       ]
@@ -634,10 +555,7 @@
       addr_range:
       [
         {
-          base_addrs:
-          {
-            hart: 0x40480000
-          }
+          base_addr: 0x40480000
           size_byte: 0x400
         }
       ]
@@ -646,351 +564,6 @@
       req_fifo_pass: true
     }
   ]
-  addr_spaces:
-  [
-    hart
-  ]
   clock: clk_peri_i
   type: xbar
-  inter_signal_list:
-  [
-    {
-      name: tl_main
-      struct: tl
-      package: tlul_pkg
-      type: req_rsp
-      act: rsp
-      inst_name: peri
-      width: 1
-      default: ""
-      top_signame: main_tl_peri
-      index: -1
-    }
-    {
-      name: tl_uart0
-      struct: tl
-      package: tlul_pkg
-      type: req_rsp
-      act: req
-      inst_name: peri
-      width: 1
-      default: ""
-      top_signame: uart0_tl
-      index: -1
-    }
-    {
-      name: tl_uart1
-      struct: tl
-      package: tlul_pkg
-      type: req_rsp
-      act: req
-      inst_name: peri
-      width: 1
-      default: ""
-      top_signame: uart1_tl
-      index: -1
-    }
-    {
-      name: tl_uart2
-      struct: tl
-      package: tlul_pkg
-      type: req_rsp
-      act: req
-      inst_name: peri
-      width: 1
-      default: ""
-      top_signame: uart2_tl
-      index: -1
-    }
-    {
-      name: tl_uart3
-      struct: tl
-      package: tlul_pkg
-      type: req_rsp
-      act: req
-      inst_name: peri
-      width: 1
-      default: ""
-      top_signame: uart3_tl
-      index: -1
-    }
-    {
-      name: tl_i2c0
-      struct: tl
-      package: tlul_pkg
-      type: req_rsp
-      act: req
-      inst_name: peri
-      width: 1
-      default: ""
-      top_signame: i2c0_tl
-      index: -1
-    }
-    {
-      name: tl_i2c1
-      struct: tl
-      package: tlul_pkg
-      type: req_rsp
-      act: req
-      inst_name: peri
-      width: 1
-      default: ""
-      top_signame: i2c1_tl
-      index: -1
-    }
-    {
-      name: tl_i2c2
-      struct: tl
-      package: tlul_pkg
-      type: req_rsp
-      act: req
-      inst_name: peri
-      width: 1
-      default: ""
-      top_signame: i2c2_tl
-      index: -1
-    }
-    {
-      name: tl_pattgen
-      struct: tl
-      package: tlul_pkg
-      type: req_rsp
-      act: req
-      inst_name: peri
-      width: 1
-      default: ""
-      top_signame: pattgen_tl
-      index: -1
-    }
-    {
-      name: tl_pwm_aon
-      struct: tl
-      package: tlul_pkg
-      type: req_rsp
-      act: req
-      inst_name: peri
-      width: 1
-      default: ""
-      top_signame: pwm_aon_tl
-      index: -1
-    }
-    {
-      name: tl_gpio
-      struct: tl
-      package: tlul_pkg
-      type: req_rsp
-      act: req
-      inst_name: peri
-      width: 1
-      default: ""
-      top_signame: gpio_tl
-      index: -1
-    }
-    {
-      name: tl_spi_device
-      struct: tl
-      package: tlul_pkg
-      type: req_rsp
-      act: req
-      inst_name: peri
-      width: 1
-      default: ""
-      top_signame: spi_device_tl
-      index: -1
-    }
-    {
-      name: tl_rv_timer
-      struct: tl
-      package: tlul_pkg
-      type: req_rsp
-      act: req
-      inst_name: peri
-      width: 1
-      default: ""
-      top_signame: rv_timer_tl
-      index: -1
-    }
-    {
-      name: tl_pwrmgr_aon
-      struct: tl
-      package: tlul_pkg
-      type: req_rsp
-      act: req
-      inst_name: peri
-      width: 1
-      default: ""
-      top_signame: pwrmgr_aon_tl
-      index: -1
-    }
-    {
-      name: tl_rstmgr_aon
-      struct: tl
-      package: tlul_pkg
-      type: req_rsp
-      act: req
-      inst_name: peri
-      width: 1
-      default: ""
-      top_signame: rstmgr_aon_tl
-      index: -1
-    }
-    {
-      name: tl_clkmgr_aon
-      struct: tl
-      package: tlul_pkg
-      type: req_rsp
-      act: req
-      inst_name: peri
-      width: 1
-      default: ""
-      top_signame: clkmgr_aon_tl
-      index: -1
-    }
-    {
-      name: tl_pinmux_aon
-      struct: tl
-      package: tlul_pkg
-      type: req_rsp
-      act: req
-      inst_name: peri
-      width: 1
-      default: ""
-      top_signame: pinmux_aon_tl
-      index: -1
-    }
-    {
-      name: tl_otp_ctrl__core
-      struct: tl
-      package: tlul_pkg
-      type: req_rsp
-      act: req
-      inst_name: peri
-      width: 1
-      default: ""
-      top_signame: otp_ctrl_core_tl
-      index: -1
-    }
-    {
-      name: tl_otp_ctrl__prim
-      struct: tl
-      package: tlul_pkg
-      type: req_rsp
-      act: req
-      inst_name: peri
-      width: 1
-      default: ""
-      top_signame: otp_ctrl_prim_tl
-      index: -1
-    }
-    {
-      name: tl_lc_ctrl__regs
-      struct: tl
-      package: tlul_pkg
-      type: req_rsp
-      act: req
-      inst_name: peri
-      width: 1
-      default: ""
-      top_signame: lc_ctrl_regs_tl
-      index: -1
-    }
-    {
-      name: tl_sensor_ctrl_aon
-      struct: tl
-      package: tlul_pkg
-      type: req_rsp
-      act: req
-      inst_name: peri
-      width: 1
-      default: ""
-      top_signame: sensor_ctrl_aon_tl
-      index: -1
-    }
-    {
-      name: tl_alert_handler
-      struct: tl
-      package: tlul_pkg
-      type: req_rsp
-      act: req
-      inst_name: peri
-      width: 1
-      default: ""
-      top_signame: alert_handler_tl
-      index: -1
-    }
-    {
-      name: tl_sram_ctrl_ret_aon__regs
-      struct: tl
-      package: tlul_pkg
-      type: req_rsp
-      act: req
-      inst_name: peri
-      width: 1
-      default: ""
-      top_signame: sram_ctrl_ret_aon_regs_tl
-      index: -1
-    }
-    {
-      name: tl_sram_ctrl_ret_aon__ram
-      struct: tl
-      package: tlul_pkg
-      type: req_rsp
-      act: req
-      inst_name: peri
-      width: 1
-      default: ""
-      top_signame: sram_ctrl_ret_aon_ram_tl
-      index: -1
-    }
-    {
-      name: tl_aon_timer_aon
-      struct: tl
-      package: tlul_pkg
-      type: req_rsp
-      act: req
-      inst_name: peri
-      width: 1
-      default: ""
-      top_signame: aon_timer_aon_tl
-      index: -1
-    }
-    {
-      name: tl_sysrst_ctrl_aon
-      struct: tl
-      package: tlul_pkg
-      type: req_rsp
-      act: req
-      inst_name: peri
-      width: 1
-      default: ""
-      top_signame: sysrst_ctrl_aon_tl
-      index: -1
-    }
-    {
-      name: tl_adc_ctrl_aon
-      struct: tl
-      package: tlul_pkg
-      type: req_rsp
-      act: req
-      inst_name: peri
-      width: 1
-      default: ""
-      top_signame: adc_ctrl_aon_tl
-      index: -1
-    }
-    {
-      name: tl_ast
-      struct: tl
-      package: tlul_pkg
-      type: req_rsp
-      act: req
-      inst_name: peri
-      width: 1
-      default: ""
-      external: true
-      top_signame: ast_tl
-      conn_type: false
-      index: -1
-    }
-  ]
 }

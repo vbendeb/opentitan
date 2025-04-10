@@ -2,8 +2,13 @@
 # Licensed under the Apache License, Version 2.0, see LICENSE for details.
 # SPDX-License-Identifier: Apache-2.0
 
-load("@lowrisc_opentitan//rules:manifest.bzl", "update_manifest")
-load("@lowrisc_opentitan//rules:rv.bzl", "rv_rule")
+load(
+    "@lowrisc_opentitan//rules:rv.bzl",
+    "rv_rule",
+    _OPENTITAN_CPU = "OPENTITAN_CPU",
+    _OPENTITAN_PLATFORM = "OPENTITAN_PLATFORM",
+    _opentitan_transition = "opentitan_transition",
+)
 load("@lowrisc_opentitan//rules:signing.bzl", "sign_binary")
 load("@lowrisc_opentitan//rules/opentitan:exec_env.bzl", "ExecEnvInfo")
 load(
@@ -15,7 +20,12 @@ load("@lowrisc_opentitan//rules/opentitan:util.bzl", "get_fallback", "get_overri
 load("@rules_cc//cc:find_cc_toolchain.bzl", "find_cc_toolchain")
 load("//rules/opentitan:toolchain.bzl", "LOCALTOOLS_TOOLCHAIN")
 load("//rules/opentitan:util.bzl", "assemble_for_test")
-load("//rules/opentitan:providers.bzl", "OpenTitanBinaryInfo")
+
+# Re-exports of names from transition.bzl; many files in the repo use opentitan.bzl
+# to get to them.
+OPENTITAN_CPU = _OPENTITAN_CPU
+OPENTITAN_PLATFORM = _OPENTITAN_PLATFORM
+opentitan_transition = _opentitan_transition
 
 def _expand(ctx, name, items):
     """Perform location and make_variable expansion on a list of items.
@@ -50,13 +60,11 @@ def ot_binary(ctx, **kwargs):
       (elf_file, map_file) File objects.
     """
     cc_toolchain = find_cc_toolchain(ctx)
-    transitive_features = [f for f in ctx.attr.transitive_features if not f.startswith("-")]
-    transitive_disabled_features = [f.removeprefix("-") for f in ctx.attr.transitive_features if f.startswith("-")]
     features = cc_common.configure_features(
         ctx = ctx,
         cc_toolchain = cc_toolchain,
-        requested_features = get_override(ctx, "features", kwargs) + transitive_features,
-        unsupported_features = get_override(ctx, "disabled_features", kwargs) + transitive_disabled_features,
+        requested_features = get_override(ctx, "features", kwargs),
+        unsupported_features = get_override(ctx, "disabled_features", kwargs),
     )
 
     compilation_contexts = [
@@ -185,15 +193,12 @@ def _build_binary(ctx, exec_env, name, deps, kind):
     )
 
     manifest = get_fallback(ctx, "file.manifest", exec_env)
-    if manifest and str(manifest.owner) == "@@//hw/top_earlgrey:none_manifest":
+    if manifest and str(manifest.owner).endswith("@//hw/top_earlgrey:none_manifest"):
         manifest = None
 
     ecdsa_key = get_fallback(ctx, "attr.ecdsa_key", exec_env)
     rsa_key = get_fallback(ctx, "attr.rsa_key", exec_env)
     spx_key = get_fallback(ctx, "attr.spx_key", exec_env)
-    if manifest and ctx.attr.immutable_rom_ext_enabled:
-        manifest = update_manifest(ctx, manifest, elf, exec_env)
-
     if (manifest or rsa_key) and kind != "ram":
         if not (manifest and (rsa_key or ecdsa_key)):
             fail("Signing requires a manifest and an rsa_key or ecdsa_key, and optionally an spx_key")
@@ -232,7 +237,6 @@ def _opentitan_binary(ctx):
     providers = []
     default_info = []
     groups = {}
-    ot_bin_env_info = {}
     for exec_env_target in ctx.attr.exec_env:
         exec_env = exec_env_target[ExecEnvInfo]
         name = _binary_name(ctx, exec_env)
@@ -244,7 +248,6 @@ def _opentitan_binary(ctx):
         default_info.append(provides["default"])
         default_info.append(provides["elf"])
         default_info.append(provides["disassembly"])
-        default_info.append(provides["mapfile"])
 
         # FIXME(cfrantz): logs are a special case and get added into
         # the DefaultInfo provider.
@@ -252,45 +255,21 @@ def _opentitan_binary(ctx):
             default_info.extend(provides["logs"])
 
         # FIXME: vmem is a special case for ram targets used in ROM e2e test
-        # cases. Some tops like Darjeeling expect a different word size than
-        # Earlgrey.
+        # cases.
         if provides.get("vmem"):
             default_info.append(provides["vmem"])
-        if provides.get("vmem32"):
-            default_info.append(provides["vmem32"])
 
         # FIXME(cfrantz): Special case: The englishbreakfast verilator model
         # requires a non-scrambled ROM image.
-        #
-        # DV simulation might also need non-scrambled ROM to reduce simulation
-        # run times.
         if provides.get("rom32"):
             default_info.append(provides["rom32"])
 
         groups.update(_as_group_info(exec_env.exec_env, signed))
         groups.update(_as_group_info(exec_env.exec_env, provides))
-        ot_bin_env_info[exec_env.provider] = exec_env
 
     providers.append(DefaultInfo(files = depset(default_info)))
     providers.append(OutputGroupInfo(**groups))
-    providers.append(OpenTitanBinaryInfo(exec_env = ot_bin_env_info))
     return providers
-
-def _transitive_feature_transition_impl(settings, attr):
-    features = settings["//command_line_option:features"] + attr.transitive_features
-    return {
-        "//command_line_option:features": features,
-    }
-
-_transitive_feature_transition = transition(
-    implementation = _transitive_feature_transition_impl,
-    inputs = [
-        "//command_line_option:features",
-    ],
-    outputs = [
-        "//command_line_option:features",
-    ],
-)
 
 common_binary_attrs = {
     "srcs": attr.label_list(
@@ -299,7 +278,6 @@ common_binary_attrs = {
     ),
     "deps": attr.label_list(
         providers = [CcInfo],
-        cfg = _transitive_feature_transition,
         doc = "The list of other libraries to be linked in to the binary target.",
     ),
     "linker_script": attr.label(
@@ -359,18 +337,6 @@ common_binary_attrs = {
         default = "//hw/ip/rom_ctrl/util:scramble_image",
         executable = True,
         cfg = "exec",
-    ),
-    "rom_scramble_mode": attr.string(
-        doc = "ROM scrambling mode.",
-        default = "base-rom",
-    ),
-    "immutable_rom_ext_enabled": attr.bool(
-        doc = "Indicates whether the binary is intended for a chip with the immutable ROM_EXT feature enabled.",
-        default = False,
-    ),
-    "transitive_features": attr.string_list(
-        default = [],
-        doc = "List of features that will apply to this binary, and transitively to all `deps`.",
     ),
 }
 
@@ -501,6 +467,7 @@ opentitan_test = rv_rule(
 
 def _opentitan_binary_assemble_impl(ctx):
     assembled_bins = []
+    result = []
     tc = ctx.toolchains[LOCALTOOLS_TOOLCHAIN]
     for env in ctx.attr.exec_env:
         exec_env_name = env[ExecEnvInfo].exec_env
@@ -513,10 +480,10 @@ def _opentitan_binary_assemble_impl(ctx):
                 fail("Only flash binaries can be assembled.")
             input_bins.append(binary[exec_env_provider].default)
             spec.append("{}@{}".format(binary[exec_env_provider].default.path, offset))
-        assembled_bins.append(
-            assemble_for_test(ctx, name, spec, input_bins, tc.tools.opentitantool),
-        )
-    return [DefaultInfo(files = depset(assembled_bins))]
+        img = assemble_for_test(ctx, name, spec, input_bins, tc.tools.opentitantool)
+        result.append(exec_env_provider(default = img, kind = "flash"))
+        assembled_bins.append(img)
+    return result + [DefaultInfo(files = depset(assembled_bins))]
 
 opentitan_binary_assemble = rule(
     implementation = _opentitan_binary_assemble_impl,
@@ -532,4 +499,49 @@ opentitan_binary_assemble = rule(
         ),
     },
     toolchains = [LOCALTOOLS_TOOLCHAIN],
+)
+
+def _exec_env_filegroup(ctx):
+    files = {v: k for k, v in ctx.attr.files.items()}
+    exec_env = {v: k for k, v in ctx.attr.exec_env.items()}
+
+    fset = {k: 1 for k in files.keys()}
+    eset = {k: 1 for k in exec_env.keys()}
+
+    if fset != eset:
+        fail("The set of files and exec_envs must be matched: files =", fset.keys(), ", exec_env =", eset.keys())
+
+    result = []
+    default_files = []
+    for k in files.keys():
+        provider = exec_env[k][ExecEnvInfo].provider
+        f = files[k].files.to_list()
+        if len(f) != 1:
+            fail("files[{}] must supply exactly one file".format(k))
+
+        # Return the exec_env's provider so this rule can be consumed by
+        # opentitan_test rules.
+        result.append(provider(default = f[0], kind = ctx.attr.kind))
+        default_files.append(f[0])
+
+    # Also return a DefaultInfo provider so this rule can be consumed by other
+    # filegroup or packaging rules.
+    result.append(DefaultInfo(files = depset(default_files)))
+    return result
+
+exec_env_filegroup = rule(
+    implementation = _exec_env_filegroup,
+    attrs = {
+        "files": attr.label_keyed_string_dict(
+            allow_files = True,
+            mandatory = True,
+            doc = "Dictionary of files to exec_envs.",
+        ),
+        "exec_env": attr.label_keyed_string_dict(
+            providers = [ExecEnvInfo],
+            mandatory = True,
+            doc = "Dictionary of execution environments for this target.",
+        ),
+        "kind": attr.string(default = "flash", doc = "The kind of binary"),
+    },
 )

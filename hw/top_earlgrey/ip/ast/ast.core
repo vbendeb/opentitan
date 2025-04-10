@@ -2,9 +2,8 @@ CAPI=2:
 # Copyright lowRISC contributors (OpenTitan project).
 # Licensed under the Apache License, Version 2.0, see LICENSE for details.
 # SPDX-License-Identifier: Apache-2.0
-name: "lowrisc:systems:top_earlgrey_ast:0.1"
+name: "lowrisc:systems:ast:0.1"
 description: "Analog Sensor Top generic views"
-
 filesets:
   files_rtl:
     depend:
@@ -16,19 +15,20 @@ filesets:
       - lowrisc:prim:clock_inv
       - lowrisc:prim:lc_dec
       - lowrisc:prim:lfsr
-      - lowrisc:earlgrey_ip:pinmux_pkg
+      - lowrisc:ip:pinmux_reg
+      - lowrisc:ip:pinmux_component
       - lowrisc:prim:assert
       - lowrisc:prim:prim_pkg
       - lowrisc:prim:mubi
       - lowrisc:prim:multibit_sync
       - lowrisc:ip:lc_ctrl_pkg
       - lowrisc:ip:edn_pkg
-      - lowrisc:earlgrey_ip:alert_handler_pkg
-      - lowrisc:earlgrey_ip:clkmgr_pkg
-      - lowrisc:earlgrey_ip:rstmgr_pkg
-      - lowrisc:systems:top_earlgrey_ast_pkg
+      - lowrisc:ip_interfaces:alert_handler_reg
+      - lowrisc:ip_interfaces:clkmgr_pkg
+      - lowrisc:ip_interfaces:rstmgr_pkg
     files:
       - rtl/ast_reg_pkg.sv
+      - rtl/ast_pkg.sv
       - rtl/ast_bhv_pkg.sv
       - rtl/ast.sv
       - rtl/ast_reg_top.sv

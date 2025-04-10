@@ -29,6 +29,7 @@ In addition, it instantiates the following interfaces, connects them to the DUT 
 * [TileLink host interface](../../../../dv/sv/tl_agent/README.md)
 * RSTMGR interface [`hw/top_${topname}/ip_autogen/rstmgr/dv/env/rstmgr_if.sv`](https://github.com/lowRISC/opentitan/blob/master/hw/top_${topname}/ip_autogen/rstmgr/dv/env/rstmgr_if.sv)
 * Alerts ([`alert_esc_if`](../../../../dv/sv/alert_esc_agent/README.md))
+* Devmode ([`pins_if`](../../../../dv/sv/common_ifs/README.md))
 
 ### Common DV utility components
 The following utilities provide generic helper tasks and functions to perform activities that are common across the project:
@@ -40,7 +41,7 @@ All common types and methods defined at the package level can be found in
 `rstmgr_env_pkg`. Some of them in use are:
 ```systemverilog
   typedef logic [NumSwResets-1:0] sw_rst_t;
-  typedef logic [$bits(alert_handler_pkg::alert_crashdump_t)-1:0] linearized_alert_dump_t;
+  typedef logic [$bits(alert_pkg::alert_crashdump_t)-1:0] linearized_alert_dump_t;
   typedef virtual pwrmgr_rstmgr_sva_if #(.CHECK_RSTREQS(0)) parameterized_pwrmgr_rstmgr_sva_vif;
 ```
 ### TL_agent

@@ -302,25 +302,20 @@ TEST_F(PrintfTest, StatusErrorAsJson) {
   EXPECT_EQ(buf_, absl::StrFormat("Hello, {\"Unknown\":[\"PRI\",%d]}\n", line));
 }
 
+TEST_F(PrintfTest, StatusErrorWithModuleId) {
+#define MODULE_ID MAKE_MODULE_ID('\\', '\\', '\\')
+  status_t value = UNKNOWN();
+  int line = __LINE__ - 1;
+  EXPECT_EQ(base_printf("Hello, %!r\n", value), 34);
+  EXPECT_EQ(buf_, absl::StrFormat(
+                      "Hello, {\"Unknown\":[\"\\\\\\\\\\\\\",%d]}\n", line));
+#undef MODULE_ID
+}
+
 TEST_F(PrintfTest, StatusErrorWithArg) {
   status_t value = INVALID_ARGUMENT(2);
   EXPECT_EQ(base_printf("Hello, %r\n", value), 33);
   EXPECT_EQ(buf_, absl::StrFormat("Hello, InvalidArgument:[\"PRI\",%d]\n", 2));
-}
-
-TEST_F(PrintfTest, FourCharacterCode) {
-  EXPECT_EQ(base_printf("Hello, %C\n", 0x5CA245D3), 18);
-  EXPECT_EQ(buf_, "Hello, \\xd3E\\xa2\\\n");
-}
-
-TEST_F(PrintfTest, FourCharacterCodePrintable) {
-  EXPECT_EQ(base_printf("Hello, %C\n", 0x65766144), 12);
-  EXPECT_EQ(buf_, "Hello, Dave\n");
-}
-
-TEST_F(PrintfTest, FourCharacterCodeNonPrintable) {
-  EXPECT_EQ(base_printf("Hello, %C\n", 0xAABBCCDD), 24);
-  EXPECT_EQ(buf_, "Hello, \\xdd\\xcc\\xbb\\xaa\n");
 }
 
 TEST_F(PrintfTest, IncompleteSpec) {

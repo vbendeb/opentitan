@@ -8,9 +8,7 @@
 `define LC_CTRL_FSM_PATH tb.dut.u_lc_ctrl_fsm
 `endif
 
-interface lc_ctrl_if #(
-  parameter int NumRmaAckSigs
-) (
+interface lc_ctrl_if (
   input clk,
   input rst_n
 );
@@ -20,6 +18,7 @@ interface lc_ctrl_if #(
   import lc_ctrl_reg_pkg::*;
   import lc_ctrl_state_pkg::*;
   import otp_ctrl_pkg::*;
+  import otp_ctrl_part_pkg::*;
 
   `include "uvm_macros.svh"
 

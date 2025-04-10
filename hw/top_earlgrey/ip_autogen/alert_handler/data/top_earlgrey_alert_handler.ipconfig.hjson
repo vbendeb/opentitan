@@ -5,7 +5,6 @@
   instance_name: top_earlgrey_alert_handler
   param_values:
   {
-    module_instance_name: alert_handler
     n_alerts: 65
     esc_cnt_dw: 32
     accu_cnt_dw: 16
@@ -78,8 +77,6 @@
       1'b1
     ]
     n_classes: 4
-    n_esc_sev: 4
-    ping_cnt_dw: 16
     n_lpg: 24
     lpg_map:
     [
@@ -150,6 +147,5 @@
       5'd17
     ]
     topname: earlgrey
-    uniquified_modules: {}
   }
 }

@@ -4,7 +4,6 @@
 
 #include "sw/device/lib/base/memory.h"
 #include "sw/device/lib/base/mmio.h"
-#include "sw/device/lib/dif/dif_adc_ctrl.h"
 #include "sw/device/lib/dif/dif_alert_handler.h"
 #include "sw/device/lib/dif/dif_aon_timer.h"
 #include "sw/device/lib/dif/dif_clkmgr.h"
@@ -17,7 +16,6 @@
 #include "sw/device/lib/testing/alert_handler_testutils.h"
 #include "sw/device/lib/testing/aon_timer_testutils.h"
 #include "sw/device/lib/testing/clkmgr_testutils.h"
-#include "sw/device/lib/testing/entropy_src_testutils.h"
 #include "sw/device/lib/testing/entropy_testutils.h"
 #include "sw/device/lib/testing/pwrmgr_testutils.h"
 #include "sw/device/lib/testing/rstmgr_testutils.h"
@@ -319,7 +317,7 @@ void ast_enter_sleep_states_and_check_functionality(
     // restart the entropy collection. Note that this is more efficient than
     // restarting the entire block.
     CHECK_DIF_OK(dif_entropy_src_set_enabled(&entropy_src, kDifToggleEnabled));
-    CHECK_STATUS_OK(entropy_src_testutils_drain_observe_fifo(&entropy_src));
+    CHECK_STATUS_OK(entropy_testutils_drain_observe_fifo(&entropy_src));
 
     // Verify that the FIFO depth is non-zero via SW - indicating the reception
     // of data over the AST RNG interface.
@@ -372,7 +370,7 @@ void ast_enter_sleep_states_and_check_functionality(
     // restart the entropy collection. Note that this is more efficient than
     // restarting the entire block.
     CHECK_DIF_OK(dif_entropy_src_set_enabled(&entropy_src, kDifToggleEnabled));
-    CHECK_STATUS_OK(entropy_src_testutils_drain_observe_fifo(&entropy_src));
+    CHECK_STATUS_OK(entropy_testutils_drain_observe_fifo(&entropy_src));
 
     IBEX_SPIN_FOR(read_fifo_depth(&entropy_src) > 0, 1000);
   }
@@ -433,7 +431,8 @@ void set_edn_auto_mode(void) {
   };
   CHECK_DIF_OK(dif_entropy_src_fw_override_configure(
       &entropy_src, fw_override_config, kDifToggleEnabled));
-  CHECK_STATUS_OK(entropy_testutils_entropy_src_init());
+  CHECK_DIF_OK(dif_entropy_src_configure(
+      &entropy_src, entropy_testutils_config_default(), kDifToggleEnabled));
 
   // Enable CSRNG
   CHECK_DIF_OK(dif_csrng_configure(&csrng));
@@ -511,7 +510,7 @@ void set_edn_auto_mode(void) {
 
   // The Observe FIFO has already been filled while producing the seeds for the
   // EDNs. Empty the FIFO to restart the collection for the actual test.
-  CHECK_STATUS_OK(entropy_src_testutils_drain_observe_fifo(&entropy_src));
+  CHECK_STATUS_OK(entropy_testutils_drain_observe_fifo(&entropy_src));
 }
 
 void ottf_external_isr(uint32_t *exc_info) {
@@ -540,7 +539,7 @@ bool test_main(void) {
   init_units();
 
   set_edn_auto_mode();
-  CHECK_DIF_OK(dif_clkmgr_jitter_set_enabled(&clkmgr, kDifToggleEnabled));
+  CHECK_DIF_OK(dif_clkmgr_jitter_set_enabled(&clkmgr));
 
   // Enable both recoverable and fatal alerts
   CHECK_DIF_OK(dif_alert_handler_configure_alert(

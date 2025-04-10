@@ -792,6 +792,7 @@ class KmacGetErrorTest : public KmacTest {
       kDifErrorIncorrectFunctionName,
       kDifErrorSoftwareCommandSequence,
       kDifErrorSoftwareHashingWithoutEntropyReady,
+      kDifErrorShadowRegisterUpdate,
       kDifErrorFatalError,
       kDifErrorPackerIntegrity,
       kDifErrorMsgFifoIntegrity,

@@ -15,7 +15,7 @@ load(
     "hex_digits",
 )
 load(
-    "//rules/opentitan:keyutils.bzl",
+    "//rules:opentitan.bzl",
     "ECDSA_ONLY_KEY_STRUCTS",
     "filter_key_structs_for_lc_state",
 )
@@ -39,7 +39,7 @@ package(default_visibility = ["//visibility:public"])
 
 [otp_image(
     name = "otp_img_sigverify_always_{}".format(lc_state),
-    src = "//hw/top_earlgrey/data/otp:otp_json_{}".format(lc_state),
+    src = "//hw/ip/otp_ctrl/data:otp_json_{}".format(lc_state),
     overlays = STD_OTP_OVERLAYS,
 ) for lc_state, _ in get_lc_items()]
 

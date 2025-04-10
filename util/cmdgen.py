@@ -89,8 +89,7 @@ def cmdgen_rewrite_md(filepath: Path, dry_run: bool, update: bool) -> bool:
             continue
 
         # Run the found-command in a subshell
-        res = subprocess.run(cmd, shell=True, capture_output=True,
-                             cwd=REPO_ROOT)
+        res = subprocess.run(cmd, shell=True, capture_output=True)
         if res.stderr:
             logger.info(
                 f"{rel_path}:L{match_start_linum}: `{cmd}` "

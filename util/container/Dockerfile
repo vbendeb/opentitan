@@ -11,16 +11,19 @@ ARG VERIBLE_VERSION=v0.0-3622-g07b310a3
 # The RISCV toolchain version should match the release tag used in GitHub.
 ARG RISCV_TOOLCHAIN_TAR_VERSION=20220210-1
 # This should match the version in bazelish.sh.
-ARG BAZELISK_VERSION=v1.24.1
+ARG BAZELISK_VERSION=v1.11.0
+# This should match the version in ci/install-package-dependencies.sh
+ARG GCC_VERSION=9
 # This should match the version of the lowRISC RISC-V toolchain.
 ARG CLANG_VERSION=16
 
 # Main container image.
-FROM ubuntu:22.04 AS opentitan
+FROM ubuntu:20.04 AS opentitan
 ARG VERILATOR_VERSION
 ARG VERIBLE_VERSION
 ARG RISCV_TOOLCHAIN_TAR_VERSION
 ARG BAZELISK_VERSION
+ARG GCC_VERSION
 ARG CLANG_VERSION
 
 LABEL version="1.0"
@@ -63,6 +66,13 @@ RUN sed -i -e '/^$/d' -e '/^#/d' -e 's/#.*//' /tmp/apt-requirements.txt \
     && apt-get clean; \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /usr/share/doc/*
 
+# Install the CI version of gcc and g++
+RUN add-apt-repository ppa:ubuntu-toolchain-r/test \
+    && apt-get update \
+    && apt-get install -y gcc-${GCC_VERSION} g++-${GCC_VERSION} \
+    && update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-${GCC_VERSION} 90 \
+    && update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-${GCC_VERSION} 90
+
 # RISC-V device toolchain
 COPY util/get-toolchain.py /tmp/get-toolchain.py
 RUN /tmp/get-toolchain.py -r ${RISCV_TOOLCHAIN_TAR_VERSION} \
@@ -73,7 +83,7 @@ RUN /tmp/get-toolchain.py -r ${RISCV_TOOLCHAIN_TAR_VERSION} \
 # build. These are kept intentionally since we plan to use them in the future, e.g.
 # `llvm-remark-size-diff` and `llvm-tli-checker`.
 RUN curl https://apt.llvm.org/llvm-snapshot.gpg.key | apt-key add \
-    && add-apt-repository "deb https://apt.llvm.org/jammy/ llvm-toolchain-jammy-${CLANG_VERSION} main" \
+    && add-apt-repository "deb https://apt.llvm.org/focal/ llvm-toolchain-focal-${CLANG_VERSION} main" \
     && apt update \
     && apt install -y clang-${CLANG_VERSION} lldb-${CLANG_VERSION} lld-${CLANG_VERSION} \
         clangd-${CLANG_VERSION} clang-tidy-${CLANG_VERSION} clang-format-${CLANG_VERSION} \

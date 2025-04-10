@@ -176,19 +176,9 @@ class sram_ctrl_scoreboard #(parameter int AddrWidth = 10) extends cip_base_scor
     bit [TL_DW-1:0] exp_data;
     tlul_pkg::tl_a_user_t a_user = tlul_pkg::tl_a_user_t'(item.a_user);
 
-    // Determine expected data.
-    // When the access target was a CSR, tlul_adapter_reg always returns a '1.
-    // When the access target was the memory, tlul_adapter_sram either returns
-    // DataWhenInstrError ('1) or DataWhenError ('0) depending whether it was a
-    // instruction type access or not.
-    uvm_reg_addr_t csr_addr = cfg.ral_models[ral_name].get_word_aligned_addr(item.a_addr);
-    if (csr_addr inside {cfg.ral_models[ral_name].csr_addrs}) begin
-      exp_data = '1;
-    end else begin
-      // if error occurs when it's an instruction, return all 0 since it's an illegal instruction
-      if (a_user.instr_type == prim_mubi_pkg::MuBi4True) exp_data = 0;
-      else                                               exp_data = '1;
-    end
+    // if error occurs when it's an instrution, return all 0 since it's an illegal instruction
+    if (a_user.instr_type == prim_mubi_pkg::MuBi4True) exp_data = 0;
+    else                                               exp_data = '1;
 
     `DV_CHECK_EQ(item.d_data, exp_data, "d_data mismatch when d_error = 1")
   endfunction
@@ -210,7 +200,7 @@ class sram_ctrl_scoreboard #(parameter int AddrWidth = 10) extends cip_base_scor
     end
 
   task run_phase(uvm_phase phase);
-    string mem_path = dv_utils_pkg::get_parent_hier(cfg.sram_ctrl_bkdr_util_h.get_path());
+    string mem_path = dv_utils_pkg::get_parent_hier(cfg.mem_bkdr_util_h.get_path());
     write_en_path   = $sformatf("%s.write_i", mem_path);
     write_addr_path = $sformatf("%s.addr_i", mem_path);
     `DV_CHECK(uvm_hdl_check_path(write_en_path),
@@ -219,7 +209,7 @@ class sram_ctrl_scoreboard #(parameter int AddrWidth = 10) extends cip_base_scor
               $sformatf("Hierarchical path %0s appears to be invalid.", write_addr_path))
 
     mem_bkdr_scb = sram_ctrl_mem_bkdr_scb::type_id::create("mem_bkdr_scb");
-    mem_bkdr_scb.sram_ctrl_bkdr_util_h = cfg.sram_ctrl_bkdr_util_h;
+    mem_bkdr_scb.mem_bkdr_util_h = cfg.mem_bkdr_util_h;
     mem_bkdr_scb.en_cov = cfg.en_cov;
 
     super.run_phase(phase);
@@ -277,7 +267,7 @@ class sram_ctrl_scoreboard #(parameter int AddrWidth = 10) extends cip_base_scor
       cfg.clk_rst_vif.wait_clks(1);
       #1ps;
 
-      mem_bkdr_scb.write_finish(decrypt_addr, item.mask, !cfg.is_fi_test, !cfg.is_fi_test);
+      mem_bkdr_scb.write_finish(decrypt_addr, item.mask);
       `uvm_info(`gfn, $sformatf("Currently num of pending write items is %0d", write_item_q.size),
                 UVM_MEDIUM)
     end
@@ -361,7 +351,7 @@ class sram_ctrl_scoreboard #(parameter int AddrWidth = 10) extends cip_base_scor
       `uvm_info(`gfn, "starting to wait for init", UVM_MEDIUM)
       // This gets interrupted by reset.
       `DV_SPINWAIT_EXIT(
-          cfg.clk_rst_vif.wait_clks(cfg.sram_ctrl_bkdr_util_h.get_depth());,
+          cfg.clk_rst_vif.wait_clks(cfg.mem_bkdr_util_h.get_depth());,
           wait (cfg.under_reset == 1'b1);,
           "Stopped waiting for ram init due to reset")
       if (cfg.under_reset) return;
@@ -452,8 +442,7 @@ class sram_ctrl_scoreboard #(parameter int AddrWidth = 10) extends cip_base_scor
     `DV_CHECK_EQ(cfg.in_init, 0, "No item is accepted during init")
 
     if (status_lc_esc == EscNone && !item.is_write()) begin
-      mem_bkdr_scb.read_finish(item.d_data, simplify_addr(item.a_addr),
-                               item.a_mask, !cfg.is_fi_test, !cfg.is_fi_test);
+      mem_bkdr_scb.read_finish(item.d_data, simplify_addr(item.a_addr), item.a_mask);
     end
   endtask
 
@@ -553,19 +542,12 @@ class sram_ctrl_scoreboard #(parameter int AddrWidth = 10) extends cip_base_scor
     case (csr_name)
       // add individual case item for each csr
       "alert_test": begin
-        if (addr_phase_write && item.a_data[0]) begin
-          // Allow up to 10 cycles delay to consider a potential delay introduced
-          // by enabling/disabling the SRAM readback feature during the test.
-          set_exp_alert("fatal_error", .is_fatal(0), .max_delay(10));
-        end
+        if (addr_phase_write && item.a_data[0]) set_exp_alert("fatal_error", .is_fatal(0));
       end
       "exec_regwen": begin
         // do nothing
       end
       "exec": begin
-        // do nothing
-      end
-      "readback_regwen": begin
         // do nothing
       end
       "readback": begin

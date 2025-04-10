@@ -19,7 +19,7 @@ use std::path::Path;
 use std::str::FromStr;
 
 use super::Error;
-use crate::crypto::sha256::{sha256, Sha256Digest};
+use crate::crypto::sha256::Sha256Digest;
 
 pub struct EcdsaPrivateKey {
     pub key: SigningKey,
@@ -59,7 +59,7 @@ impl EcdsaPrivateKey {
     }
 
     pub fn sign(&self, digest: &Sha256Digest) -> Result<EcdsaRawSignature> {
-        let (sig, _) = self.key.sign_prehash_recoverable(&digest.to_be_bytes())?;
+        let (sig, _) = self.key.sign_prehash_recoverable(digest.as_ref())?;
         let bytes = sig.to_bytes();
         let half = bytes.len() / 2;
         // The signature bytes are (R || S).  Since opentitan is a little-endian
@@ -73,12 +73,11 @@ impl EcdsaPrivateKey {
     }
 
     pub fn digest_and_sign(&self, data: &[u8]) -> Result<EcdsaRawSignature> {
-        let digest = sha256(data);
-        self.sign(&digest)
+        self.sign(&Sha256Digest::hash(data))
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Annotate)]
+#[derive(Debug, Clone, Serialize, Deserialize, Annotate)]
 pub struct EcdsaRawSignature {
     #[serde(with = "serde_bytes")]
     #[annotate(format = hexstr)]
@@ -137,13 +136,13 @@ impl EcdsaRawSignature {
             let mut data = Vec::<u8>::new();
 
             file.read_to_end(&mut data)
-                .with_context(|| format!("Failed to read {path:?}"))?;
+                .with_context(|| "Failed to read {path:?}")?;
 
             EcdsaRawSignature::from_der(&data).with_context(|| format!("Failed parsing {path:?}"))
         }
     }
 
-    pub fn write(&self, dest: &mut impl Write) -> Result<()> {
+    pub fn write(&self, dest: &mut impl Write) -> Result<usize> {
         ensure!(
             self.r.len() == 32,
             Error::InvalidSignature(anyhow!("bad r length: {}", self.r.len()))
@@ -154,7 +153,7 @@ impl EcdsaRawSignature {
         );
         dest.write_all(&self.r)?;
         dest.write_all(&self.s)?;
-        Ok(())
+        Ok(64)
     }
 
     pub fn to_vec(&self) -> Result<Vec<u8>> {
@@ -210,7 +209,7 @@ impl EcdsaPublicKey {
         bytes[..half].reverse();
         bytes[half..].reverse();
         let signature = Signature::from_slice(&bytes)?;
-        self.key.verify_prehash(&digest.to_be_bytes(), &signature)?;
+        self.key.verify_prehash(digest.as_ref(), &signature)?;
         Ok(())
     }
 }

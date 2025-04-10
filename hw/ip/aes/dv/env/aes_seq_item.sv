@@ -7,7 +7,7 @@ class aes_seq_item extends uvm_sequence_item;
   `uvm_object_utils(aes_seq_item)
 
   aes_item_type_e  item_type;
-  bit [1:0] operation;
+  aes_op_e operation;
 
   ///////////////////////////////////////
   //  Control Knobs                    //
@@ -335,8 +335,7 @@ class aes_seq_item extends uvm_sequence_item;
     str = {str,  $psprintf("\n\t ----| AES Mode:    \t %s                          |----\t ",
                           mode.name()) };
     str = {str,  $psprintf("\n\t ----| Operation:    \t %s                          |----\t ",
-                           operation == AES_ENC ? "AES_ENC" :
-                           operation == AES_DEC ? "AES_DEC" : "INVALID")};
+                           operation.name() ) };
     str = {str,  $psprintf("\n\t ----| Key len:    \t %s  \t(%3b)                           |----\t ",
                           (key_len==3'b001) ? "128b" : (key_len == 3'b010) ? "192b" : "256b", key_len)};
     str = {str,  $psprintf("\n\t ----| Key Share 0: \t ")};

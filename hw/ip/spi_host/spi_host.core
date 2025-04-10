@@ -8,13 +8,11 @@ description: "SPI_HOST DV"
 filesets:
   files_rtl:
     depend:
-      - lowrisc:virtual_constants:top_pkg
+      - lowrisc:constants:top_pkg
       - lowrisc:prim:all
       - lowrisc:prim:flop_en
-      - lowrisc:prim:racl_error_arb
       - lowrisc:ip:tlul
       - lowrisc:ip:spi_device_pkg
-      - lowrisc:virtual_constants:top_racl_pkg
     files:
       - rtl/spi_host_reg_pkg.sv
       - rtl/spi_host_cmd_pkg.sv
@@ -53,9 +51,6 @@ filesets:
       # common waivers
       - lowrisc:lint:common
       - lowrisc:lint:comportable
-    files:
-      - lint/spi_host.vbl
-    file_type: veribleLintWaiver
 
 parameters:
   SYNTHESIS:

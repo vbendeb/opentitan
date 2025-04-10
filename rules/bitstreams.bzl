@@ -48,6 +48,8 @@ particular bitstream or use cached version for the next cache entry, for each
 design (i.e. mix-and-match).
 """
 
+load("@python3//:defs.bzl", "interpreter")
+
 def _bitstreams_repo_impl(rctx):
     # First, check if an existing pre-built bitstream cache repo exists, and if
     # so, use it instead of building one.
@@ -59,6 +61,7 @@ def _bitstreams_repo_impl(rctx):
         [
             rctx.path(rctx.attr.python_interpreter),
             rctx.attr._cache_manager,
+            "--branch=earlgrey_1.0.0",
             "--build-file=BUILD.bazel",
             "--bucket-url={}".format(rctx.attr.bucket_url),
             "--cache={}".format(cache_path),
@@ -69,7 +72,7 @@ def _bitstreams_repo_impl(rctx):
     if result.return_code != 0:
         fail("Bitstream cache not initialized properly.")
 
-# The bitstream repo should be evaluated with `bazel fetch --configure` after
+# The bitstream repo should be evaluated with `bazel sync --configure` after
 # every Git checkout. Once the cache is initialized, a typical invocation will
 # find the latest cached artifacts and map them to Bazel targets.
 #
@@ -110,7 +113,7 @@ bitstreams_repo = repository_rule(
             default = 18 * 3600,  # Refresh every 18h
         ),
         "python_interpreter": attr.label(
-            default = "@python3_host//:python",
+            default = interpreter,
             allow_single_file = True,
             doc = "Python interpreter to use.",
         ),
@@ -123,7 +126,7 @@ bitstreams_repo = repository_rule(
     # This rule depends on the Git repository, but there's no ergonomic way to
     # encode the dependency in Bazel. Instead, indicate that the rule depends on
     # something outside of Bazel's dependency graph and rely on the user calling
-    # `bazel fetch --configure` when checking out new revisions. For historical
+    # `bazel sync --configure` when checking out new revisions. For historical
     # context, see <https://github.com/lowRISC/opentitan/issues/16832>.
     configure = True,
 )

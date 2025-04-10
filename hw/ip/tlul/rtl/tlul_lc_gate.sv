@@ -9,8 +9,6 @@
 // Note that the lc_en_i should be synchronized and buffered outside of this module using
 // an instance of prim_lc_sync.
 
-`include "prim_assert.sv"
-
 module tlul_lc_gate
   import tlul_pkg::*;
   import lc_ctrl_pkg::*;
@@ -18,13 +16,7 @@ module tlul_lc_gate
   // Number of LC gating muxes in each direction.
   // It is recommended to set this parameter to 2, which results
   // in a total of 4 gating muxes.
-  parameter int NumGatesPerDirection = 2,
-  // By default we return a TL-UL bus error response if the bus is gated. However, in some special
-  // cases we need to be able to return valid, all-zero responses instead (e.g. for the RV_DM). In
-  // those cases, ReturnBlankResp can be set to 1.
-  parameter bit ReturnBlankResp = 0,
-  // The maximum number of outstanding TL-UL requests at the output
-  parameter int unsigned Outstanding = 3
+  parameter int NumGatesPerDirection = 2
 ) (
   input clk_i,
   input rst_ni,
@@ -151,7 +143,7 @@ module tlul_lc_gate
   state_e state_d, state_q;
   `PRIM_FLOP_SPARSE_FSM(u_state_regs, state_d, state_q, state_e, StError)
 
-  logic [prim_util_pkg::vbits(Outstanding+1)-1:0] outstanding_txn;
+  logic [1:0] outstanding_txn;
   logic a_ack;
   logic d_ack;
   assign a_ack = tl_h2d_i.a_valid & tl_d2h_o.a_ready;
@@ -251,9 +243,7 @@ module tlul_lc_gate
     end
   end
 
-  tlul_err_resp #(
-    .ReturnBlankResp(ReturnBlankResp)
-  ) u_tlul_err_resp (
+  tlul_err_resp u_tlul_err_resp (
     .clk_i,
     .rst_ni,
     .tl_h_i(tl_h2d_error),
@@ -261,7 +251,6 @@ module tlul_lc_gate
   );
 
   // Add assertion
-  `ASSERT(OutStandingOvfl_A, (outstanding_txn == Outstanding) |-> ~a_ack)
-  `ASSERT(SizeOutstandingTxn_A, (2 ** $bits(outstanding_txn)) - 1 >= Outstanding)
+  `ASSERT(OutStandingOvfl_A, &outstanding_txn |-> ~a_ack)
 
 endmodule : tlul_lc_gate

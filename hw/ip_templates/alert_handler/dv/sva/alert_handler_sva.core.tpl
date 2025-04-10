@@ -2,26 +2,26 @@ CAPI=2:
 # Copyright lowRISC contributors (OpenTitan project).
 # Licensed under the Apache License, Version 2.0, see LICENSE for details.
 # SPDX-License-Identifier: Apache-2.0
-name: ${instance_vlnv(f"lowrisc:dv:{module_instance_name}_sva:0.1")}
-description: "${module_instance_name.upper()} assertion modules and bind file."
+name: ${instance_vlnv("lowrisc:dv:alert_handler_sva:0.1")}
+description: "ALERT_HANDLER assertion modules and bind file."
 filesets:
   files_dv:
     depend:
       - lowrisc:tlul:headers
       - lowrisc:fpv:csr_assert_gen
     files:
-      - ${module_instance_name}_bind.sv
+      - alert_handler_bind.sv
     file_type: systemVerilogSource
 
   files_formal:
     depend:
-      - ${instance_vlnv(f"lowrisc:ip:{module_instance_name}:0.1")}
+      - ${instance_vlnv("lowrisc:ip:alert_handler:0.1")}
 
 generate:
   csr_assert_gen:
     generator: csr_assert_gen
     parameters:
-      spec: ../../data/${module_instance_name}.hjson
+      spec: ../../data/alert_handler.hjson
 
 targets:
   default: &default_target
@@ -35,4 +35,4 @@ targets:
     filesets:
       - files_formal
       - files_dv
-    toplevel: ${module_instance_name}
+    toplevel: alert_handler

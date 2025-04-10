@@ -3,6 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "sw/device/lib/base/memory.h"
+#include "sw/device/lib/base/mmio.h"
+#include "sw/device/lib/dif/dif_edn.h"
 #include "sw/device/lib/dif/dif_rv_core_ibex.h"
 #include "sw/device/lib/runtime/ibex.h"
 #include "sw/device/lib/runtime/log.h"
@@ -11,16 +13,15 @@
 #include "sw/device/lib/testing/test_framework/check.h"
 #include "sw/device/lib/testing/test_framework/ottf_main.h"
 
+#include "hw/top_earlgrey/sw/autogen/top_earlgrey.h"
 #include "rv_core_ibex_regs.h"
 
 // Initialize OTTF.
 OTTF_DEFINE_TEST_CONFIG();
 
 // Declare two assembly functions defined in `rv_core_ibex_rnd_test.S`.
-extern uint32_t rv_core_ibex_rnd_read_and_immediately_check_status(
-    volatile void *);
-extern uint32_t rv_core_ibex_check_rnd_read_possible_while_status_invalid(
-    volatile void *);
+extern uint32_t rv_core_ibex_rnd_read_and_immediately_check_status(void);
+extern uint32_t rv_core_ibex_check_rnd_read_possible_while_status_invalid(void);
 
 enum {
   kRandomDataReads = 32,
@@ -45,10 +46,9 @@ bool test_main(void) {
 
   // Initialize Ibex.
   dif_rv_core_ibex_t rv_core_ibex;
-  dt_rv_core_ibex_t kRvCoreIbexDt = (dt_rv_core_ibex_t)0;
-  static_assert(kDtRvCoreIbexCount == 1,
-                "This test expects exactly one Ibex core");
-  CHECK_DIF_OK(dif_rv_core_ibex_init_from_dt(kRvCoreIbexDt, &rv_core_ibex));
+  CHECK_DIF_OK(dif_rv_core_ibex_init(
+      mmio_region_from_addr(TOP_EARLGREY_RV_CORE_IBEX_CFG_BASE_ADDR),
+      &rv_core_ibex));
 
   uint32_t data_reads_count = kRandomDataReads;
   if (kDeviceType == kDeviceSilicon) {
@@ -71,8 +71,7 @@ bool test_main(void) {
   // read. Make multiple attempts in a loop to avoid icache effects.
   bool quick_reads_success = true;
   for (int i = 0; i < kInvalidReadAttempts; ++i) {
-    quick_reads_success &= rv_core_ibex_rnd_read_and_immediately_check_status(
-        rv_core_ibex.base_addr.base);
+    quick_reads_success &= rv_core_ibex_rnd_read_and_immediately_check_status();
   }
   CHECK(!quick_reads_success);
 
@@ -88,8 +87,7 @@ bool test_main(void) {
                 kTimeoutUsec);
   uint32_t status_value = UINT32_MAX;
   for (int i = 0; i < kInvalidReadAttempts; ++i) {
-    status_value &= rv_core_ibex_check_rnd_read_possible_while_status_invalid(
-        rv_core_ibex.base_addr.base);
+    status_value &= rv_core_ibex_check_rnd_read_possible_while_status_invalid();
   }
   CHECK(status_value == 0);
 

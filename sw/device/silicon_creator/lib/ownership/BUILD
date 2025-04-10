@@ -3,13 +3,13 @@
 # SPDX-License-Identifier: Apache-2.0
 
 load(
-    "//rules/opentitan:defs.bzl",
-    "opentitan_test",
-)
-load(
     "//rules:cross_platform.bzl",
     "dual_cc_library",
     "dual_inputs",
+)
+load(
+    "//rules/opentitan:defs.bzl",
+    "opentitan_test",
 )
 
 package(default_visibility = ["//visibility:public"])
@@ -19,47 +19,41 @@ cc_library(
     hdrs = ["datatypes.h"],
     deps = [
         "//sw/device/lib/base:bitfield",
+        "//sw/device/silicon_creator/lib:nonce",
         "//sw/device/silicon_creator/lib/sigverify:ecdsa_p256_key",
-        "//sw/device/silicon_creator/lib/sigverify:rsa_key",
         "//sw/device/silicon_creator/lib/sigverify:spx_key",
     ],
 )
 
 cc_library(
-    name = "ecdsa",
-    srcs = ["ecdsa.c"],
-    hdrs = ["ecdsa.h"],
-    defines = [
-        "USE_OTBN=1",
-        #"USE_CRYPTOC=1",
-    ],
+    name = "isfb",
+    srcs = ["isfb.c"],
+    hdrs = ["isfb.h"],
     deps = [
         ":datatypes",
+        ":owner_block",
         "//sw/device/lib/base:hardened",
         "//sw/device/lib/base:hardened_memory",
-        "//sw/device/lib/base:macros",
         "//sw/device/silicon_creator/lib:error",
-        "//sw/device/silicon_creator/lib/drivers:hmac",
-        "//sw/device/silicon_creator/lib:otbn_boot_services",
-        #"//sw/vendor:cryptoc",
+        "//sw/device/silicon_creator/lib:manifest",
+        "//sw/device/silicon_creator/lib/drivers:flash_ctrl",
     ],
 )
 
-opentitan_test(
-    name = "ecdsa_functest",
-    srcs = ["ecdsa_functest.c"],
-    exec_env = {
-        "//hw/top_earlgrey:fpga_cw310_rom_with_fake_keys": None,
-    },
+cc_test(
+    name = "isfb_unittest",
+    srcs = [
+        "isfb_unittest.cc",
+    ],
     deps = [
-        ":ecdsa",
+        ":datatypes",
+        ":isfb",
+        ":owner_block",
         "//sw/device/lib/base:hardened",
-        "//sw/device/lib/base:status",
-        "//sw/device/lib/runtime:log",
-        "//sw/device/lib/testing:entropy_testutils",
-        "//sw/device/lib/testing:hexstr",
-        "//sw/device/lib/testing/test_framework:ottf_main",
-        "//sw/device/silicon_creator/lib/ownership/keys/fake",
+        "//sw/device/silicon_creator/lib:manifest",
+        "//sw/device/silicon_creator/lib/drivers:flash_ctrl",
+        "//sw/device/silicon_creator/testing:rom_test",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -75,7 +69,7 @@ dual_cc_library(
     ),
     deps = dual_inputs(
         device = [
-            ":ecdsa",
+            ":owner_verify",
             "//sw/device/lib/base:memory",
             "//sw/device/lib/base:hardened_memory",
             "//sw/device/silicon_creator/lib/drivers:keymgr",
@@ -102,13 +96,14 @@ cc_library(
     hdrs = ["ownership.h"],
     deps = [
         ":datatypes",
-        ":ecdsa",
         ":owner_block",
         ":ownership_activate",
         ":ownership_key",
         "//sw/device/lib/base:hardened_memory",
         "//sw/device/silicon_creator/lib:boot_data",
+        "//sw/device/silicon_creator/lib:boot_log",
         "//sw/device/silicon_creator/lib:dbg_print",
+        "//sw/device/silicon_creator/lib/base:sec_mmio",
         "//sw/device/silicon_creator/lib/drivers:flash_ctrl",
         "//sw/device/silicon_creator/lib/drivers:lifecycle",
     ],
@@ -120,6 +115,7 @@ cc_library(
     hdrs = ["owner_block.h"],
     deps = [
         ":datatypes",
+        "//hw/top_earlgrey/sw/autogen:top_earlgrey",
         "//sw/device/lib/base:bitfield",
         "//sw/device/lib/base:hardened",
         "//sw/device/lib/base:hardened_memory",
@@ -127,6 +123,7 @@ cc_library(
         "//sw/device/silicon_creator/lib/base:chip",
         "//sw/device/silicon_creator/lib/drivers:flash_ctrl",
         "//sw/device/silicon_creator/lib/drivers:hmac",
+        "//sw/device/silicon_creator/lib/drivers:pinmux",
     ],
 )
 
@@ -226,8 +223,29 @@ cc_library(
         ":owner_block",
         ":ownership",
         "//sw/device/silicon_creator/lib:boot_data",
+        "//sw/device/silicon_creator/lib/boot_svc:boot_svc_msg",
         "//sw/device/silicon_creator/lib/drivers:flash_ctrl",
         "//sw/device/silicon_creator/lib/ownership/keys/fake:includes",
+        "//sw/device/silicon_creator/lib/rescue",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
+    name = "test_owner_hybrid",
+    testonly = True,
+    srcs = ["test_owner.c"],
+    defines = [
+        "TEST_OWNER_KEY_ALG_HYBRID_SPX_PURE=1",
+    ],
+    deps = [
+        ":datatypes",
+        ":owner_block",
+        ":ownership",
+        "//sw/device/silicon_creator/lib:boot_data",
+        "//sw/device/silicon_creator/lib/drivers:flash_ctrl",
+        "//sw/device/silicon_creator/lib/ownership/keys/fake:includes",
+        "//sw/device/silicon_creator/lib/rescue",
     ],
     alwayslink = True,
 )
@@ -244,8 +262,77 @@ cc_library(
         ":owner_block",
         ":ownership",
         "//sw/device/silicon_creator/lib:boot_data",
+        "//sw/device/silicon_creator/lib/boot_svc:boot_svc_msg",
         "//sw/device/silicon_creator/lib/drivers:flash_ctrl",
         "//sw/device/silicon_creator/lib/ownership/keys/fake:includes",
+        "//sw/device/silicon_creator/lib/rescue",
     ],
     alwayslink = True,
+)
+
+cc_library(
+    name = "test_owner_usbdfu",
+    testonly = True,
+    srcs = ["test_owner.c"],
+    defines = [
+        # 0x55 is 'U'sb.
+        "WITH_RESCUE_PROTOCOL=0x55",
+        # Trigger 2 is strap pins combination.
+        "WITH_RESCUE_TRIGGER=2",
+        # Strapping value of 3.
+        "WITH_RESCUE_INDEX=3",
+    ],
+    deps = [
+        ":datatypes",
+        ":owner_block",
+        ":ownership",
+        "//sw/device/silicon_creator/lib:boot_data",
+        "//sw/device/silicon_creator/lib/boot_svc:boot_svc_msg",
+        "//sw/device/silicon_creator/lib/drivers:flash_ctrl",
+        "//sw/device/silicon_creator/lib/ownership/keys/fake:includes",
+        "//sw/device/silicon_creator/lib/rescue",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
+    name = "test_owner_spidfu",
+    testonly = True,
+    srcs = ["test_owner.c"],
+    defines = [
+        # 0x53 is 'S'pi.
+        "WITH_RESCUE_PROTOCOL=0x53",
+        # Trigger 3 is GPIO pin.
+        "WITH_RESCUE_TRIGGER=3",
+        # When the trigger is GPIO, the index is the MuxedPad to us as the sense
+        # input. Index 2 is kTopEarlgreyMuxedPadsIoa2.
+        "WITH_RESCUE_INDEX=2",
+        # GPIO param 3 means enable the internal pull resistor and trigger
+        # rescue when the GPIO is high.
+        "WITH_RESCUE_GPIO_PARAM=3",
+    ],
+    deps = [
+        ":datatypes",
+        ":owner_block",
+        ":ownership",
+        "//sw/device/silicon_creator/lib:boot_data",
+        "//sw/device/silicon_creator/lib/boot_svc:boot_svc_msg",
+        "//sw/device/silicon_creator/lib/drivers:flash_ctrl",
+        "//sw/device/silicon_creator/lib/ownership/keys/fake:includes",
+        "//sw/device/silicon_creator/lib/rescue",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
+    name = "owner_verify",
+    srcs = ["owner_verify.c"],
+    hdrs = ["owner_verify.h"],
+    deps = [
+        ":datatypes",
+        "//sw/device/silicon_creator/lib:error",
+        "//sw/device/silicon_creator/lib/base:util",
+        "//sw/device/silicon_creator/lib/drivers:hmac",
+        "//sw/device/silicon_creator/lib/sigverify",
+    ],
 )

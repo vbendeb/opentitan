@@ -54,7 +54,7 @@ struct Opts {
 // Test phases
 // - the tests controlled by this sequence presently run a contiguous sequence of phases
 //   within this full sequence.
-#[derive(Clone, Debug, PartialEq, Eq, ValueEnum, strum::Display)]
+#[derive(Clone, Debug, PartialEq, Eq, ValueEnum)]
 enum SuspendPhase {
     // Resume Signaling stimulus when suspended but not in a sleep state.
     Suspend,
@@ -71,6 +71,21 @@ enum SuspendPhase {
     DeepDisconnect,
     // Final test state; device disconnects and test completes.
     Shutdown,
+}
+
+impl ToString for SuspendPhase {
+    fn to_string(&self) -> String {
+        match self {
+            SuspendPhase::Suspend => String::from("Suspend"),
+            SuspendPhase::SleepResume => String::from("SleepResume"),
+            SuspendPhase::SleepReset => String::from("SleepReset"),
+            SuspendPhase::SleepDisconnect => String::from("SleepDisconnect"),
+            SuspendPhase::DeepResume => String::from("DeepResume"),
+            SuspendPhase::DeepReset => String::from("DeepReset"),
+            SuspendPhase::DeepDisconnect => String::from("DeepDisconnect"),
+            SuspendPhase::Shutdown => String::from("Shutdown"),
+        }
+    }
 }
 
 // Wait for a device to appear and then return the parent device and port number.
@@ -203,13 +218,17 @@ fn usbdev_suspend(
     // The full suspend-sleep-resume testing is decomposed into a number of shorter sequences to
     // make chip-level simulation feasible. Most of the top-level tests that this harness supports
     // expects to run through a short sub-sequence of these test phases.
-    log::info!("Phase sequence - {} to {} inclusive", init_phase, fin_phase);
+    log::info!(
+        "Phase sequence - {} to {} inclusive",
+        init_phase.to_string(),
+        fin_phase.to_string()
+    );
 
     for iter in 1..=opts.num_iters {
         log::info!("Iteration {} of {}", iter, opts.num_iters);
         let mut phase = init_phase.clone();
         loop {
-            log::info!("Test phase {}", phase);
+            log::info!("Test phase {}", phase.to_string());
 
             // Synchronize with the device-side code; it shall always emit this message at the point
             // of being ready to receive the stimulus within a given test phase, because we have

@@ -41,7 +41,7 @@ otp_json(
 
 otp_image(
     name = "otp_img_reset_ret_ram",
-    src = "//hw/top_earlgrey/data/otp:otp_json_rma",
+    src = "//hw/ip/otp_ctrl/data:otp_json_rma",
     overlays = STD_OTP_OVERLAYS + [":otp_json_reset_ret_ram_overlay"],
     visibility = ["//visibility:private"],
 )
@@ -76,6 +76,7 @@ opentitan_test(
         tags = maybe_skip_in_ci(CONST.LCV.RMA),
     ),
     deps = [
+        "//hw/top_earlgrey/ip_autogen/pwrmgr:pwrmgr_c_regs",
         "//sw/device/lib/base:memory",
         "//sw/device/lib/dif:aon_timer",
         "//sw/device/lib/dif:pwrmgr",

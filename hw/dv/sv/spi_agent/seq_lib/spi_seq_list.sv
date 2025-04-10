@@ -10,4 +10,3 @@
 `include "spi_host_dummy_seq.sv"
 `include "spi_device_seq.sv"
 `include "spi_device_cmd_rsp_seq.sv"
-`include "spi_device_dma_seq.sv"

@@ -3,7 +3,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <assert.h>
 
-#include "dt/dt_api.h"  // Generated
 #include "sw/device/lib/arch/device.h"
 #include "sw/device/lib/base/macros.h"
 #include "sw/device/lib/base/memory.h"
@@ -27,7 +26,7 @@ static_assert(__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__,
 
 OTTF_DEFINE_TEST_CONFIG();
 
-static void init_test(dif_spi_host_t *spi_host, dt_pad_t csb_pad) {
+static void init_test(dif_spi_host_t *spi_host, dif_pinmux_index_t csb_pin) {
   dif_pinmux_t pinmux;
   mmio_region_t base_addr =
       mmio_region_from_addr(TOP_EARLGREY_PINMUX_AON_BASE_ADDR);
@@ -49,7 +48,7 @@ static void init_test(dif_spi_host_t *spi_host, dt_pad_t csb_pad) {
       break;
   }
   CHECK_STATUS_OK(
-      spi_host1_pinmux_connect_to_bob(&pinmux, csb_pad, platform_id));
+      spi_host1_pinmux_connect_to_bob(&pinmux, csb_pin, platform_id));
 
   base_addr = mmio_region_from_addr(TOP_EARLGREY_SPI_HOST1_BASE_ADDR);
   CHECK_DIF_OK(dif_spi_host_init(base_addr, spi_host));
@@ -75,17 +74,17 @@ bool test_main(void) {
 
   // Chip select pins for the different 256Mb GigaDevice SPI Flashes available
   // via PMOD
-  dt_pad_t csb_pads[] = {
-      kDtPadIoc11,
-      kDtPadIoa6,
+  dif_pinmux_index_t csb_pins[] = {
+      kTopEarlgreyPinmuxMioOutIoc11,
+      kTopEarlgreyPinmuxMioOutIoa6,
   };
 
   status_t result = OK_STATUS();
-  for (size_t i = 0; i < ARRAYSIZE(csb_pads); ++i) {
+  for (size_t i = 0; i < ARRAYSIZE(csb_pins); ++i) {
     LOG_INFO("Testing flash device %u", (uint32_t)(i + 1));
     dif_spi_host_t spi_host;
 
-    init_test(&spi_host, csb_pads[i]);
+    init_test(&spi_host, csb_pins[i]);
 
     EXECUTE_TEST(result, test_software_reset, &spi_host);
     EXECUTE_TEST(result, test_read_sfdp, &spi_host);

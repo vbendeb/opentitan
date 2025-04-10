@@ -6,16 +6,10 @@ package(default_visibility = ["//visibility:public"])
 
 filegroup(
     name = "ecdsa_signatures",
-    srcs = glob(
-        ["*.ecdsa_sig"],
-        allow_empty = True,
-    ),
+    srcs = glob(["*.ecdsa_sig"]),
 )
 
 filegroup(
     name = "spx_signatures",
-    srcs = glob(
-        ["*.spx_sig"],
-        allow_empty = True,
-    ),
+    srcs = glob(["*.spx_sig"]),
 )

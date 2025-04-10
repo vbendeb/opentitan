@@ -19,6 +19,7 @@ if [ ! -f ${hjson_file} ]; then
 fi
 
 ./util/topgen.py -t ${hjson_file} --check-cm || {
-    echo "::error::Countermeasure check failed."
+    echo -n "##vso[task.logissue type=error]"
+    echo "Countermeasure check failed."
     exit 1
 }

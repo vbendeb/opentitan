@@ -9,9 +9,18 @@ load(
     "fpga_params",
     "opentitan_test",
 )
-load("//rules/opentitan:keyutils.bzl", "ECDSA_ONLY_KEY_STRUCTS")
-load("//rules:const.bzl", "get_lc_items")
-load("//rules:rom_e2e.bzl", "maybe_skip_in_ci")
+load(
+    "//rules:opentitan.bzl",
+    "ECDSA_ONLY_KEY_STRUCTS",
+)
+load(
+    "//rules:const.bzl",
+    "get_lc_items",
+)
+load(
+    "//rules:rom_e2e.bzl",
+    "maybe_skip_in_ci",
+)
 
 package(default_visibility = ["//visibility:public"])
 
@@ -36,11 +45,11 @@ package(default_visibility = ["//visibility:public"])
             test_harness = "//sw/host/tests/rom/e2e_chip_specific_startup",
         ),
         deps = [
-            "//hw/top:csrng_c_regs",
-            "//hw/top:edn_c_regs",
-            "//hw/top:entropy_src_c_regs",
-            "//hw/top:otp_ctrl_c_regs",
-            "//hw/top:sensor_ctrl_c_regs",
+            "//hw/ip/csrng/data:csrng_c_regs",
+            "//hw/ip/edn/data:edn_c_regs",
+            "//hw/ip/entropy_src/data:entropy_src_c_regs",
+            "//hw/ip/otp_ctrl/data:otp_ctrl_c_regs",
+            "//hw/top_earlgrey/ip/sensor_ctrl/data:sensor_ctrl_c_regs",
             "//hw/top_earlgrey/sw/autogen:top_earlgrey",
             "//sw/device/lib/base:mmio",
             "//sw/device/lib/dif:clkmgr",

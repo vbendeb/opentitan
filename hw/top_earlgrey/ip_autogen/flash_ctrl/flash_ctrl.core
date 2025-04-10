@@ -2,8 +2,10 @@ CAPI=2:
 # Copyright lowRISC contributors (OpenTitan project).
 # Licensed under the Apache License, Version 2.0, see LICENSE for details.
 # SPDX-License-Identifier: Apache-2.0
-name: lowrisc:earlgrey_ip:flash_ctrl:0.1
+name: lowrisc:opentitan:top_earlgrey_flash_ctrl:0.1
 description: "Flash Controller"
+virtual:
+  - lowrisc:ip_interfaces:flash_ctrl
 
 filesets:
   files_rtl:
@@ -20,9 +22,8 @@ filesets:
       - lowrisc:prim:secded
       - lowrisc:prim:sparse_fsm
       - lowrisc:ip:otp_ctrl_pkg
-      - lowrisc:earlgrey_ip:flash_ctrl_pkg
-      - lowrisc:earlgrey_ip:flash_ctrl_reg
-      - lowrisc:earlgrey_constants:top_pkg
+      - lowrisc:opentitan:top_earlgrey_flash_ctrl_pkg
+      - lowrisc:opentitan:top_earlgrey_flash_ctrl_reg
       - lowrisc:ip:jtag_pkg
     files:
       - rtl/flash_ctrl.sv

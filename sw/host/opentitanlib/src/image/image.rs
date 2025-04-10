@@ -13,20 +13,19 @@ use std::io::{Read, Write};
 use std::mem::{align_of, size_of};
 use std::path::{Path, PathBuf};
 use thiserror::Error;
-use zerocopy::FromBytes;
 
 use crate::crypto::ecdsa::{EcdsaPublicKey, EcdsaRawPublicKey, EcdsaRawSignature};
 use crate::crypto::rsa::Modulus;
 use crate::crypto::rsa::RsaPublicKey;
 use crate::crypto::rsa::Signature as RsaSignature;
-use crate::crypto::sha256;
+use crate::crypto::sha256::Sha256Digest;
 use crate::image::manifest::{
     Manifest, ManifestKind, SigverifySpxSignature, CHIP_MANIFEST_VERSION_MAJOR1,
     CHIP_MANIFEST_VERSION_MAJOR2, CHIP_MANIFEST_VERSION_MINOR1, CHIP_ROM_EXT_IDENTIFIER,
     CHIP_ROM_EXT_SIZE_MAX, MANIFEST_EXT_ID_SPX_KEY, MANIFEST_EXT_ID_SPX_SIGNATURE,
 };
 use crate::image::manifest_def::{ManifestSigverifyBuffer, ManifestSpec};
-use crate::image::manifest_ext::{ManifestExtEntry, ManifestExtSpec};
+use crate::image::manifest_ext::{ManifestExtEntry, ManifestExtEntrySpec};
 use crate::util::file::{FromReader, ToWriter};
 use crate::util::parse_int::ParseInt;
 
@@ -65,11 +64,27 @@ pub struct SpxSignatureParams {
 pub struct SigverifyParams {
     pub main_sig_params: MainSignatureParams,
     pub spx_sig_params: Option<SpxSignatureParams>,
+    pub spx_hash_reversal_bug: bool,
 }
 
 impl SigverifyParams {
+    pub fn new(
+        main_sig_params: MainSignatureParams,
+        spx_sig_params: Option<SpxSignatureParams>,
+    ) -> Self {
+        SigverifyParams {
+            main_sig_params,
+            spx_sig_params,
+            spx_hash_reversal_bug: false,
+        }
+    }
+    pub fn with_hash_reversal_bug(mut self, bug: bool) -> Self {
+        self.spx_hash_reversal_bug = bug;
+        self
+    }
+
     // Verify the main image signature.
-    pub fn verify(&self, digest: &sha256::Sha256Digest) -> Result<()> {
+    pub fn verify(&self, digest: &Sha256Digest) -> Result<()> {
         match &self.main_sig_params {
             MainSignatureParams::Rsa(key, sig) => {
                 key.verify(digest, sig)?;
@@ -86,7 +101,11 @@ impl SigverifyParams {
     pub fn spx_verify(&self, b: &[u8], domain: SpxDomain) -> Result<()> {
         if let Some(spx) = &self.spx_sig_params {
             let msg = match domain {
-                SpxDomain::PreHashedSha256 => Cow::from(sha256::sha256(b).to_le_bytes()),
+                SpxDomain::PreHashedSha256 => Cow::from(if self.spx_hash_reversal_bug {
+                    Sha256Digest::hash(b).to_vec_rev()
+                } else {
+                    Sha256Digest::hash(b).to_vec()
+                }),
                 _ => Cow::from(b),
             };
             spx.key.verify(domain, &spx.signature, &msg)?;
@@ -246,19 +265,19 @@ impl Image {
         {
             let rsa_key = RsaPublicKey::new(Modulus::from_le_bytes(pub_key)?)?;
             let rsa_sig = RsaSignature::from_le_bytes(signature)?;
-            return Ok(SigverifyParams {
-                main_sig_params: MainSignatureParams::Rsa(rsa_key, rsa_sig),
+            return Ok(SigverifyParams::new(
+                MainSignatureParams::Rsa(rsa_key, rsa_sig),
                 spx_sig_params,
-            });
+            ));
         }
 
         let ecdsa_pub_key = EcdsaRawPublicKey::read(&mut std::io::Cursor::new(pub_key))?;
         let ecdsa_sig = EcdsaRawSignature::read(&mut std::io::Cursor::new(signature))?;
 
-        Ok(SigverifyParams {
-            main_sig_params: MainSignatureParams::Ecdsa(ecdsa_pub_key, ecdsa_sig),
+        Ok(SigverifyParams::new(
+            MainSignatureParams::Ecdsa(ecdsa_pub_key, ecdsa_sig),
             spx_sig_params,
-        })
+        ))
     }
 
     /// Overwrites all fields in the image's manifest that are defined in `other`.
@@ -272,31 +291,30 @@ impl Image {
 
     /// Adds an extension to the signed region of this `Image`.
     ///
-    /// This will take all the extensions in `spec.signed_region` and append them to the image.
+    /// This will take all the signed extensions in `spec` and append them to the image.
     /// This should be called before adding any unsigned extensions to ensure all extensions that
     /// are a part of the signature exist within the contiguous signed region of the image.
-    pub fn add_signed_manifest_extensions(&mut self, spec: &ManifestExtSpec) -> Result<()> {
-        for entry_spec in &spec.signed_region {
-            self.add_manifest_extension(ManifestExtEntry::from_spec(
-                entry_spec,
-                spec.source_path(),
-            )?)?;
-        }
-        Ok(())
+    pub fn add_signed_manifest_extensions(&mut self, spec: &[ManifestExtEntrySpec]) -> Result<()> {
+        spec.iter()
+            .filter(|entry_spec| entry_spec.is_signed())
+            .try_for_each(|entry_spec| {
+                self.add_manifest_extension(ManifestExtEntry::from_spec(entry_spec)?)
+            })
     }
 
     /// Adds an extension to the unsigned region of this `Image`.
     ///
-    /// This will take all the extensions in `spec.unsigned_region` and append them to the image.
+    /// This will take all the unsigned extensions in `spec` and append them to the image.
     /// This should only be called once all signed extensions have been added.
-    pub fn add_unsigned_manifest_extensions(&mut self, spec: &ManifestExtSpec) -> Result<()> {
-        for entry_spec in &spec.unsigned_region {
-            self.add_manifest_extension(ManifestExtEntry::from_spec(
-                entry_spec,
-                spec.source_path(),
-            )?)?;
-        }
-        Ok(())
+    pub fn add_unsigned_manifest_extensions(
+        &mut self,
+        spec: &[ManifestExtEntrySpec],
+    ) -> Result<()> {
+        spec.iter()
+            .filter(|entry_spec| !entry_spec.is_signed())
+            .try_for_each(|entry_spec| {
+                self.add_manifest_extension(ManifestExtEntry::from_spec(entry_spec)?)
+            })
     }
 
     /// Adds an extension to the end of this `Image`.
@@ -494,7 +512,8 @@ impl Image {
         let mut offset = 0;
         while offset < self.size {
             let m = &self.data.bytes[offset..offset + size_of::<Manifest>()];
-            let manifest = Manifest::ref_from_bytes(m).map_err(|_| ImageError::Parse)?;
+            let manifest: zerocopy::Ref<_, Manifest> =
+                zerocopy::Ref::new(m).ok_or(ImageError::Parse)?;
             let kind = ManifestKind(manifest.identifier);
             let mut size = 1;
             if kind.is_known_value() {
@@ -502,7 +521,7 @@ impl Image {
                 result.push(SubImage {
                     kind,
                     offset,
-                    manifest,
+                    manifest: manifest.into_ref(),
                     data: &self.data.bytes[offset..offset + size],
                 });
             }
@@ -518,13 +537,17 @@ impl Image {
 
     pub fn borrow_manifest(&self) -> Result<&Manifest> {
         let manifest_slice = &self.data.bytes[0..size_of::<Manifest>()];
-        let manifest = Manifest::ref_from_bytes(manifest_slice).map_err(|_| ImageError::Parse)?;
+        let manifest_layout: zerocopy::Ref<_, Manifest> =
+            zerocopy::Ref::new(manifest_slice).ok_or(ImageError::Parse)?;
+        let manifest: &Manifest = manifest_layout.into_ref();
         Ok(manifest)
     }
 
     pub fn borrow_manifest_mut(&mut self) -> Result<&mut Manifest> {
         let manifest_slice = &mut self.data.bytes[0..size_of::<Manifest>()];
-        let manifest = Manifest::mut_from_bytes(manifest_slice).map_err(|_| ImageError::Parse)?;
+        let manifest_layout: zerocopy::Ref<_, Manifest> =
+            zerocopy::Ref::new(manifest_slice).ok_or(ImageError::Parse)?;
+        let manifest: &mut Manifest = manifest_layout.into_mut();
         Ok(manifest)
     }
 
@@ -581,8 +604,8 @@ impl Image {
     }
 
     /// Compute the SHA256 digest for the signed portion of the `Image`.
-    pub fn compute_digest(&self) -> Result<sha256::Sha256Digest> {
-        self.map_signed_region(|v| sha256::sha256(v))
+    pub fn compute_digest(&self) -> Result<Sha256Digest> {
+        self.map_signed_region(|v| Sha256Digest::hash(v))
     }
 }
 
@@ -597,8 +620,8 @@ impl SubImage<'_> {
     }
 
     /// Compute the SHA256 digest for the signed portion of the `Image`.
-    pub fn compute_digest(&self) -> Result<sha256::Sha256Digest> {
-        self.map_signed_region(|v| sha256::sha256(v))
+    pub fn compute_digest(&self) -> Result<Sha256Digest> {
+        self.map_signed_region(|v| Sha256Digest::hash(v))
     }
 }
 
@@ -675,15 +698,15 @@ impl ImageAssembler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::util::testdata;
+    use crate::testdata;
 
     #[test]
     fn test_assemble_concat() -> Result<()> {
         // Test image assembly by concatenation.
         let mut image = ImageAssembler::with_params(16, false);
         image.parse(&[
-            testdata("image/hello.txt").to_str().unwrap(),
-            testdata("image/world.txt").to_str().unwrap(),
+            testdata!("hello.txt").to_str().unwrap(),
+            testdata!("world.txt").to_str().unwrap(),
         ])?;
         let data = image.assemble()?;
         assert_eq!(data, b"HelloWorld\xff\xff\xff\xff\xff\xff");
@@ -695,8 +718,8 @@ mod tests {
         // Test image assembly by explicit offsets.
         let mut image = ImageAssembler::with_params(16, false);
         image.parse(&[
-            testdata("image/hello.txt@0").to_str().unwrap(),
-            testdata("image/world.txt@0x8").to_str().unwrap(),
+            testdata!("hello.txt@0").to_str().unwrap(),
+            testdata!("world.txt@0x8").to_str().unwrap(),
         ])?;
         let data = image.assemble()?;
         assert_eq!(data, b"Hello\xff\xff\xffWorld\xff\xff\xff");
@@ -708,8 +731,8 @@ mod tests {
         // Test image assembly with mirroring.
         let mut image = ImageAssembler::with_params(20, true);
         image.parse(&[
-            testdata("image/hello.txt").to_str().unwrap(),
-            testdata("image/world.txt").to_str().unwrap(),
+            testdata!("hello.txt").to_str().unwrap(),
+            testdata!("world.txt").to_str().unwrap(),
         ])?;
         let data = image.assemble()?;
         assert_eq!(data, b"HelloWorldHelloWorld");
@@ -721,8 +744,8 @@ mod tests {
         // Test image assembly where one of the source files isn't read completely.
         let mut image = ImageAssembler::with_params(16, true);
         image.parse(&[
-            testdata("image/hello.txt@0").to_str().unwrap(),
-            testdata("image/world.txt@0x5").to_str().unwrap(),
+            testdata!("hello.txt@0").to_str().unwrap(),
+            testdata!("world.txt@0x5").to_str().unwrap(),
         ])?;
         let err = image.assemble().unwrap_err();
         assert_eq!(
@@ -735,18 +758,18 @@ mod tests {
     #[test]
     fn test_load_image() {
         // Read and write back image.
-        let image = Image::read_from_file(&testdata("image/test_image.bin")).unwrap();
+        let image = Image::read_from_file(&testdata!("test_image.bin")).unwrap();
         image
-            .write_to_file(&testdata("image/test_image_out.bin"))
+            .write_to_file(&testdata!("test_image_out.bin"))
             .unwrap();
 
         // Ensure the result is identical to the original.
         let (mut orig_bytes, mut res_bytes) = (Vec::<u8>::new(), Vec::<u8>::new());
-        File::open(testdata("image/test_image.bin"))
+        File::open(testdata!("test_image.bin"))
             .unwrap()
             .read_to_end(&mut orig_bytes)
             .unwrap();
-        File::open(testdata("image/test_image_out.bin"))
+        File::open(testdata!("test_image_out.bin"))
             .unwrap()
             .read_to_end(&mut res_bytes)
             .unwrap();

@@ -41,7 +41,6 @@ typedef uint32_t dif_clkmgr_gateable_clock_t;
 typedef uint32_t dif_clkmgr_hintable_clock_t;
 
 typedef enum dif_clkmgr_measure_clock {
-#if defined(OPENTITAN_IS_EARLGREY)
   /**
    * The Io clock.
    */
@@ -50,11 +49,6 @@ typedef enum dif_clkmgr_measure_clock {
    * The Io_div2 clock.
    */
   kDifClkmgrMeasureClockIoDiv2,
-#elif defined(OPENTITAN_IS_DARJEELING)
-// Darjeeling doesn't have Io / Io_div2 clock measurements.
-#else
-#error "dif_clkmgr does not support this top"
-#endif
   /**
    * The Io div4 clock.
    */
@@ -67,14 +61,9 @@ typedef enum dif_clkmgr_measure_clock {
    * The Usb clock.
    */
   kDifClkmgrMeasureClockUsb,
-  /**
-   * Total number of clock measurements.
-   */
-  kDifClkmgrMeasureClockCount,
 } dif_clkmgr_measure_clock_t;
 
 typedef enum dif_clkmgr_recov_err_type {
-#if defined(OPENTITAN_IS_EARLGREY)
   /**
    * A recoverable update error for one of the clocks.
    */
@@ -119,38 +108,6 @@ typedef enum dif_clkmgr_recov_err_type {
    * A recoverable timeout error for USB clock.
    */
   kDifClkmgrRecovErrTypeUsbTimeout = 1u << 10,
-#elif defined(OPENTITAN_IS_DARJEELING)
-  /**
-   * A recoverable update error for one of the clocks.
-   */
-  kDifClkmgrRecovErrTypeShadowUpdate = 1u << 0,
-  /**
-   * A recoverable measurement error for IO_DIV4 clock.
-   */
-  kDifClkmgrRecovErrTypeIoDiv4Meas = 1u << 1,
-  /**
-   * A recoverable measurement error for MAIN clock.
-   */
-  kDifClkmgrRecovErrTypeMainMeas = 1u << 2,
-  /**
-   * A recoverable measurement error for USB clock.
-   */
-  kDifClkmgrRecovErrTypeUsbMeas = 1u << 3,
-  /**
-   * A recoverable timeout error for IO_DIV4 clock.
-   */
-  kDifClkmgrRecovErrTypeIoDiv4Timeout = 1u << 4,
-  /**
-   * A recoverable timeout error for MAIN clock.
-   */
-  kDifClkmgrRecovErrTypeMainTimeout = 1u << 5,
-  /**
-   * A recoverable timeout error for USB clock.
-   */
-  kDifClkmgrRecovErrTypeUsbTimeout = 1u << 6,
-#else
-#error "dif_clkmgr does not support this top"
-#endif
 } dif_clkmgr_recov_err_type_t;
 
 /**
@@ -211,39 +168,12 @@ dif_result_t dif_clkmgr_jitter_get_enabled(const dif_clkmgr_t *clkmgr,
                                            dif_toggle_t *state);
 
 /**
- * Enable of Disable jitter.
+ * Enable jitter.
  * @param clkmgr Clock Manager Handle.
- * @param new_state whether to enable or disable jitter.
  * @returns The result of the operation.
  */
 OT_WARN_UNUSED_RESULT
-dif_result_t dif_clkmgr_jitter_set_enabled(const dif_clkmgr_t *clkmgr,
-                                           dif_toggle_t new_state);
-
-/**
- * Obtain the index of a gateable clock for a device.
- *
- * Given a module instance (identified by its instance ID), return the
- * index of the gateable clock which controls this device and can be used
- * with the clkmgr DIF.
- *
- * Example (find gateable clock of UART0):
- * ```c
- * dif_clkmgr_gateable_clock_t clock;
- * CHECK_DIF_OK(dif_clkmgr_find_gateable_clock(
- *     clkmgr, kDtInstanceIdUart0, &clock));
- * ```
- *
- * @param clkmgr A clock manager handle.
- * @param inst_id An instance ID.
- * @param[out] clock The index of the clock.
- * @return `kDifError` if no gateable clock matches the description,
- * `kDifOk` otherwise.
- */
-OT_WARN_UNUSED_RESULT
-dif_result_t dif_clkmgr_find_gateable_clock(const dif_clkmgr_t *clkmgr,
-                                            dt_instance_id_t inst_id,
-                                            dif_clkmgr_gateable_clock_t *clock);
+dif_result_t dif_clkmgr_jitter_set_enabled(const dif_clkmgr_t *clkmgr);
 
 /**
  * Check if a Gateable Clock is Enabled or Disabled.
@@ -270,31 +200,6 @@ OT_WARN_UNUSED_RESULT
 dif_result_t dif_clkmgr_gateable_clock_set_enabled(
     const dif_clkmgr_t *clkmgr, dif_clkmgr_gateable_clock_t clock,
     dif_toggle_t new_state);
-
-/**
- * Obtain the index of a hintable clock for a device.
- *
- * Given a module instance (identified by its instance ID), return the
- * index of the hintable clock which controls this device and can be used
- * with the clkmgr DIF.
- *
- * Example (find hintable clock of KMAC):
- * ```c
- * dif_clkmgr_hintable_clock_t clock;
- * CHECK_DIF_OK(dif_clkmgr_find_hintable_clock(
- *     clkmgr, kDtInstanceIdKmac, &clock));
- * ```
- *
- * @param clkmgr A clock manager handle.
- * @param inst_id An instance ID.
- * @param[out] clock The index of the clock.
- * @return `kDifError` if no hintable clock matches the description,
- * `kDifOk` otherwise.
- */
-OT_WARN_UNUSED_RESULT
-dif_result_t dif_clkmgr_find_hintable_clock(const dif_clkmgr_t *clkmgr,
-                                            dt_instance_id_t inst_id,
-                                            dif_clkmgr_hintable_clock_t *clock);
 
 /**
  * Check if a Hintable Clock is Enabled or Disabled.

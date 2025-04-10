@@ -3,7 +3,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
 load("//rules:stamp.bzl", "stamp_attr", "stamping_enabled")
-load("//rules/opentitan:hw.bzl", "OpenTitanTopInfo", "opentitan_top_get_ip_attr")
 
 """Autogeneration rules for OpenTitan.
 
@@ -12,31 +11,35 @@ used by the OpenTitan build, such as register definition files generated
 from hjson register descriptions.
 """
 
-def _opentitan_ip_c_header_impl(ctx):
-    header = ctx.actions.declare_file("{}_regs.h".format(ctx.attr.ip))
-    top = ctx.attr.top[OpenTitanTopInfo]
-    hjson = opentitan_top_get_ip_attr(top, ctx.attr.ip, "hjson")
+def _hjson_c_header(ctx):
+    output_stem = (ctx.attr.output_stem if ctx.attr.output_stem else ctx.label.name.replace("_c_", "_"))
+    header = ctx.actions.declare_file("{}.h".format(output_stem))
+    node = []
+    if ctx.attr.node:
+        node.append("--node={}".format(ctx.attr.node))
 
     arguments = [
         "-D",
         "-q",
         "-o",
         header.path,
-        hjson.path,
-    ]
-    inputs = [hjson]
+    ] + node + [src.path for src in ctx.files.srcs]
 
-    # Add path to an alias path if it's needed.
-    if ctx.file.alias:
+    # `inputs = ctx.files.srcs` will create `inputs` as an immutable list
+    # so need to unpack like this before appending the alias later
+    inputs = list(ctx.files.srcs)
+
+    # add path to an alias path if it's needed
+    if ctx.attr.alias:
         alias = ctx.file.alias
 
-        # add the alias argument.
+        # add the alias argument
         arguments.extend([
             "--alias",
             alias.path,
         ])
 
-        # add the alias as an input file.
+        # add the alias as an input file
         inputs.append(alias)
 
     ctx.actions.run(
@@ -57,16 +60,24 @@ def _opentitan_ip_c_header_impl(ctx):
         ),
     ]
 
-opentitan_ip_c_header = rule(
-    implementation = _opentitan_ip_c_header_impl,
-    doc = "Generate the C headers for an IP block as used in a top",
+autogen_hjson_c_header = rule(
+    implementation = _hjson_c_header,
     attrs = {
-        "top": attr.label(providers = [OpenTitanTopInfo], doc = "Opentitan top description"),
-        "ip": attr.string(doc = "Name of the IP block"),
+        "srcs": attr.label_list(allow_files = True),
+        "node": attr.string(
+            doc = "Register block node to generate",
+        ),
         "alias": attr.label(
             mandatory = False,
             allow_single_file = True,
             doc = "A path to an alias file",
+        ),
+        "output_stem": attr.string(
+            doc = """
+                The name of the output file with no suffix.
+                This is optional, and if not given it will be set to the
+                target name replacing "_c_" by "_".
+                """,
         ),
         "_regtool": attr.label(
             default = "//util:regtool",
@@ -76,26 +87,27 @@ opentitan_ip_c_header = rule(
     },
 )
 
-def _opentitan_ip_rust_header_impl(ctx):
-    tock = ctx.actions.declare_file("{}.rs".format(ctx.attr.ip))
-    top = ctx.attr.top[OpenTitanTopInfo]
-    hjson = opentitan_top_get_ip_attr(top, ctx.attr.ip, "hjson")
-
+def _hjson_rust_header(ctx):
+    node = []
+    if ctx.attr.node:
+        node.append("--node={}".format(ctx.attr.node))
     stamp_args = []
     stamp_files = []
     if stamping_enabled(ctx):
         stamp_files = [ctx.version_file]
         stamp_args.append("--version-stamp={}".format(ctx.version_file.path))
 
+    output_stem = (ctx.attr.output_stem if ctx.attr.output_stem else ctx.label.name.replace("_rust_", "_"))
+    tock = ctx.actions.declare_file("{}.rs".format(output_stem))
     ctx.actions.run(
         outputs = [tock],
-        inputs = [hjson] + stamp_files,
+        inputs = ctx.files.srcs + [ctx.executable._regtool] + stamp_files,
         arguments = [
             "--tock",
             "-q",
             "-o",
             tock.path,
-        ] + stamp_args + [hjson.path],
+        ] + stamp_args + node + [src.path for src in ctx.files.srcs],
         executable = ctx.executable._regtool,
     )
 
@@ -106,12 +118,20 @@ def _opentitan_ip_rust_header_impl(ctx):
         ),
     ]
 
-opentitan_ip_rust_header = rule(
-    implementation = _opentitan_ip_rust_header_impl,
-    doc = "Generate the Rust headers for an IP block as used in a top",
+autogen_hjson_rust_header = rule(
+    implementation = _hjson_rust_header,
     attrs = {
-        "top": attr.label(providers = [OpenTitanTopInfo], doc = "Opentitan top description"),
-        "ip": attr.string(doc = "Name of the IP block"),
+        "srcs": attr.label_list(allow_files = True),
+        "node": attr.string(
+            doc = "Register block node to generate",
+        ),
+        "output_stem": attr.string(
+            doc = """
+                The name of the output file with no suffix.
+                This is optional, and if not given it will be set to the
+                target name replacing "_rust_" by "_".
+                """,
+        ),
         "_regtool": attr.label(
             default = "//util:regtool",
             executable = True,
@@ -119,327 +139,6 @@ opentitan_ip_rust_header = rule(
         ),
     } | stamp_attr(-1, "//rules:stamp_flag"),
 )
-
-def _opentitan_autogen_dif_gen(ctx):
-    outputs = []
-    outdir = "{}/{}".format(ctx.bin_dir.path, ctx.label.package)
-    top = ctx.attr.top[OpenTitanTopInfo]
-    ip_hjson = opentitan_top_get_ip_attr(top, ctx.attr.ip, "hjson")
-
-    groups = {}
-    for group, files in ctx.attr.output_groups.items():
-        deps = []
-        for file in files:
-            deps.append(ctx.actions.declare_file(file))
-        outputs.extend(deps)
-        groups[group] = depset(deps)
-
-    inputs = [ip_hjson]
-
-    arguments = [
-        "--ipcfg",
-        ip_hjson.path,
-        "--outdir",
-        outdir,
-    ]
-
-    ctx.actions.run(
-        outputs = outputs,
-        inputs = inputs,
-        arguments = arguments,
-        executable = ctx.executable._autogen_dif,
-    )
-
-    return [
-        DefaultInfo(files = depset(outputs)),
-        OutputGroupInfo(**groups),
-    ]
-
-opentitan_autogen_dif_gen = rule(
-    implementation = _opentitan_autogen_dif_gen,
-    doc = "Generate the DIFs file for an IP",
-    attrs = {
-        "top": attr.label(mandatory = True, providers = [OpenTitanTopInfo], doc = "Opentitan top description"),
-        "ip": attr.string(mandatory = True, doc = "Name of the IP for which to generate the DIF"),
-        "output_groups": attr.string_list_dict(
-            allow_empty = True,
-            doc = """
-                Mappings from output group names to lists of paths contained in
-                that group.
-            """,
-        ),
-        "_autogen_dif": attr.label(
-            default = "//util:autogen_dif",
-            executable = True,
-            cfg = "exec",
-        ),
-    },
-)
-
-# See opentitan_autogen_dif_gen for documentation of parameters.
-def opentitan_autogen_dif(name, top, ip, deps = [], target_compatible_with = []):
-    opentitan_autogen_dif_gen(
-        name = "{}_gen".format(name),
-        top = top,
-        ip = ip,
-        output_groups = {
-            "hdr": ["dif_{}_autogen.h".format(ip)],
-            "src": ["dif_{}_autogen.c".format(ip)],
-            "unittest": ["dif_{}_autogen_unittest.cc".format(ip)],
-        },
-        target_compatible_with = target_compatible_with,
-    )
-
-    for grp in ["hdr", "src", "unittest"]:
-        native.filegroup(
-            name = "{}_{}".format(name, grp),
-            srcs = [":{}_gen".format(name)],
-            output_group = grp,
-        )
-
-    native.cc_library(
-        name = name,
-        srcs = [":{}_src".format(name)],
-        hdrs = [":{}_hdr".format(name)],
-        deps = deps,
-    )
-
-def _opentitan_top_dt_gen(ctx):
-    outputs = []
-    outdir = "{}/{}".format(ctx.bin_dir.path, ctx.label.package)
-
-    groups = {}
-    for group, files in ctx.attr.output_groups.items():
-        deps = []
-        for file in files:
-            deps.append(ctx.actions.declare_file(file))
-        outputs.extend(deps)
-        groups[group] = depset(deps)
-
-    top = ctx.attr.top[OpenTitanTopInfo]
-
-    inputs = [top.hjson]
-    tools = []
-    ips = []
-    for ipname in top.ip_map:
-        if ctx.attr.gen_top or ipname in ctx.attr.gen_ips:
-            hjson = opentitan_top_get_ip_attr(top, ipname, "hjson")
-            inputs.append(hjson)
-            ips.extend(["-i", hjson.path])
-            ipconfig = opentitan_top_get_ip_attr(top, ipname, "ipconfig", required = False)
-            if ipconfig:
-                inputs.append(ipconfig)
-                ips.extend(["--ipconfig", ipconfig.path])
-            extension = opentitan_top_get_ip_attr(top, ipname, "extension", required = False, output = "target")
-            if extension:
-                ext_files = extension[DefaultInfo].files.to_list()
-                if len(ext_files) > 1:
-                    fail("opentitan_top_dt_gen was given {} as an extension but it contains more one file: {}"
-                        .format(extension, ext_files))
-                tools.append(extension[DefaultInfo].default_runfiles.files)
-                ips.extend(["--extension", ext_files[0].path])
-
-    arguments = [
-        "--topgencfg",
-        top.hjson.path,
-        "--outdir",
-        outdir,
-    ]
-    arguments.append("--gen-top" if ctx.attr.gen_top else "--gen-ip")
-    for ipname in ctx.attr.gen_ips:
-        if ipname not in top.ip_map:
-            fail("Cannot generate IP headers: top {} does not contain IP {}".format(top.name, ipname))
-
-    arguments.extend(ips)
-
-    ctx.actions.run(
-        outputs = outputs,
-        inputs = inputs,
-        arguments = arguments,
-        executable = ctx.executable._dttool,
-        tools = tools,
-    )
-
-    return [
-        DefaultInfo(files = depset(outputs)),
-        OutputGroupInfo(**groups),
-    ]
-
-opentitan_top_dt_gen = rule(
-    implementation = _opentitan_top_dt_gen,
-    doc = "Generate the C headers for an IP block as used in a top",
-    attrs = {
-        "top": attr.label(providers = [OpenTitanTopInfo], doc = "Opentitan top description"),
-        "gen_top": attr.bool(default = False, doc = "If true, generate the toplevel files"),
-        "gen_ips": attr.string_list(doc = "List of IPs for which to generate header files"),
-        "output_groups": attr.string_list_dict(
-            allow_empty = True,
-            doc = """
-                Mappings from output group names to lists of paths contained in
-                that group.
-            """,
-        ),
-        "_dttool": attr.label(
-            default = "//util:dttool",
-            executable = True,
-            cfg = "exec",
-        ),
-    },
-)
-
-def opentitan_ip_dt_header(name, top, ip, deps = None, target_compatible_with = []):
-    """
-    Generate the C header for an IP block as used in a top. This library is created to the
-    provided top and can have additional dependencies. The top target must export an
-    OpenTitanTopInfo provider, e.g. by created by opentitan_top. If this IP is not included
-    in the top, an error will be thrown.
-    """
-    if deps == None:
-        deps = []
-    if target_compatible_with == None:
-        target_compatible_with = []
-
-    opentitan_top_dt_gen(
-        name = "{}_gen".format(name),
-        top = top,
-        gen_ips = [ip],
-        output_groups = {
-            "hdr": ["dt/dt_{}.h".format(ip)],
-            "src": ["dt/dt_{}.c".format(ip)],
-        },
-        target_compatible_with = target_compatible_with,
-    )
-
-    for grp in ["hdr", "src"]:
-        native.filegroup(
-            name = "{}_{}".format(name, grp),
-            srcs = [":{}_gen".format(name)],
-            output_group = grp,
-        )
-
-def opentitan_top_dt_api(name, top, deps = None):
-    """
-    Create a library that exports the "dt_api.h" header. This library is created to the
-    provided top and can have additional dependencies. The top target must export an
-    OpenTitanTopInfo provider, e.g. by created by opentitan_top.
-    """
-    if deps == None:
-        deps = []
-
-    opentitan_top_dt_gen(
-        name = "{}_gen".format(name),
-        top = top,
-        gen_top = True,
-        output_groups = {
-            "hdr": ["dt/dt_api.h"],
-            "src": ["dt/dt_api.c"],
-        },
-    )
-
-    for grp in ["src", "hdr"]:
-        native.filegroup(
-            name = "{}_{}".format(name, grp),
-            srcs = [":{}_gen".format(name)],
-            output_group = grp,
-        )
-
-    native.cc_library(
-        name = name,
-        srcs = [":{}_src".format(name)],
-        hdrs = [":{}_hdr".format(name)],
-        deps = deps,
-        # Make the dt_api.h header accessible as "dt/dt_api.h".
-        includes = ["."],
-    )
-
-def _opentitan_autogen_testutils_gen(ctx):
-    outputs = []
-    top = ctx.attr.top[OpenTitanTopInfo]
-    groups = {}
-    for group, files in ctx.attr.output_groups.items():
-        deps = []
-        for file in files:
-            deps.append(ctx.actions.declare_file(file))
-        outputs.extend(deps)
-        groups[group] = depset(deps)
-    inputs = [top.hjson]
-    arguments = [
-        "--topcfg",
-        top.hjson.path,
-        "--outdir",
-        outputs[0].dirname,
-        "--clang-format",
-        ctx.executable._clang_format.path,
-    ]
-    for ip in top.ip_map.keys():
-        ip_hjson = opentitan_top_get_ip_attr(top, ip, "hjson")
-        inputs.append(ip_hjson)
-        arguments.extend(["-i", ip_hjson.path])
-
-    # Generate files
-    ctx.actions.run(
-        outputs = outputs,
-        inputs = inputs,
-        arguments = arguments,
-        executable = ctx.executable._autogen_testutils,
-        tools = [ctx.executable._clang_format],
-    )
-
-    return [
-        DefaultInfo(files = depset(outputs)),
-        OutputGroupInfo(**groups),
-    ]
-
-opentitan_autogen_testutils_gen = rule(
-    implementation = _opentitan_autogen_testutils_gen,
-    doc = "Generate the testutils file for a top",
-    attrs = {
-        "top": attr.label(mandatory = True, providers = [OpenTitanTopInfo], doc = "Opentitan top description"),
-        "output_groups": attr.string_list_dict(
-            allow_empty = True,
-            doc = """
-                Mappings from output group names to lists of paths contained in
-                that group.
-            """,
-        ),
-        "_autogen_testutils": attr.label(
-            default = "//util:gen_testutils",
-            executable = True,
-            cfg = "exec",
-        ),
-        "_clang_format": attr.label(
-            default = "@lowrisc_rv32imcb_toolchain//:bin/clang-format",
-            allow_single_file = True,
-            cfg = "host",
-            executable = True,
-            doc = "The clang-format executable",
-        ),
-    },
-)
-
-# See opentitan_autogen_testutils_gen for documentation of parameters.
-def opentitan_autogen_isr_testutils(name, top, deps = [], target_compatible_with = []):
-    opentitan_autogen_testutils_gen(
-        name = "{}_gen".format(name),
-        top = top,
-        output_groups = {
-            "hdr": ["isr_testutils.h"],
-            "src": ["isr_testutils.c"],
-        },
-    )
-    for grp in ["hdr", "src"]:
-        native.filegroup(
-            name = "{}_{}".format(name, grp),
-            srcs = [":{}_gen".format(name)],
-            output_group = grp,
-        )
-    native.cc_library(
-        name = name,
-        srcs = [":{}_src".format(name)],
-        hdrs = [":{}_hdr".format(name)],
-        deps = deps,
-        target_compatible_with = target_compatible_with,
-    )
 
 def _chip_info_src(ctx):
     stamp_args = []
@@ -611,4 +310,40 @@ autogen_cryptotest_header = rule(
             cfg = "exec",
         ),
     },
+)
+
+def _autogen_stamp_include(ctx):
+    """
+    Bazel rule for generating C header containing all stamping variables.
+
+    This rule is instantiated as //rules:autogen_stamp_include.
+    Please see the entry in rules/BUILD for explanation.
+    """
+    output = ctx.actions.declare_file("{}.inc".format(ctx.attr.name))
+
+    if stamping_enabled(ctx):
+        ctx.actions.run_shell(
+            outputs = [output],
+            inputs = [ctx.version_file, ctx.info_file],
+            arguments = [
+                ctx.version_file.path,
+                ctx.info_file.path,
+                output.path,
+            ],
+            command = """
+                cat $1 $2 \
+                | sed -E 's/^(\\w+) (.*)/#define BAZEL_\\1 \\2/' \
+                > $3
+            """,
+        )
+    else:
+        ctx.actions.write(output, "")
+
+    return [
+        DefaultInfo(files = depset([output])),
+    ]
+
+autogen_stamp_include = rule(
+    implementation = _autogen_stamp_include,
+    attrs = stamp_attr(-1, "//rules:stamp_flag"),
 )

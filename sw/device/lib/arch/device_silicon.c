@@ -6,6 +6,7 @@
 
 #include "sw/device/lib/arch/device.h"
 
+#include "hw/top_earlgrey/sw/autogen/top_earlgrey.h"
 #include "rv_core_ibex_regs.h"
 #include "uart_regs.h"
 
@@ -53,8 +54,8 @@ const uint32_t kUartTxFifoCpuCycles = CALCULATE_UART_TX_FIFO_CPU_CYCLES(
 const uint32_t kAstCheckPollCpuCycles =
     CALCULATE_AST_CHECK_POLL_CPU_CYCLES(kClockFreqCpuHz);
 
-uintptr_t device_test_status_address(void) { return 0; }
+const uintptr_t kDeviceTestStatusAddress = 0;
 
-uintptr_t device_log_bypass_uart_address(void) { return 0; }
+const uintptr_t kDeviceLogBypassUartAddress = 0;
 
 void device_fpga_version_print(void) {}

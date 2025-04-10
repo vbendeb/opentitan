@@ -7,11 +7,11 @@ set -e
 
 # Increase the test_timeout due to slow performance on CI
 
-./bazelisk.sh test \
+ci/bazelisk.sh test \
     --build_tests_only=true \
     --test_timeout=2400,2400,3600,-1 \
     --local_test_jobs=8 \
-    --local_resources=cpu=8 \
+    --local_cpu_resources=8 \
     --test_tag_filters=verilator,-broken \
     --test_output=errors \
     --//hw:verilator_options=--threads,1 \

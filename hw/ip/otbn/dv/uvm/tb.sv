@@ -6,7 +6,7 @@ module tb;
   // dep packages (test)
   import uvm_pkg::*;
   import dv_utils_pkg::*;
-  import sram_ctrl_bkdr_util_pkg::sram_ctrl_bkdr_util;
+  import mem_bkdr_util_pkg::mem_bkdr_util;
   import otbn_env_pkg::*;
   import otbn_test_pkg::*;
   import otbn_pkg::NGpr, otbn_pkg::NWdr;
@@ -108,10 +108,7 @@ module tb;
     .lc_rma_req_i    (escalate_if.req),
     .lc_rma_ack_o    (escalate_if.ack),
 
-    .ram_cfg_imem_i('0),
-    .ram_cfg_dmem_i('0),
-    .ram_cfg_rsp_imem_o(),
-    .ram_cfg_rsp_dmem_o(),
+    .ram_cfg_i('0),
 
     .clk_edn_i (edn_clk),
     .rst_edn_ni(edn_rst_n),
@@ -261,8 +258,6 @@ module tb;
    .model_insn_cnt_i (model_insn_cnt)
   );
 
-  otbn_ssctrl_if ssctrl_if();
-
   //////////////////////////////////////////////////////////////////////////////
   // Model/RTL consistency checks
   //
@@ -300,7 +295,7 @@ module tb;
     clk, !rst_n || model_if.status == otbn_pkg::StatusLocked)
 
   initial begin
-    sram_ctrl_bkdr_util imem_util, dmem_util;
+    mem_bkdr_util imem_util, dmem_util;
 
     // drive clk and rst_n from clk_if
     clk_rst_if.set_active();
@@ -309,7 +304,6 @@ module tb;
     uvm_config_db#(virtual clk_rst_if)::set(null, "*.env", "otp_clk_rst_vif", otp_clk_rst_if);
     uvm_config_db#(virtual clk_rst_if)::set(null, "*.env", "clk_rst_vif", clk_rst_if);
     uvm_config_db#(virtual tl_if)::set(null, "*.env.m_tl_agent*", "vif", tl_if);
-    uvm_config_db#(ssctrl_vif)::set(null, "*.env", "ssctrl_vif", ssctrl_if);
     uvm_config_db#(escalate_vif)::set(null, "*.env", "escalate_vif", escalate_if);
     uvm_config_db#(intr_vif)::set(null, "*.env", "intr_vif", intr_if);
     uvm_config_db#(virtual otbn_model_if#(.ImemSizeByte(ImemSizeByte)))::set(
@@ -345,7 +339,7 @@ module tb;
     //
     // Note that n_bits is the number of bits in the memory, including ECC check bits.
     imem_util = new(.name ("imem_util"),
-                    .path ({"tb.dut.u_imem.u_prim_ram_1p_adv.gen_ram_inst[0].",
+                    .path ({"tb.dut.u_imem.u_prim_ram_1p_adv.",
                             "u_mem.gen_generic.u_impl_generic.mem"}),
                     .depth (ImemSizeByte / 4),
                     .n_bits (ImemSizeByte / 4 * 39),
@@ -353,14 +347,14 @@ module tb;
 
     // DMEM is twice as big as the bus-accessible part
     dmem_util = new(.name ("dmem_util"),
-                    .path ({"tb.dut.u_dmem.u_prim_ram_1p_adv.gen_ram_inst[0].",
+                    .path ({"tb.dut.u_dmem.u_prim_ram_1p_adv.",
                             "u_mem.gen_generic.u_impl_generic.mem"}),
                     .depth (DmemSizeByte / 32),
                     .n_bits (DmemSizeByte / 32 * 312),
                     .err_detection_scheme (mem_bkdr_util_pkg::EccInv_39_32));
 
-    uvm_config_db#(sram_ctrl_bkdr_util)::set(null, "*.env", imem_util.get_name(), imem_util);
-    uvm_config_db#(sram_ctrl_bkdr_util)::set(null, "*.env", dmem_util.get_name(), dmem_util);
+    uvm_config_db#(mem_bkdr_util)::set(null, "*.env", imem_util.get_name(), imem_util);
+    uvm_config_db#(mem_bkdr_util)::set(null, "*.env", dmem_util.get_name(), dmem_util);
 
     $timeformat(-12, 0, " ps", 12);
     run_test();

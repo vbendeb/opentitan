@@ -4,7 +4,6 @@
 
 #include "sw/device/lib/testing/test_framework/ottf_isrs.h"
 
-#include "dt/dt_sram_ctrl.h"
 #include "sw/device/lib/base/csr.h"
 #include "sw/device/lib/base/macros.h"
 #include "sw/device/lib/dif/dif_rv_plic.h"
@@ -13,6 +12,8 @@
 #include "sw/device/lib/runtime/log.h"
 #include "sw/device/lib/runtime/print.h"
 #include "sw/device/lib/testing/test_framework/check.h"
+
+#include "hw/top_earlgrey/sw/autogen/top_earlgrey.h"
 
 dif_rv_plic_t ottf_plic;
 
@@ -78,18 +79,10 @@ void ottf_generic_fault_print(uint32_t *exc_info, const char *reason,
     }
     uint32_t *sp = exc_info + kExcWords;
     base_printf("\n");
-    uint32_t ram_base_addr =
-        dt_sram_ctrl_reg_block(kDtSramCtrlMain, kDtSramCtrlRegBlockRam);
-    uint32_t *ram_start = (uint32_t *)ram_base_addr;
-    // FIXME replace this with DT when possible.
-#if defined(OPENTITAN_IS_EARLGREY)
-    uint32_t ram_size = TOP_EARLGREY_SRAM_CTRL_MAIN_RAM_SIZE_BYTES;
-#elif defined(OPENTITAN_IS_DARJEELING)
-    uint32_t ram_size = TOP_DARJEELING_SRAM_CTRL_MAIN_RAM_SIZE_BYTES;
-#else
-#error unsupported top
-#endif
-    uint32_t *ram_end = (uint32_t *)(ram_base_addr + ram_size);
+    uint32_t *ram_start = (uint32_t *)TOP_EARLGREY_SRAM_CTRL_MAIN_RAM_BASE_ADDR;
+    uint32_t *ram_end =
+        (uint32_t *)(TOP_EARLGREY_SRAM_CTRL_MAIN_RAM_BASE_ADDR +
+                     TOP_EARLGREY_SRAM_CTRL_MAIN_RAM_SIZE_BYTES);
 
     extern const char _text_start[], _text_end[];
     const uint32_t text_start = (uint32_t)_text_start;
@@ -201,22 +194,21 @@ bool ottf_console_flow_control_isr(uint32_t *exc_info) { return false; }
 
 OT_WEAK
 void ottf_external_isr(uint32_t *exc_info) {
-  const uint32_t kPlicTarget = 0;
+  const uint32_t kPlicTarget = kTopEarlgreyPlicTargetIbex0;
   dif_rv_plic_irq_id_t plic_irq_id;
   CHECK_DIF_OK(dif_rv_plic_irq_claim(&ottf_plic, kPlicTarget, &plic_irq_id));
 
-  dt_instance_id_t devid = dt_plic_id_to_instance_id(plic_irq_id);
-  // See if the test code wants to handle it.
-  bool handled = ottf_handle_irq(exc_info, devid, plic_irq_id);
-  // If not, see if that interrupt corresponds to an OTTF console IRQ.
-  if (handled || ottf_console_flow_control_isr(exc_info)) {
+  top_earlgrey_plic_peripheral_t peripheral = (top_earlgrey_plic_peripheral_t)
+      top_earlgrey_plic_interrupt_for_peripheral[plic_irq_id];
+
+  if (peripheral == kTopEarlgreyPlicPeripheralUart0 &&
+      ottf_console_flow_control_isr(exc_info)) {
     // Complete the IRQ at PLIC.
     CHECK_DIF_OK(
         dif_rv_plic_irq_complete(&ottf_plic, kPlicTarget, plic_irq_id));
     return;
   }
 
-  LOG_ERROR("unhandled IRQ: plic_id=%d, instance ID=%d", plic_irq_id, devid);
   ottf_generic_fault_print(exc_info, "External IRQ", ibex_mcause_read());
   abort();
 }
@@ -224,12 +216,6 @@ void ottf_external_isr(uint32_t *exc_info) {
 static void generic_internal_irq_handler(uint32_t *exc_info) {
   ottf_generic_fault_print(exc_info, "Internal IRQ", ibex_mcause_read());
   abort();
-}
-
-OT_WEAK
-bool ottf_handle_irq(uint32_t *exc_info, dt_instance_id_t devid,
-                     dif_rv_plic_irq_id_t plic_id) {
-  return false;
 }
 
 OT_WEAK

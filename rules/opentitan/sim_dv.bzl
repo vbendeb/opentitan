@@ -54,22 +54,11 @@ def _transform(ctx, exec_env, name, elf, binary, signed_bin, disassembly, mapfil
             rom_scramble_config = exec_env.rom_scramble_config,
             rom_scramble_tool = ctx.executable.rom_scramble_tool,
         )
-
-        # We may want to run non-scrambled ROM in DV environment, for faster
-        # run times.
-        rom32 = convert_to_vmem(
-            ctx,
-            name = name,
-            src = binary,
-            word_size = 32,
-        )
         default = rom
         vmem = rom
-        vmem32 = None
     elif ctx.attr.kind == "ram":
         default = elf
         rom = None
-        rom32 = None
 
         # Generate Un-scrambled RAM VMEM (for testing SRAM injection in DV)
         vmem = convert_to_vmem(
@@ -78,7 +67,6 @@ def _transform(ctx, exec_env, name, elf, binary, signed_bin, disassembly, mapfil
             src = signed_bin if signed_bin else binary,
             word_size = 32,
         )
-        vmem32 = None
     elif ctx.attr.kind == "flash":
         # First convert to VMEM, then scramble according to flash
         # scrambling settings.
@@ -90,12 +78,6 @@ def _transform(ctx, exec_env, name, elf, binary, signed_bin, disassembly, mapfil
             name = name,
             src = signed_bin if signed_bin else binary,
             word_size = 64,
-        )
-        vmem32 = convert_to_vmem(
-            ctx,
-            name = name,
-            src = signed_bin if signed_bin else binary,
-            word_size = 32,
         )
         vmem = scramble_flash(
             ctx,
@@ -109,7 +91,6 @@ def _transform(ctx, exec_env, name, elf, binary, signed_bin, disassembly, mapfil
             _tool = exec_env.flash_scramble_tool.files_to_run,
         )
         rom = None
-        rom32 = None
         default = vmem
         vmem = vmem_base
     else:
@@ -126,13 +107,11 @@ def _transform(ctx, exec_env, name, elf, binary, signed_bin, disassembly, mapfil
         "binary": binary,
         "default": default,
         "rom": rom,
-        "rom32": rom32,
         "signed_bin": signed_bin,
         "disassembly": disassembly,
         "logs": logs,
         "mapfile": mapfile,
         "vmem": vmem,
-        "vmem32": vmem32,
         "hashfile": hashfile,
     }
 
@@ -190,6 +169,7 @@ sim_dv = rule(
 def dv_params(
         tags = [],
         timeout = "short",
+        local = False,
         test_harness = None,
         binaries = None,
         rom = None,
@@ -204,6 +184,7 @@ def dv_params(
     Args:
       tags: The test tags to apply to the test rule.
       timeout: The timeout to apply to the test rule.
+      local: Whether to set the `local` flag on this test.
       test_harness: Use an alternative test harness for this test.
       binaries: Dict of binaries labels to substitution parameter names.
       rom: Use an alternate ROM for this test.
@@ -218,6 +199,7 @@ def dv_params(
     return struct(
         tags = ["dv"] + tags,
         timeout = timeout,
+        local = local,
         test_harness = test_harness,
         binaries = binaries,
         rom = rom,

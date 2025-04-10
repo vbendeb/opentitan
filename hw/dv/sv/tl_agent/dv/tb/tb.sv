@@ -8,7 +8,6 @@ module tb;
   import dv_utils_pkg::*;
   import tl_agent_pkg::*;
   import tl_agent_env_pkg::*;
-  import tl_agent_test_pkg::*;
 
   // macro includes
   `include "uvm_macros.svh"

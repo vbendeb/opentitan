@@ -3,7 +3,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 
 /**
- * Linker script for an OpenTitan IMM_SECTION.
+ * Linker script for an OpenTitan ROM_EXT IMM_SECTION.
  *
  * Portions of this file are Ibex-specific.
  *

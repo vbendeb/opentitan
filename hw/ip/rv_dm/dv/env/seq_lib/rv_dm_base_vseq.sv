@@ -55,6 +55,11 @@ class rv_dm_base_vseq extends cip_base_vseq #(
   //
   // A vseq that actually wants to exercise scanmode should override this constraint and turn it
   // back on.
+  //
+  // TODO(#23763): We don't currently run any tests with scanmode enabled. This is because doing so
+  //               changes the internal JTAG interface so that it is clocked from the main clock
+  //               instead of the jtag_if TCK. Muxing the tck signal in jtag_if isn't all that easy
+  //               because the jtag driver expects to be able to control it.
   constraint no_scanmode_c {
     scanmode == 1'b0;
   }
@@ -123,16 +128,6 @@ class rv_dm_base_vseq extends cip_base_vseq #(
 
     cfg.rv_dm_vif.lc_dft_en <= bool_to_lc_tx_t(lc_dft_en);
 
-    cfg.rv_dm_vif.lc_check_byp_en <= lc_ctrl_pkg::Off;
-    cfg.rv_dm_vif.lc_escalate_en <= lc_ctrl_pkg::Off;
-    cfg.rv_dm_vif.strap_en_override <= 1'b0;
-`ifdef USE_DMI_INTERFACE
-    // TODO: revisit this. In order to operate in DMI mode we need to assert `strap_en`.
-    cfg.rv_dm_vif.strap_en <= 1'b1;
-`else
-    cfg.rv_dm_vif.strap_en <= 1'b0;
-`endif
-
     // Drive the otp_dis_rv_dm_late_debug_i pin to match pin_late_debug_enable (to avoid assertions
     // that get triggered in prim_lc_sync/prim_mubi8_sync if the input is 'x). We will configure the
     // register a little later, in dut_init.
@@ -175,30 +170,19 @@ class rv_dm_base_vseq extends cip_base_vseq #(
     end
 
     // TODO: Randomize the contents of the debug ROM & the program buffer once out of reset.
+
     if (pinmux_hw_debug_en) begin
       // We would like to do a DMI transaction here. If this vseq is the first with debug enabled,
       // the "enable" signal will need to make it through the a prim_lc_sync in the design before it
       // takes effect. Fortunately, we can see that this has happened by looking at the trst_n
       // signal: it will go high once everything has been connected. *That* signal is exposed
       // through jtag_mon_if in the tb, which is visible through the jtag agent's mon_vif interface.
-      // Exit early if a system reset appears in the meantime.
-`ifndef USE_DMI_INTERFACE
-      fork begin : isolation_fork
-        fork
-          wait(cfg.m_jtag_agent_cfg.mon_vif.trst_n);
-          wait(!cfg.clk_rst_vif.rst_n);
-        join_any
-        disable fork;
-      end join
-      if (!cfg.clk_rst_vif.rst_n) return;
-`endif
+      wait(cfg.m_jtag_agent_cfg.mon_vif.trst_n);
 
-      // "Activate" the DM to facilitate ease of testing, but only if not in scanmode (where the
-      // JTAG driver won't work properly). This will exit early if there is a JTAG reset.
-      if (!scanmode) begin
-        csr_wr(.ptr(jtag_dmi_ral.dmcontrol.dmactive), .value(1), .blocking(1), .predict(1));
-      end
+      // "Activate" the DM to facilitate ease of testing.
+      csr_wr(.ptr(jtag_dmi_ral.dmcontrol.dmactive), .value(1), .blocking(1), .predict(1));
     end
+
     // Start the SBA TL device seq.
     sba_tl_device_seq_start();
   endtask
@@ -208,6 +192,8 @@ class rv_dm_base_vseq extends cip_base_vseq #(
     cfg.m_jtag_agent_cfg.vif.set_tck_period_ps(tck_period_ps);
     fork
       if (kind inside {"HARD", "TRST"}) begin
+        jtag_dtm_ral.reset("HARD");
+        jtag_dmi_ral.reset("HARD");
         cfg.m_jtag_agent_cfg.vif.do_trst_n();
       end
       if (kind inside {"HARD", "SCAN"}) apply_scan_reset();
@@ -240,6 +226,9 @@ class rv_dm_base_vseq extends cip_base_vseq #(
 
   virtual task dut_shutdown();
     sba_tl_device_seq_stop();
+    // Check for pending rv_dm operations and wait for them to complete.
+    // TODO: Improve this later.
+    cfg.clk_rst_vif.wait_clks(200);
   endtask
 
   // Spawns off a thread to auto-respond to incoming TL accesses on the SBA host interface.
@@ -263,14 +252,9 @@ class rv_dm_base_vseq extends cip_base_vseq #(
   endtask
 
   // Stop running the m_tl_sba_device_seq seq.
-  //
-  // This is a no-op if the sequence is actually null (because we never completed dut_init, which
-  // would have constructed the object),
   virtual task sba_tl_device_seq_stop();
-    if (m_tl_sba_device_seq != null) begin
-      m_tl_sba_device_seq.seq_stop();
-      `uvm_info(`gfn, "Stopped running m_tl_sba_device_seq", UVM_MEDIUM)
-    end
+    m_tl_sba_device_seq.seq_stop();
+    `uvm_info(`gfn, "Stopped running m_tl_sba_device_seq", UVM_MEDIUM)
   endtask
 
   // Task forked off to disable TLUL host SBA assertions when injecting intg errors on the response
@@ -303,23 +287,11 @@ class rv_dm_base_vseq extends cip_base_vseq #(
     // is confusing to debug, so use a backdoor read to check that it isn't currently set.
     dmcontrol_t dmcontrol_val;
     read_dmcontrol(.backdoor(1), .value(dmcontrol_val));
-    if (!cfg.clk_rst_vif.rst_n) return;
     `DV_CHECK(!dmcontrol_val.ndmreset);
 
     csr_wr(.ptr(jtag_dmi_ral.dmcontrol.haltreq), .value(1));
-    if (!cfg.clk_rst_vif.rst_n) return;
     `DV_CHECK_EQ(cfg.rv_dm_vif.cb.debug_req, 1)
-
-    // Wait a short time (up to 10 cycles, but stopping early if there's a reset)
-    fork begin : isolation_fork
-      fork
-        cfg.clk_rst_vif.wait_clks($urandom_range(0, 10));
-        wait(!cfg.clk_rst_vif.rst_n);
-      join_any
-      disable fork;
-    end join
-    if (!cfg.clk_rst_vif.rst_n) return;
-
+    cfg.clk_rst_vif.wait_clks($urandom_range(0, 10));
     csr_wr(.ptr(tl_mem_ral.halted), .value(0));
   endtask
 
@@ -401,12 +373,11 @@ class rv_dm_base_vseq extends cip_base_vseq #(
     `DV_CHECK_EQ(expected_dmistat, get_field_val(jtag_dtm_ral.dtmcs.dmistat, rdata))
   endtask
 
-  // Check that the cmderr field in abstractcs is as expected, skipping the check if the system is
-  // in reset.
+  // Check that the cmderr field in abstractcs is as expected
   task check_cmderr(cmderr_e cmderr_exp);
     abstractcs_t abstractcs;
     read_abstractcs(abstractcs);
-    if (cfg.clk_rst_vif.rst_n) `DV_CHECK_EQ(abstractcs.cmderr, cmderr_exp);
+    `DV_CHECK_EQ(abstractcs.cmderr, cmderr_exp);
   endtask
 
   // Clear the cmderr field of abstractcs.
@@ -419,7 +390,7 @@ class rv_dm_base_vseq extends cip_base_vseq #(
     `DV_CHECK_FATAL(jtag_dmi_ral.abstractcs.cmderr.predict(3'b111));
     jtag_dmi_ral.abstractcs.cmderr.set(3'b111);
     jtag_dmi_ral.abstractcs.update(.status(status));
-    if (cfg.clk_rst_vif.rst_n) `DV_CHECK_EQ(status, UVM_IS_OK);
+    `DV_CHECK_EQ(status, UVM_IS_OK);
   endtask
 
   // Generate an abstract command that tries to read the specified register

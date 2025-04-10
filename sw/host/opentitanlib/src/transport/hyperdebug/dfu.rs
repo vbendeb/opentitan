@@ -7,9 +7,9 @@
 use anyhow::{anyhow, bail, Result};
 use once_cell::sync::Lazy;
 use regex::Regex;
-use serde_annotate::Annotate;
 use std::any::Any;
 use std::cell::RefCell;
+use std::cmp::Ordering;
 
 use crate::transport::{
     Capabilities, Capability, ProgressIndicator, Transport, TransportError, UpdateFirmware,
@@ -92,10 +92,10 @@ impl Transport for HyperdebugDfu {
         Ok(Capabilities::new(Capability::NONE))
     }
 
-    fn dispatch(&self, action: &dyn Any) -> Result<Option<Box<dyn Annotate>>> {
+    fn dispatch(&self, action: &dyn Any) -> Result<Option<Box<dyn erased_serde::Serialize>>> {
         if let Some(update_firmware_action) = action.downcast_ref::<UpdateFirmware>() {
             update_firmware(
-                &mut self.usb_backend.borrow_mut(),
+                &self.usb_backend.borrow(),
                 self.current_firmware_version.as_deref(),
                 &update_firmware_action.firmware,
                 update_firmware_action.progress.as_ref(),
@@ -170,14 +170,14 @@ fn get_hyperdebug_firmware_version(firmware: &[u8]) -> Result<&str> {
 /// Helper method to perform flash programming using ST's DfuSe variant of the DFU protocol.
 /// This method is used both by the `Hyperdebug` and the `HyperdebugDfu` structs.
 pub fn update_firmware(
-    usb_device: &mut UsbBackend,
+    usb_device: &UsbBackend,
     current_firmware_version: Option<&str>,
     firmware: &Option<Vec<u8>>,
     progress: &dyn ProgressIndicator,
     force: bool,
     usb_vid: u16,
     usb_pid: u16,
-) -> Result<Option<Box<dyn Annotate>>> {
+) -> Result<Option<Box<dyn erased_serde::Serialize>>> {
     let firmware: &[u8] = if let Some(vec) = firmware.as_ref() {
         validate_firmware_image(vec)?;
         vec
@@ -195,6 +195,14 @@ pub fn update_firmware(
                 );
                 return Ok(None);
             }
+            if is_older_than(new_version, current_version)? {
+                log::warn!(
+                    "Will not downgrade from {} to {}.  Consider --force.",
+                    current_version,
+                    new_version,
+                );
+                return Ok(None);
+            }
         }
     }
 
@@ -206,12 +214,7 @@ pub fn update_firmware(
     if wait_for_idle(usb_device, dfu_desc.dfu_interface)? != DFU_STATE_APP_IDLE {
         // Device is already running DFU bootloader, proceed to firmware transfer.
         do_update_firmware(usb_device, dfu_desc, firmware, progress)?;
-        log::info!("Connecting to newly flashed firmware...");
-        if restablish_connection(usb_vid, usb_pid, usb_device.get_serial_number()).is_none() {
-            bail!(TransportError::FirmwareProgramFailed(
-                "Unable to establish connection after flashing.  Possibly bad image.".to_string()
-            ));
-        }
+        restablish_connection(usb_vid, usb_pid, usb_device.get_serial_number())?;
         return Ok(None);
     }
 
@@ -234,45 +237,39 @@ pub fn update_firmware(
         .and_then(|_| wait_for_idle(usb_device, dfu_desc.dfu_interface));
 
     // We get here most likely as a result of an `Err()` from the above block, as the device reset
-    // and disconnected from the USB bus.  Wait up to five seconds, repeatedly testing if the
-    // device can be found on the USB bus with the DID:VID of the STM DFU bootloader, but same
-    // serial number as before.
+    // and disconnected from the USB bus.  Wait a little while, and then attempt to establish
+    // connection with the DFU bootloader, which will appear with STM DID:VID (not Google's), but
+    // same serial number as before.
     std::thread::sleep(std::time::Duration::from_millis(1000));
     log::info!("Connecting to DFU bootloader...");
-    let Some(mut dfu_device) = restablish_connection(
+    let dfu_device = UsbBackend::new(
         VID_ST_MICROELECTRONICS,
         PID_DFU_BOOTLOADER,
-        usb_device.get_serial_number(),
-    ) else {
-        bail!(TransportError::FirmwareProgramFailed(
-            "Unable to establish connection with DFU bootloader.".to_string()
-        ));
-    };
+        Some(usb_device.get_serial_number()),
+    )?;
     log::info!("Connected to DFU bootloader");
 
     let dfu_desc = scan_usb_descriptor(&dfu_device)?;
     dfu_device.claim_interface(dfu_desc.dfu_interface)?;
     do_update_firmware(&dfu_device, dfu_desc, firmware, progress)?;
-    // The new firmware has been completely transferred, and the USB device is resetting and
-    // booting the new firmware.  Wait up to five seconds, repeatedly testing if the device can be
-    // found on the USB bus with the original DID:VID.
-    log::info!("Connecting to newly flashed firmware...");
-    if restablish_connection(usb_vid, usb_pid, usb_device.get_serial_number()).is_none() {
-        bail!(TransportError::FirmwareProgramFailed(
-            "Unable to establish connection after flashing.  Possibly bad image.".to_string()
-        ));
-    }
+    restablish_connection(usb_vid, usb_pid, usb_device.get_serial_number())?;
     Ok(None)
 }
 
-fn restablish_connection(usb_vid: u16, usb_pid: u16, serial_number: &str) -> Option<UsbBackend> {
+fn restablish_connection(usb_vid: u16, usb_pid: u16, serial_number: &str) -> Result<()> {
+    // At this point, the new firmware has been completely transferred, and the USB device is
+    // resetting and booting the new firmware.  Wait up to five seconds, repeatedly testing if the
+    // device can be found on the USB bus with the original DID:VID.
+    log::info!("Connecting to newly flashed firmware...");
     for _ in 0..10 {
         std::thread::sleep(std::time::Duration::from_millis(500));
-        if let Ok(usb_backend) = UsbBackend::new(usb_vid, usb_pid, Some(serial_number)) {
-            return Some(usb_backend);
+        if UsbBackend::new(usb_vid, usb_pid, Some(serial_number)).is_ok() {
+            return Ok(());
         }
     }
-    None
+    bail!(TransportError::FirmwareProgramFailed(
+        "Unable to establish connection after flashing.  Possibly bad image.".to_string()
+    ));
 }
 
 fn do_update_firmware(
@@ -487,5 +484,85 @@ fn wait_for_idle(dfu_device: &UsbBackend, dfu_interface: u8) -> Result<u8> {
                 response[4]
             )));
         }
+    }
+}
+
+/// Returns true if the two version strings have the same text prefix, e.g. "hyperdebug_",
+/// differing only in the subsequent numbers, and furthermore that the numbers in `version_a` are
+/// strictly "less than" those in `version_b`.
+fn is_older_than(version_a: &str, version_b: &str) -> Result<bool> {
+    let apos = version_a.find(char::is_numeric).unwrap_or(version_a.len());
+    let bpos = version_b.find(char::is_numeric).unwrap_or(version_b.len());
+    if version_a[..apos] != version_b[..bpos] {
+        return Ok(false);
+    }
+    let version_a = &version_a[apos..];
+    let version_b = &version_b[apos..];
+    if version_a.is_empty() || version_b.is_empty() {
+        return Ok(false);
+    }
+    let apos = version_a
+        .find(|ch: char| !char::is_numeric(ch))
+        .unwrap_or(version_a.len());
+    let bpos = version_b
+        .find(|ch: char| !char::is_numeric(ch))
+        .unwrap_or(version_b.len());
+    let aval = version_a[..apos].parse::<u64>()?;
+    let bval = version_b[..bpos].parse::<u64>()?;
+    match aval.cmp(&bval) {
+        Ordering::Less => Ok(true),
+        Ordering::Greater => Ok(false),
+        // Exact match so far, recursively inspect any further numbers in the string.
+        Ordering::Equal => is_older_than(&version_a[apos..], &version_b[apos..]),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_is_older_than() {
+        // Ordering of dates, with fallback to sequence suffix.
+        assert_eq!(
+            is_older_than("hyp_20240101_99", "hyp_20240801_01").unwrap(),
+            true
+        );
+        assert_eq!(
+            is_older_than("hyp_20240801_01", "hyp_20240101_99").unwrap(),
+            false
+        );
+        assert_eq!(
+            is_older_than("hyp_20240101_01", "hyp_20240101_02").unwrap(),
+            true
+        );
+        assert_eq!(
+            is_older_than("hyp_20240101_02", "hyp_20240101_01").unwrap(),
+            false
+        );
+        assert_eq!(
+            is_older_than("hyp_20240101_01", "hyp_20240101_01").unwrap(),
+            false
+        );
+
+        // Lexicographical ordering of version string.
+        assert_eq!(is_older_than("fancy_1.2.5", "fancy_1.11.1").unwrap(), true);
+        assert_eq!(is_older_than("fancy_1.11.1", "fancy_1.2.5").unwrap(), false);
+        assert_eq!(is_older_than("fancy_1.2.2", "fancy_1.2.11").unwrap(), true);
+        assert_eq!(is_older_than("fancy_1.2.11", "fancy_1.2.2").unwrap(), false);
+        assert_eq!(
+            is_older_than("fancy_1.2.11", "fancy_1.2.11").unwrap(),
+            false
+        );
+
+        // Not comparable, neither is considered "older" than the other.
+        assert_eq!(
+            is_older_than("fancy_1.2.5", "hyperdebug_20240101_02").unwrap(),
+            false
+        );
+        assert_eq!(
+            is_older_than("hyperdebug_20240101_02", "fancy_1.2.5").unwrap(),
+            false
+        );
     }
 }

@@ -22,8 +22,7 @@ struct jtagdpi_ctx;
  * @param listen_port Port to listen on
  * @return an initialized struct jtagdpi_ctx context object
  */
-void *jtagdpi_create(const char *display_name, int listen_port,
-                     int assert_srst);
+void *jtagdpi_create(const char *display_name, int listen_port);
 
 /**
  * Destructor: Close all connections and free all resources

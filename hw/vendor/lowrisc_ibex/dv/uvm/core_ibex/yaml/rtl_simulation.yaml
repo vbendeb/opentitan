@@ -256,7 +256,7 @@
       <ISS_LIBS>
       <ISS_CFLAGS>
       <EXTRA_COSIM_CFLAGS>
-      <ISS_LDFLAGS>
+      -Wld,<ISS_LDFLAGS>
       -lstdc++
   sim:
     cmd:

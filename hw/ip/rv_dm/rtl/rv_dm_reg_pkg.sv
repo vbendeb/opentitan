@@ -13,12 +13,6 @@ package rv_dm_reg_pkg;
   // Address widths within the block
   parameter int RegsAw = 4;
   parameter int MemAw = 12;
-  parameter int DbgAw = 9;
-
-  // Number of registers for every interface
-  parameter int NumRegsRegs = 3;
-  parameter int NumRegsMem = 281;
-  parameter int NumRegsDbg = 0;
 
   ///////////////////////////////////////////////
   // Typedefs for registers for regs interface //
@@ -988,10 +982,5 @@ package rv_dm_reg_pkg;
     4'b 1111, // index[279] RV_DM_FLAGS_254
     4'b 1111  // index[280] RV_DM_FLAGS_255
   };
-
-  // Window parameters for dbg interface
-  parameter logic [DbgAw-1:0] RV_DM_DBG_OFFSET = 9'h 0;
-  parameter int unsigned      RV_DM_DBG_SIZE   = 'h 200;
-  parameter int unsigned      RV_DM_DBG_IDX    = 0;
 
 endpackage

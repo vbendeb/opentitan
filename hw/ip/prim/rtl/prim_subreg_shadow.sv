@@ -77,8 +77,7 @@ module prim_subreg_shadow
 
   prim_subreg_arb #(
     .DW       ( DW       ),
-    .SwAccess ( SwAccess ),
-    .Mubi     ( Mubi     )
+    .SwAccess ( SwAccess )
   ) wr_en_data_arb (
     .we      ( we      ),
     .wd      ( wd      ),
@@ -116,8 +115,7 @@ module prim_subreg_shadow
   prim_subreg #(
     .DW       ( DW             ),
     .SwAccess ( StagedSwAccess ),
-    .RESVAL   ( ~RESVAL        ),
-    .Mubi     ( Mubi           )
+    .RESVAL   ( ~RESVAL        )
   ) staged_reg (
     .clk_i    ( clk_i     ),
     .rst_ni   ( rst_ni    ),
@@ -142,8 +140,7 @@ module prim_subreg_shadow
   prim_subreg #(
     .DW       ( DW               ),
     .SwAccess ( InvertedSwAccess ),
-    .RESVAL   ( ~RESVAL          ),
-    .Mubi     ( Mubi             )
+    .RESVAL   ( ~RESVAL          )
   ) shadow_reg (
     .clk_i    ( clk_i           ),
     .rst_ni   ( rst_shadowed_ni ),
@@ -165,8 +162,7 @@ module prim_subreg_shadow
   prim_subreg #(
     .DW       ( DW       ),
     .SwAccess ( SwAccess ),
-    .RESVAL   ( RESVAL   ),
-    .Mubi     ( Mubi     )
+    .RESVAL   ( RESVAL   )
   ) committed_reg (
     .clk_i    ( clk_i        ),
     .rst_ni   ( rst_ni       ),
@@ -191,5 +187,10 @@ module prim_subreg_shadow
   assign qe = committed_qe;
   assign q  = committed_q;
   assign qs = committed_qs;
+
+  // prim_subreg_shadow does not support multi-bit software access yet
+  `ASSERT_NEVER(MubiIsNotYetSupported_A, Mubi)
+  logic unused_mubi;
+  assign unused_mubi = Mubi;
 
 endmodule

@@ -4,6 +4,7 @@
 
 #include <stdint.h>
 
+#include "sw/device/lib/base/macros.h"
 #include "sw/device/lib/base/memory.h"
 #include "sw/device/silicon_creator/lib/base/util.h"
 #include "sw/device/silicon_creator/lib/cert/cbor.h"
@@ -56,6 +57,68 @@ enum payload_entry_sizes {
 };
 static_assert(kIssuerSubjectNameLength <= kIssuerSubjectKeyIdLength * 2,
               "Insufficient SubjectNameLength");
+
+enum cwt_cert_expectations {
+  // Size of magic bytes to distinguish between CoseKey and CoseSign1 message.
+  kDiceCwtMagicSizeBytes = 1,
+
+  // Magic header identifying a CoseKey message (CBOR map with 5 elements).
+  kDiceCwtCoseKeyMagic = 0xa5,
+
+  // Size of the CoseKey identity region header. (y-coord)
+  // Expects 1B mapKey(-3) + 2B bstr(32) header.
+  kDiceCwtCoseKeyIdHeaderSizeBytes = 1 + 2,
+
+  // Total size in bytes of the CoseKey identity region. (y-coord)
+  // Expects header + 32B p256 y-coord.
+  kDiceCwtCoseKeyIdSizeBytes =
+      kDiceCwtCoseKeyIdHeaderSizeBytes + kEcdsaP256PublicKeyCoordBytes,
+
+  // Offset to the CoseKey identity region. (y-coord)
+  // This offset is relative to the *end* of CoseKey message.
+  kDiceCwtCoseKeyIdOffsetBytes = 0,
+
+  // All valid CoseKey messages should be longer than this size.
+  kDiceCwtCoseKeyMinSizeBytes = kDiceCwtMagicSizeBytes +
+                                kDiceCwtCoseKeyIdOffsetBytes +
+                                kDiceCwtCoseKeyIdSizeBytes,
+
+  // Magic header identifying a CoseSign1 message (CBOR array with 4 elements).
+  kDiceCwtCoseSign1Magic = 0x84,
+
+  // Size of the CoseSign1 identity region header. (subject hex id)
+  // Expects 1B mapKey(2) + 2B text(64) header.
+  kDiceCwtCoseSign1IdHeaderSizeBytes = 1 + 2,
+
+  // Size of the CoseSign1 identity region. (subject hex id)
+  // Expects header + 64B subject hex id.
+  kDiceCwtCoseSign1IdSizeBytes =
+      kDiceCwtCoseSign1IdHeaderSizeBytes + kIssuerSubjectNameLength,
+
+  // Offset to the CoseSign1 identity region. (subject hex id)
+  // This offset is relative to the *begin* of CoseSign1.
+  // Expects 9B COSE prefix + 4B Payload prefix + 64B issuer id.
+  kDiceCwtCoseSign1IdOffsetBytes = 9 + 4 + kIssuerSubjectNameLength,
+
+  // All valid CoseSign1 messages should be longer than this size.
+  kDiceCwtCoseSign1MinSizeBytes = kDiceCwtMagicSizeBytes +
+                                  kDiceCwtCoseSign1IdOffsetBytes +
+                                  kDiceCwtCoseSign1IdSizeBytes,
+};
+
+// Reusable buffer for checking cose key identity.
+static char expected_cose_key_id[kDiceCwtCoseKeyIdSizeBytes] = {
+    0x22,                                 // mapKey -3 (y-coord)
+    0x58, kEcdsaP256PublicKeyCoordBytes,  // 32-byte bstr header
+    // Remaining bytes will be filled during check.
+};
+
+// Reusable buffer for checking cose sign1 cert identity.
+static char expected_cose_sign1_id[kDiceCwtCoseSign1IdSizeBytes] = {
+    0x02,                            // mapKey 2 (subject id)
+    0x78, kIssuerSubjectNameLength,  // 64-byte text header
+    // Remaining bytes will be filled during check.
+};
 
 // Reusable buffer for generating Configuration Descriptor
 static uint8_t config_desc_buf[kConfigDescBuffSize] = {0};
@@ -130,6 +193,17 @@ rom_error_t dice_uds_tbs_cert_build(
     hmac_digest_t *otp_rot_creator_auth_state_measurement,
     cert_key_id_pair_t *key_ids, ecdsa_p256_public_key_t *uds_pubkey,
     uint8_t *tbs_cert, size_t *tbs_cert_size) {
+  // These parameters are used by the X.509 sibling implementation.
+  OT_DISCARD(otp_creator_sw_cfg_measurement);
+  OT_DISCARD(otp_owner_sw_cfg_measurement);
+  OT_DISCARD(otp_rot_creator_auth_codesign_measurement);
+  OT_DISCARD(otp_rot_creator_auth_state_measurement);
+  OT_DISCARD(key_ids);
+
+  // For DICE CWT implementation, no need to sign UDS_Pub but just a COSE_Key
+  // structure.
+  // Those otp_*measurement parameters exist just for API alignment between
+  // different implementations.
   cwt_cose_key_values_t cwt_cose_key_params = {
       .pub_key_ec_x = (uint8_t *)uds_pubkey->x,
       .pub_key_ec_x_size = sizeof(uds_pubkey->x),
@@ -248,13 +322,14 @@ rom_error_t dice_cdi_0_cert_build(hmac_digest_t *rom_ext_measurement,
   return kErrorOk;
 }
 
-rom_error_t dice_cdi_1_cert_build(hmac_digest_t *owner_measurement,
-                                  hmac_digest_t *owner_manifest_measurement,
-                                  uint32_t owner_security_version,
-                                  owner_app_domain_t key_domain,
-                                  cert_key_id_pair_t *key_ids,
-                                  ecdsa_p256_public_key_t *cdi_1_pubkey,
-                                  uint8_t *cert, size_t *cert_size) {
+rom_error_t dice_cdi_1_cert_build(
+    hmac_digest_t *owner_measurement, hmac_digest_t *owner_manifest_measurement,
+    hmac_digest_t *owner_history_hash, uint32_t owner_security_version,
+    owner_app_domain_t key_domain, cert_key_id_pair_t *key_ids,
+    ecdsa_p256_public_key_t *cdi_1_pubkey, uint8_t *cert, size_t *cert_size) {
+  // TODO: The ownership history is currently not included in the CWT
+  // certificate.
+  OT_DISCARD(owner_history_hash);
   // Build Subject public key structure
   size_t cose_key_size = sizeof(cose_key_buffer);
   cwt_cose_key_values_t cwt_cose_key_params = {
@@ -347,10 +422,57 @@ rom_error_t dice_cdi_1_cert_build(hmac_digest_t *owner_measurement,
   return kErrorOk;
 }
 
+static rom_error_t cose_key_check_valid(const uint8_t *cert, size_t cert_size,
+                                        const ecdsa_p256_public_key_t *pubkey,
+                                        hardened_bool_t *cert_valid_output) {
+  if (cert_size < kDiceCwtCoseKeyMinSizeBytes) {
+    return kErrorDiceCwtCoseKeyNotFound;
+  }
+  memcpy(&expected_cose_key_id[kDiceCwtCoseKeyIdHeaderSizeBytes], pubkey->y,
+         sizeof(pubkey->y));
+  cert += cert_size - kDiceCwtCoseKeyIdOffsetBytes - kDiceCwtCoseKeyIdSizeBytes;
+  if (memcmp(cert, expected_cose_key_id, sizeof(expected_cose_key_id)) == 0) {
+    *cert_valid_output = kHardenedBoolTrue;
+  }
+  return kErrorOk;
+}
+
+static rom_error_t cose_sign1_check_valid(const uint8_t *cert, size_t cert_size,
+                                          const hmac_digest_t *pubkey_id,
+                                          hardened_bool_t *cert_valid_output) {
+  if (cert_size < kDiceCwtCoseSign1MinSizeBytes) {
+    return kErrorDiceCwtCoseKeyNotFound;
+  }
+  fill_dice_id_string(
+      (uint8_t *)(pubkey_id->digest),
+      &expected_cose_sign1_id[kDiceCwtCoseSign1IdHeaderSizeBytes]);
+  cert += kDiceCwtCoseSign1IdOffsetBytes;
+  if (memcmp(cert, expected_cose_sign1_id, sizeof(expected_cose_sign1_id)) ==
+      0) {
+    *cert_valid_output = kHardenedBoolTrue;
+  }
+  return kErrorOk;
+}
+
 rom_error_t dice_cert_check_valid(const perso_tlv_cert_obj_t *cert_obj,
                                   const hmac_digest_t *pubkey_id,
                                   const ecdsa_p256_public_key_t *pubkey,
                                   hardened_bool_t *cert_valid_output) {
-  // TODO(lowRISC/opentitan:#24281): implement body
-  return kErrorOk;
+  *cert_valid_output = kHardenedBoolFalse;
+
+  const size_t cert_size = cert_obj->cert_body_size;
+  if (cert_size < kDiceCwtMagicSizeBytes) {
+    return kErrorDiceCwtCoseKeyNotFound;
+  }
+
+  const uint8_t *cert = cert_obj->cert_body_p;
+
+  if (*cert == kDiceCwtCoseKeyMagic) {
+    return cose_key_check_valid(cert, cert_size, pubkey, cert_valid_output);
+  } else if (*cert == kDiceCwtCoseSign1Magic) {
+    return cose_sign1_check_valid(cert, cert_size, pubkey_id,
+                                  cert_valid_output);
+  }
+
+  return kErrorDiceCwtCoseKeyNotFound;
 }

@@ -104,7 +104,7 @@ class chip_sw_keymgr_key_derivation_vseq extends chip_sw_base_vseq;
     super.dut_init(reset_kind);
     void'($value$plusargs("lc_at_prod=%0d", lc_at_prod));
     if (lc_at_prod) begin
-      otp_write_lc_partition_state(cfg.mem_bkdr_util_h[Otp], LcStProd);
+      cfg.mem_bkdr_util_h[Otp].otp_write_lc_partition_state(LcStProd);
     end
   endtask
 
@@ -218,7 +218,7 @@ class chip_sw_keymgr_key_derivation_vseq extends chip_sw_base_vseq;
 
   // Here is how the CreatorRootKey data are found
   // SoftwareBinding: program fixed value to keymgr CSRs in the C test
-  // HardwareRevisionSecret: backdoor read CSRs at ral.lc_ctrl_regs.device_id
+  // HardwareRevisionSecret: backdoor read CSRs at ral.lc_ctrl.device_id
   // HealthMeasurement: HW random constant - RndCnstLcCtrlLcKeymgrDivTestDevRma
   // RomDigest:  backdoor read CSRs at ral.rom_ctrl_regs.digest
   virtual task get_creator_data(output bit [keymgr_pkg::AdvDataWidth-1:0] creator_data_out);
@@ -226,7 +226,7 @@ class chip_sw_keymgr_key_derivation_vseq extends chip_sw_base_vseq;
     creator_data.SoftwareBinding = CreatorSwBinding;
 
     for (int i = 0; i < keymgr_pkg::DevIdWidth / TL_DW; i++) begin
-      bit [TL_DW-1:0] rdata = csr_peek(ral.lc_ctrl_regs.device_id[i]);
+      bit [TL_DW-1:0] rdata = csr_peek(ral.lc_ctrl.device_id[i]);
       creator_data.DeviceIdentifier[TL_DW * i +: TL_DW] = rdata;
     end
     `uvm_info(`gfn, $sformatf("DeviceIdentifier 0x%0h", creator_data.DeviceIdentifier),

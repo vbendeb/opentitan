@@ -11,13 +11,7 @@
 module spi_host
   import spi_host_reg_pkg::*;
 #(
-  parameter logic [NumAlerts-1:0]           AlertAsyncOn              = {NumAlerts{1'b1}},
-  parameter int unsigned                    NumCS                     = 1,
-  parameter bit                             EnableRacl                = 1'b0,
-  parameter bit                             RaclErrorRsp              = EnableRacl,
-  parameter top_racl_pkg::racl_policy_sel_t RaclPolicySelVec[NumRegs] = '{NumRegs{0}},
-  parameter top_racl_pkg::racl_policy_sel_t RaclPolicySelWinRXDATA    = 0,
-  parameter top_racl_pkg::racl_policy_sel_t RaclPolicySelWinTXDATA    = 0
+  parameter logic [NumAlerts-1:0] AlertAsyncOn = {NumAlerts{1'b1}}
 ) (
   input              clk_i,
   input              rst_ni,
@@ -29,10 +23,6 @@ module spi_host
   // Alerts
   input  prim_alert_pkg::alert_rx_t [NumAlerts-1:0] alert_rx_i,
   output prim_alert_pkg::alert_tx_t [NumAlerts-1:0] alert_tx_o,
-
-  // RACL interface
-  input  top_racl_pkg::racl_policy_vec_t racl_policies_i,
-  output top_racl_pkg::racl_error_log_t  racl_error_o,
 
   // SPI Interface
   output logic             cio_sck_o,
@@ -47,60 +37,31 @@ module spi_host
   input  spi_device_pkg::passthrough_req_t passthrough_i,
   output spi_device_pkg::passthrough_rsp_t passthrough_o,
 
-  output logic             lsio_trigger_o,
-
   output logic             intr_error_o,
   output logic             intr_spi_event_o
 );
 
   import spi_host_cmd_pkg::*;
 
-  localparam int CSW = prim_util_pkg::vbits(NumCS);
-
   spi_host_reg2hw_t reg2hw;
   spi_host_hw2reg_t hw2reg;
-
-  top_racl_pkg::racl_error_log_t racl_error[3];
-  if (EnableRacl) begin : gen_racl_error_arb
-    // Arbitrate between all simultaneously valid error log requests.
-    prim_racl_error_arb #(
-      .N ( 3 )
-    ) u_prim_err_arb (
-      .clk_i,
-      .rst_ni,
-      .error_log_i ( racl_error   ),
-      .error_log_o ( racl_error_o )
-    );
-  end else begin : gen_no_racl_error_arb
-    logic unused_signals;
-    always_comb begin
-      unused_signals = ^{racl_error[0] ^ racl_error[1] ^ racl_error[2]};
-      racl_error_o   = '0;
-    end
-  end
 
   tlul_pkg::tl_h2d_t fifo_win_h2d [2];
   tlul_pkg::tl_d2h_t fifo_win_d2h [2];
 
   // Register module
   logic [NumAlerts-1:0] alert_test, alerts;
-  spi_host_reg_top #(
-    .EnableRacl       ( EnableRacl       ),
-    .RaclErrorRsp     ( RaclErrorRsp     ),
-    .RaclPolicySelVec ( RaclPolicySelVec )
-  ) u_reg (
+  spi_host_reg_top u_reg (
     .clk_i,
     .rst_ni,
-    .tl_i             ( tl_i                   ),
-    .tl_o             ( tl_o                   ),
-    .tl_win_o         ( fifo_win_h2d           ),
-    .tl_win_i         ( fifo_win_d2h           ),
+    .tl_i       (tl_i),
+    .tl_o       (tl_o),
+    .tl_win_o   (fifo_win_h2d),
+    .tl_win_i   (fifo_win_d2h),
     .reg2hw,
     .hw2reg,
     // SEC_CM: BUS.INTEGRITY
-    .intg_err_o       ( alerts[0]              ),
-    .racl_policies_i  ( racl_policies_i        ),
-    .racl_error_o     ( racl_error[0]          )
+    .intg_err_o (alerts[0])
   );
 
   // Alerts
@@ -203,7 +164,6 @@ module spi_host
   logic core_command_ready;
 
   command_t core_command, command;
-  logic [CSW-1:0] core_command_csid, command_csid;
   logic error_csid_inval;
   logic error_cmd_inval;
   logic error_busy;
@@ -254,15 +214,25 @@ module spi_host
   assign error_cmd_inval  = command_valid & ~command_busy &
                             (test_speed_inval | test_dir_inval);
 
-  assign command_csid = (test_csid_inval) ? '0 : reg2hw.csid.q[CSW-1:0];
+  spi_host_reg_pkg::spi_host_reg2hw_configopts_mreg_t configopts;
 
-  assign command.configopts.clkdiv   = reg2hw.configopts.clkdiv.q;
-  assign command.configopts.csnidle  = reg2hw.configopts.csnidle.q;
-  assign command.configopts.csnlead  = reg2hw.configopts.csnlead.q;
-  assign command.configopts.csntrail = reg2hw.configopts.csntrail.q;
-  assign command.configopts.full_cyc = reg2hw.configopts.fullcyc.q;
-  assign command.configopts.cpha     = reg2hw.configopts.cpha.q;
-  assign command.configopts.cpol     = reg2hw.configopts.cpol.q;
+  if (NumCS == 1) begin : gen_single_device
+    assign configopts   = reg2hw.configopts[0];
+    assign command.csid = '0;
+  end else begin : gen_multiple_devices
+    logic [CSW-1:0] csid;
+    assign csid         = (test_csid_inval) ? '0 : reg2hw.csid.q[CSW-1:0];
+    assign configopts   = reg2hw.configopts[csid];
+    assign command.csid = csid;
+  end : gen_multiple_devices
+
+  assign command.configopts.clkdiv   = configopts.clkdiv.q;
+  assign command.configopts.csnidle  = configopts.csnidle.q;
+  assign command.configopts.csnlead  = configopts.csnlead.q;
+  assign command.configopts.csntrail = configopts.csntrail.q;
+  assign command.configopts.full_cyc = configopts.fullcyc.q;
+  assign command.configopts.cpha     = configopts.cpha.q;
+  assign command.configopts.cpol     = configopts.cpol.q;
 
   assign command.segment.len         = reg2hw.command.len.q;
   assign command.segment.csaat       = reg2hw.command.csaat.q;
@@ -300,17 +270,14 @@ module spi_host
   logic [3:0]  cmd_qd;
 
   spi_host_command_queue #(
-    .CmdDepth(CmdDepth),
-    .NumCS(NumCS)
+    .CmdDepth(CmdDepth)
   ) u_cmd_queue (
     .clk_i,
     .rst_ni,
     .command_i            (command),
-    .command_csid_i       (command_csid),
     .command_valid_i      (command_valid),
     .command_busy_o       (command_busy),
     .core_command_o       (core_command),
-    .core_command_csid_o  (core_command_csid),
     .core_command_valid_o (core_command_valid),
     .core_command_ready_i (core_command_ready),
     .error_busy_o         (error_busy),
@@ -327,26 +294,18 @@ module spi_host
   logic        rx_valid;
   logic        rx_ready;
 
-  spi_host_window #(
-    .EnableRacl             ( EnableRacl             ),
-    .RaclErrorRsp           ( RaclErrorRsp           ),
-    .RaclPolicySelWinRXDATA ( RaclPolicySelWinRXDATA ),
-    .RaclPolicySelWinTXDATA ( RaclPolicySelWinTXDATA )
-  ) u_window (
+  spi_host_window u_window (
     .clk_i,
     .rst_ni,
-    .rx_win_i         ( fifo_win_h2d[0]             ),
-    .rx_win_o         ( fifo_win_d2h[0]             ),
-    .tx_win_i         ( fifo_win_h2d[1]             ),
-    .tx_win_o         ( fifo_win_d2h[1]             ),
-    .tx_data_o        ( tx_data                     ),
-    .tx_be_o          ( tx_be                       ),
-    .tx_valid_o       ( tx_valid                    ),
-    .rx_data_i        ( rx_data                     ),
-    .rx_ready_o       ( rx_ready                    ),
-    .racl_policies_i  ( racl_policies_i             ),
-    .racl_error_tx_o  ( racl_error[1]               ),
-    .racl_error_rx_o  ( racl_error[2]               )
+    .rx_win_i   (fifo_win_h2d[0]),
+    .rx_win_o   (fifo_win_d2h[0]),
+    .tx_win_i   (fifo_win_h2d[1]),
+    .tx_win_o   (fifo_win_d2h[1]),
+    .tx_data_o  (tx_data),
+    .tx_be_o    (tx_be),
+    .tx_valid_o (tx_valid),
+    .rx_data_i  (rx_data),
+    .rx_ready_o (rx_ready)
   );
 
   logic [31:0] core_tx_data;
@@ -481,7 +440,6 @@ module spi_host
     .rst_ni,
 
     .command_i             (core_command),
-    .command_csid_i        (core_command_csid),
     .command_valid_i       (core_command_valid),
     .command_ready_o       (core_command_ready),
     .en_i                  (en),
@@ -605,15 +563,6 @@ module spi_host
   // Qualify interrupt sources individually with dedicated mask register CSR.EVENT_ENABLE
   assign status_spi_event = |(event_vector & event_mask);
 
-  // Flop trigger signal to avoid glitches on the output
-  always_ff @(posedge clk_i or negedge rst_ni) begin
-    if (!rst_ni) begin
-      lsio_trigger_o <= 1'b0;
-    end else begin
-      lsio_trigger_o <= tx_wm | rx_wm;
-    end
-  end
-
   prim_intr_hw #(
     .Width(1),
     .IntrT("Status")
@@ -644,9 +593,6 @@ module spi_host
   `ASSERT_KNOWN(CioSdEnKnownO_A, cio_sd_en_o)
   `ASSERT_KNOWN(IntrSpiEventKnownO_A, intr_spi_event_o)
   `ASSERT_KNOWN(IntrErrorKnownO_A, intr_error_o)
-  `ASSERT_KNOWN(LsioTriggerKnown_A, lsio_trigger_o)
-  `ASSERT_KNOWN(RaclErrorValidKnown_A, racl_error_o.valid)
-
 
   // passthrough_o.s is passed through to spi_device, it may contain unknown data,
   // but the unknown data won't be used based on the SPI protocol.

@@ -77,7 +77,6 @@
     { dv_root: "{dv_root}" },
     { SIMULATOR: "{tool}" },
     { GUI: "{gui}"},
-    { GUI_DEBUG: "{gui_debug}"},
     { WAVES: "{waves}" },
     { DUT_TOP: "{dut}" },
     { TB_TOP: "{tb}" },

@@ -6,13 +6,7 @@
 
 `include "prim_assert.sv"
 
-module uart_reg_top
-  # (
-    parameter bit          EnableRacl           = 1'b0,
-    parameter bit          RaclErrorRsp         = 1'b1,
-    parameter top_racl_pkg::racl_policy_sel_t RaclPolicySelVec[uart_reg_pkg::NumRegs] =
-      '{uart_reg_pkg::NumRegs{0}}
-  ) (
+module uart_reg_top (
   input clk_i,
   input rst_ni,
   input  tlul_pkg::tl_h2d_t tl_i,
@@ -20,10 +14,6 @@ module uart_reg_top
   // To HW
   output uart_reg_pkg::uart_reg2hw_t reg2hw, // Write
   input  uart_reg_pkg::uart_hw2reg_t hw2reg, // Read
-
-  // RACL interface
-  input  top_racl_pkg::racl_policy_vec_t racl_policies_i,
-  output top_racl_pkg::racl_error_log_t  racl_error_o,
 
   // Integrity check errors
   output logic intg_err_o
@@ -120,8 +110,7 @@ module uart_reg_top
     .be_o    (reg_be),
     .busy_i  (reg_busy),
     .rdata_i (reg_rdata),
-    // Translate RACL error to TLUL error if enabled
-    .error_i (reg_error | (RaclErrorRsp & racl_error_o.valid))
+    .error_i (reg_error)
   );
 
   // cdc oversampling signals
@@ -1572,32 +1561,8 @@ module uart_reg_top
 
 
   logic [12:0] addr_hit;
-  top_racl_pkg::racl_role_vec_t racl_role_vec;
-  top_racl_pkg::racl_role_t racl_role;
-
-  logic [12:0] racl_addr_hit_read;
-  logic [12:0] racl_addr_hit_write;
-
-  if (EnableRacl) begin : gen_racl_role_logic
-    // Retrieve RACL role from user bits and one-hot encode that for the comparison bitmap
-    assign racl_role = top_racl_pkg::tlul_extract_racl_role_bits(tl_i.a_user.rsvd);
-
-    prim_onehot_enc #(
-      .OneHotWidth( $bits(top_racl_pkg::racl_role_vec_t) )
-    ) u_racl_role_encode (
-      .in_i ( racl_role     ),
-      .en_i ( 1'b1          ),
-      .out_o( racl_role_vec )
-    );
-  end else begin : gen_no_racl_role_logic
-    assign racl_role     = '0;
-    assign racl_role_vec = '0;
-  end
-
   always_comb begin
     addr_hit = '0;
-    racl_addr_hit_read  = '0;
-    racl_addr_hit_write = '0;
     addr_hit[ 0] = (reg_addr == UART_INTR_STATE_OFFSET);
     addr_hit[ 1] = (reg_addr == UART_INTR_ENABLE_OFFSET);
     addr_hit[ 2] = (reg_addr == UART_INTR_TEST_OFFSET);
@@ -1611,58 +1576,30 @@ module uart_reg_top
     addr_hit[10] = (reg_addr == UART_OVRD_OFFSET);
     addr_hit[11] = (reg_addr == UART_VAL_OFFSET);
     addr_hit[12] = (reg_addr == UART_TIMEOUT_CTRL_OFFSET);
-
-    if (EnableRacl) begin : gen_racl_hit
-      for (int unsigned slice_idx = 0; slice_idx < 13; slice_idx++) begin
-        racl_addr_hit_read[slice_idx] =
-            addr_hit[slice_idx] & (|(racl_policies_i[RaclPolicySelVec[slice_idx]].read_perm
-                                      & racl_role_vec));
-        racl_addr_hit_write[slice_idx] =
-            addr_hit[slice_idx] & (|(racl_policies_i[RaclPolicySelVec[slice_idx]].write_perm
-                                      & racl_role_vec));
-      end
-    end else begin : gen_no_racl
-      racl_addr_hit_read  = addr_hit;
-      racl_addr_hit_write = addr_hit;
-    end
   end
 
   assign addrmiss = (reg_re || reg_we) ? ~|addr_hit : 1'b0 ;
-  // A valid address hit, access, but failed the RACL check
-  assign racl_error_o.valid = |addr_hit & ((reg_re & ~|racl_addr_hit_read) |
-                                           (reg_we & ~|racl_addr_hit_write));
-  assign racl_error_o.request_address = top_pkg::TL_AW'(reg_addr);
-  assign racl_error_o.racl_role       = racl_role;
-  assign racl_error_o.overflow        = 1'b0;
-
-  if (EnableRacl) begin : gen_racl_log
-    assign racl_error_o.ctn_uid     = top_racl_pkg::tlul_extract_ctn_uid_bits(tl_i.a_user.rsvd);
-    assign racl_error_o.read_access = tl_i.a_opcode == tlul_pkg::Get;
-  end else begin : gen_no_racl_log
-    assign racl_error_o.ctn_uid     = '0;
-    assign racl_error_o.read_access = 1'b0;
-  end
 
   // Check sub-word write is permitted
   always_comb begin
     wr_err = (reg_we &
-              ((racl_addr_hit_write[ 0] & (|(UART_PERMIT[ 0] & ~reg_be))) |
-               (racl_addr_hit_write[ 1] & (|(UART_PERMIT[ 1] & ~reg_be))) |
-               (racl_addr_hit_write[ 2] & (|(UART_PERMIT[ 2] & ~reg_be))) |
-               (racl_addr_hit_write[ 3] & (|(UART_PERMIT[ 3] & ~reg_be))) |
-               (racl_addr_hit_write[ 4] & (|(UART_PERMIT[ 4] & ~reg_be))) |
-               (racl_addr_hit_write[ 5] & (|(UART_PERMIT[ 5] & ~reg_be))) |
-               (racl_addr_hit_write[ 6] & (|(UART_PERMIT[ 6] & ~reg_be))) |
-               (racl_addr_hit_write[ 7] & (|(UART_PERMIT[ 7] & ~reg_be))) |
-               (racl_addr_hit_write[ 8] & (|(UART_PERMIT[ 8] & ~reg_be))) |
-               (racl_addr_hit_write[ 9] & (|(UART_PERMIT[ 9] & ~reg_be))) |
-               (racl_addr_hit_write[10] & (|(UART_PERMIT[10] & ~reg_be))) |
-               (racl_addr_hit_write[11] & (|(UART_PERMIT[11] & ~reg_be))) |
-               (racl_addr_hit_write[12] & (|(UART_PERMIT[12] & ~reg_be)))));
+              ((addr_hit[ 0] & (|(UART_PERMIT[ 0] & ~reg_be))) |
+               (addr_hit[ 1] & (|(UART_PERMIT[ 1] & ~reg_be))) |
+               (addr_hit[ 2] & (|(UART_PERMIT[ 2] & ~reg_be))) |
+               (addr_hit[ 3] & (|(UART_PERMIT[ 3] & ~reg_be))) |
+               (addr_hit[ 4] & (|(UART_PERMIT[ 4] & ~reg_be))) |
+               (addr_hit[ 5] & (|(UART_PERMIT[ 5] & ~reg_be))) |
+               (addr_hit[ 6] & (|(UART_PERMIT[ 6] & ~reg_be))) |
+               (addr_hit[ 7] & (|(UART_PERMIT[ 7] & ~reg_be))) |
+               (addr_hit[ 8] & (|(UART_PERMIT[ 8] & ~reg_be))) |
+               (addr_hit[ 9] & (|(UART_PERMIT[ 9] & ~reg_be))) |
+               (addr_hit[10] & (|(UART_PERMIT[10] & ~reg_be))) |
+               (addr_hit[11] & (|(UART_PERMIT[11] & ~reg_be))) |
+               (addr_hit[12] & (|(UART_PERMIT[12] & ~reg_be)))));
   end
 
   // Generate write-enables
-  assign intr_state_we = racl_addr_hit_write[0] & reg_we & !reg_error;
+  assign intr_state_we = addr_hit[0] & reg_we & !reg_error;
 
   assign intr_state_tx_done_wd = reg_wdata[2];
 
@@ -1675,7 +1612,7 @@ module uart_reg_top
   assign intr_state_rx_timeout_wd = reg_wdata[6];
 
   assign intr_state_rx_parity_err_wd = reg_wdata[7];
-  assign intr_enable_we = racl_addr_hit_write[1] & reg_we & !reg_error;
+  assign intr_enable_we = addr_hit[1] & reg_we & !reg_error;
 
   assign intr_enable_tx_watermark_wd = reg_wdata[0];
 
@@ -1694,7 +1631,7 @@ module uart_reg_top
   assign intr_enable_rx_parity_err_wd = reg_wdata[7];
 
   assign intr_enable_tx_empty_wd = reg_wdata[8];
-  assign intr_test_we = racl_addr_hit_write[2] & reg_we & !reg_error;
+  assign intr_test_we = addr_hit[2] & reg_we & !reg_error;
 
   assign intr_test_tx_watermark_wd = reg_wdata[0];
 
@@ -1713,10 +1650,10 @@ module uart_reg_top
   assign intr_test_rx_parity_err_wd = reg_wdata[7];
 
   assign intr_test_tx_empty_wd = reg_wdata[8];
-  assign alert_test_we = racl_addr_hit_write[3] & reg_we & !reg_error;
+  assign alert_test_we = addr_hit[3] & reg_we & !reg_error;
 
   assign alert_test_wd = reg_wdata[0];
-  assign ctrl_we = racl_addr_hit_write[4] & reg_we & !reg_error;
+  assign ctrl_we = addr_hit[4] & reg_we & !reg_error;
 
   assign ctrl_tx_wd = reg_wdata[0];
 
@@ -1735,12 +1672,12 @@ module uart_reg_top
   assign ctrl_rxblvl_wd = reg_wdata[9:8];
 
   assign ctrl_nco_wd = reg_wdata[31:16];
-  assign status_re = racl_addr_hit_read[5] & reg_re & !reg_error;
-  assign rdata_re = racl_addr_hit_read[6] & reg_re & !reg_error;
-  assign wdata_we = racl_addr_hit_write[7] & reg_we & !reg_error;
+  assign status_re = addr_hit[5] & reg_re & !reg_error;
+  assign rdata_re = addr_hit[6] & reg_re & !reg_error;
+  assign wdata_we = addr_hit[7] & reg_we & !reg_error;
 
   assign wdata_wd = reg_wdata[7:0];
-  assign fifo_ctrl_we = racl_addr_hit_write[8] & reg_we & !reg_error;
+  assign fifo_ctrl_we = addr_hit[8] & reg_we & !reg_error;
 
   assign fifo_ctrl_rxrst_wd = reg_wdata[0];
 
@@ -1749,14 +1686,14 @@ module uart_reg_top
   assign fifo_ctrl_rxilvl_wd = reg_wdata[4:2];
 
   assign fifo_ctrl_txilvl_wd = reg_wdata[7:5];
-  assign fifo_status_re = racl_addr_hit_read[9] & reg_re & !reg_error;
-  assign ovrd_we = racl_addr_hit_write[10] & reg_we & !reg_error;
+  assign fifo_status_re = addr_hit[9] & reg_re & !reg_error;
+  assign ovrd_we = addr_hit[10] & reg_we & !reg_error;
 
   assign ovrd_txen_wd = reg_wdata[0];
 
   assign ovrd_txval_wd = reg_wdata[1];
-  assign val_re = racl_addr_hit_read[11] & reg_re & !reg_error;
-  assign timeout_ctrl_we = racl_addr_hit_write[12] & reg_we & !reg_error;
+  assign val_re = addr_hit[11] & reg_re & !reg_error;
+  assign timeout_ctrl_we = addr_hit[12] & reg_we & !reg_error;
 
   assign timeout_ctrl_val_wd = reg_wdata[23:0];
 
@@ -1784,7 +1721,7 @@ module uart_reg_top
   always_comb begin
     reg_rdata_next = '0;
     unique case (1'b1)
-      racl_addr_hit_read[0]: begin
+      addr_hit[0]: begin
         reg_rdata_next[0] = intr_state_tx_watermark_qs;
         reg_rdata_next[1] = intr_state_rx_watermark_qs;
         reg_rdata_next[2] = intr_state_tx_done_qs;
@@ -1796,7 +1733,7 @@ module uart_reg_top
         reg_rdata_next[8] = intr_state_tx_empty_qs;
       end
 
-      racl_addr_hit_read[1]: begin
+      addr_hit[1]: begin
         reg_rdata_next[0] = intr_enable_tx_watermark_qs;
         reg_rdata_next[1] = intr_enable_rx_watermark_qs;
         reg_rdata_next[2] = intr_enable_tx_done_qs;
@@ -1808,7 +1745,7 @@ module uart_reg_top
         reg_rdata_next[8] = intr_enable_tx_empty_qs;
       end
 
-      racl_addr_hit_read[2]: begin
+      addr_hit[2]: begin
         reg_rdata_next[0] = '0;
         reg_rdata_next[1] = '0;
         reg_rdata_next[2] = '0;
@@ -1820,11 +1757,11 @@ module uart_reg_top
         reg_rdata_next[8] = '0;
       end
 
-      racl_addr_hit_read[3]: begin
+      addr_hit[3]: begin
         reg_rdata_next[0] = '0;
       end
 
-      racl_addr_hit_read[4]: begin
+      addr_hit[4]: begin
         reg_rdata_next[0] = ctrl_tx_qs;
         reg_rdata_next[1] = ctrl_rx_qs;
         reg_rdata_next[2] = ctrl_nf_qs;
@@ -1836,7 +1773,7 @@ module uart_reg_top
         reg_rdata_next[31:16] = ctrl_nco_qs;
       end
 
-      racl_addr_hit_read[5]: begin
+      addr_hit[5]: begin
         reg_rdata_next[0] = status_txfull_qs;
         reg_rdata_next[1] = status_rxfull_qs;
         reg_rdata_next[2] = status_txempty_qs;
@@ -1845,36 +1782,36 @@ module uart_reg_top
         reg_rdata_next[5] = status_rxempty_qs;
       end
 
-      racl_addr_hit_read[6]: begin
+      addr_hit[6]: begin
         reg_rdata_next[7:0] = rdata_qs;
       end
 
-      racl_addr_hit_read[7]: begin
+      addr_hit[7]: begin
         reg_rdata_next[7:0] = '0;
       end
 
-      racl_addr_hit_read[8]: begin
+      addr_hit[8]: begin
         reg_rdata_next[0] = '0;
         reg_rdata_next[1] = '0;
         reg_rdata_next[4:2] = fifo_ctrl_rxilvl_qs;
         reg_rdata_next[7:5] = fifo_ctrl_txilvl_qs;
       end
 
-      racl_addr_hit_read[9]: begin
+      addr_hit[9]: begin
         reg_rdata_next[7:0] = fifo_status_txlvl_qs;
         reg_rdata_next[23:16] = fifo_status_rxlvl_qs;
       end
 
-      racl_addr_hit_read[10]: begin
+      addr_hit[10]: begin
         reg_rdata_next[0] = ovrd_txen_qs;
         reg_rdata_next[1] = ovrd_txval_qs;
       end
 
-      racl_addr_hit_read[11]: begin
+      addr_hit[11]: begin
         reg_rdata_next[15:0] = val_qs;
       end
 
-      racl_addr_hit_read[12]: begin
+      addr_hit[12]: begin
         reg_rdata_next[23:0] = timeout_ctrl_val_qs;
         reg_rdata_next[31] = timeout_ctrl_en_qs;
       end
@@ -1900,8 +1837,6 @@ module uart_reg_top
   logic unused_be;
   assign unused_wdata = ^reg_wdata;
   assign unused_be = ^reg_be;
-  logic unused_policy_sel;
-  assign unused_policy_sel = ^racl_policies_i;
 
   // Assertions for Register Interface
   `ASSERT_PULSE(wePulse, reg_we, clk_i, !rst_ni)

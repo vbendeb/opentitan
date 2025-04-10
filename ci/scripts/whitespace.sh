@@ -26,10 +26,11 @@ set -o pipefail
 git diff --name-only --diff-filter=ACMRTUXB "$merge_base" -- \
         ':!third_party/rust/crates/*' \
         ':!signing/softhsm/tokens/*' \
-        ':!*/testdata/*' \
+        ':!sw/device/silicon_creator/rom/e2e/ate/binaries/*' \
+        ':!sw/device/silicon_creator/rom/e2e/ate/signatures/*' \
         ':!*/vendor/*' | \
     xargs -r util/fix_trailing_whitespace.py --dry-run || {
-    echo -n "::error::"
+    echo -n "##vso[task.logissue type=error]"
     echo "Whitespace check failed. Please run util/fix_trailing_whitespace.py on the above files."
     exit 1
 }

@@ -9,14 +9,20 @@ load(
     "fpga_params",
     "opentitan_test",
 )
-load("//rules/opentitan:keyutils.bzl", "ECDSA_ONLY_KEY_STRUCTS")
+load(
+    "//rules:opentitan.bzl",
+    "ECDSA_ONLY_KEY_STRUCTS",
+)
 load(
     "//rules:const.bzl",
     "CONST",
     "get_lc_items",
     "hex",
 )
-load("//rules:manifest.bzl", "manifest")
+load(
+    "//rules:manifest.bzl",
+    "manifest",
+)
 load(
     "//rules:otp.bzl",
     "STD_OTP_OVERLAYS",
@@ -25,7 +31,10 @@ load(
     "otp_json",
     "otp_partition",
 )
-load("//rules:rom_e2e.bzl", "maybe_skip_in_ci")
+load(
+    "//rules:rom_e2e.bzl",
+    "maybe_skip_in_ci",
+)
 
 package(default_visibility = ["//visibility:public"])
 
@@ -51,7 +60,7 @@ otp_json(
 [
     otp_image(
         name = "otp_img_rom_ext_upgrade_interrupt_{}".format(lc_state),
-        src = "//hw/top_earlgrey/data/otp:otp_json_{}".format(lc_state),
+        src = "//hw/ip/otp_ctrl/data:otp_json_{}".format(lc_state),
         overlays = STD_OTP_OVERLAYS + [":otp_json_rom_ext_upgrade_interrupt"],
         visibility = ["//visibility:private"],
     )

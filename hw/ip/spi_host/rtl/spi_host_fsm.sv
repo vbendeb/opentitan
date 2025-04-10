@@ -8,14 +8,12 @@
 module spi_host_fsm
   import spi_host_cmd_pkg::*;
 #(
-  parameter  int NumCS = 1,
-  localparam int CSW   = prim_util_pkg::vbits(NumCS)
+  parameter  int NumCS = 1
 ) (
   input                              clk_i,
   input                              rst_ni,
   input                              en_i,
   input  command_t                   command_i,
-  input  logic [CSW-1:0]             command_csid_i,
   input                              command_valid_i,
   output logic                       command_ready_o,
   output logic                       sck_o,
@@ -64,13 +62,13 @@ module spi_host_fsm
   logic [1:0]       cmd_speed_d, cmd_speed_q;
   logic             cmd_wr_en_d, cmd_wr_en_q;
   logic             cmd_rd_en_d, cmd_rd_en_q;
-  logic [19:0]      cmd_len_d, cmd_len_q;
+  logic [8:0]       cmd_len_d, cmd_len_q;
   logic             csaat;
   logic             csaat_q;
 
   logic [2:0]       bit_cntr_d, bit_cntr_q;
-  logic [19:0]      byte_cntr_cpha0_d, byte_cntr_cpha1_d, byte_cntr_cpha0_q, byte_cntr_cpha1_q;
-  logic [19:0]      byte_cntr_early, byte_cntr_late;
+  logic [8:0]       byte_cntr_cpha0_d, byte_cntr_cpha1_d, byte_cntr_cpha0_q, byte_cntr_cpha1_q;
+  logic [8:0]       byte_cntr_early, byte_cntr_late;
   logic [3:0]       wait_cntr_d, wait_cntr_q;
   logic             last_bit, last_byte;
 
@@ -130,7 +128,7 @@ module spi_host_fsm
                           (command_i.configopts.clkdiv   != clkdiv_q);
 
   always_comb begin
-    csid      = new_command ? command_csid_i : csid_q;
+    csid      = new_command ? command_i.csid : csid_q;
     cpol      = new_command ? command_i.configopts.cpol : cpol_q;
     cpha      = new_command ? command_i.configopts.cpha : cpha_q;
     full_cyc  = new_command ? command_i.configopts.full_cyc : full_cyc_q;
@@ -159,7 +157,7 @@ module spi_host_fsm
       cmd_rd_en_q <= 1'b0;
       cmd_wr_en_q <= 1'b0;
       cmd_speed_q <= 2'b00;
-      cmd_len_q   <= 20'h0;
+      cmd_len_q   <= 9'h0;
     end else begin
       csid_q      <= (new_command && !stall) ? csid : csid_q;
       cpol_q      <= (new_command && !stall) ? cpol : cpol_q;
@@ -211,7 +209,7 @@ module spi_host_fsm
   logic         command_ready_idle_csb_active;
   always_comb begin
     if (command_valid_i) begin
-      if (command_csid_i != csid_q) begin
+      if (command_i.csid != csid_q) begin
         //
         // Do not acknowledge the command now, as it will trigger
         // an update of the internal command and configuration registers.
@@ -444,21 +442,21 @@ module spi_host_fsm
   //
   always_comb begin
     if (cpha_q) begin
-      last_byte = (byte_cntr_cpha1_q == 20'h0);
+      last_byte = (byte_cntr_cpha1_q == 9'h0);
     end else begin
-      last_byte = (byte_cntr_cpha0_q == 20'h0);
+      last_byte = (byte_cntr_cpha0_q == 9'h0);
     end
   end
 
   // Note: when updating the byte_cntr in CPHA=0 mode with a new command value, the length must
   // be pulled in directly from the command bus, cmd_len_d;
-  assign byte_cntr_cpha0_d = sw_rst_i    ? 20'h0 :
+  assign byte_cntr_cpha0_d = sw_rst_i    ? 9'h0 :
                              !fsm_en     ? byte_cntr_cpha0_q :
                              new_command ? cmd_len_d :
                              byte_ending_cpha0 ? byte_cntr_cpha0_q - 1 :
                              byte_cntr_cpha0_q;
 
-  assign byte_cntr_cpha1_d = sw_rst_i          ? 20'h0 :
+  assign byte_cntr_cpha1_d = sw_rst_i          ? 9'h0 :
                              !fsm_en           ? byte_cntr_cpha1_q :
                              new_command       ? cmd_len_d :
                              byte_ending_cpha1 ? byte_cntr_cpha1_q - 1 :
@@ -499,8 +497,8 @@ module spi_host_fsm
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin
       bit_cntr_q        <= 3'h0;
-      byte_cntr_cpha0_q <= 20'h0;
-      byte_cntr_cpha1_q <= 20'h0;
+      byte_cntr_cpha0_q <= 9'h0;
+      byte_cntr_cpha1_q <= 9'h0;
       wait_cntr_q       <= 4'h0;
     end else begin
       bit_cntr_q        <= stall ? bit_cntr_q        : bit_cntr_d;
@@ -587,13 +585,34 @@ module spi_host_fsm
 
   assign csb_o = csb_q;
 
+  logic [3:0] sd_en_ff_d, sd_en_ff_q;
+  assign sd_en_ff_d = sd_en_o;
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      sd_en_ff_q <= 0;
+    end
+    else begin
+      sd_en_ff_q <= sd_en_ff_d;
+    end
+  end
+  logic drive_posedge;
+  // CPOL / CPHASE truth table
+  // ---------------------------------------------
+  // CPHA | CPOL | Drive/sample                  |
+  // ---------------------------------------------
+  // 0    | 0    | drive negedge, sample posedge |
+  // 0    | 1    | drive posedge, sample negedge |
+  // 1    | 0    | drive posedge, sample negedge |
+  // 1    | 1    | drive negedge, sample posedge |
+  // ---------------------------------------------
+  assign drive_posedge = (cpol != cpha);
+
   always_comb begin
     if (&csb_o) begin
       sd_en_o[3:0] = 4'h0;
     end else begin
       unique case (speed_o)
         Standard: begin
-          // Observing 'last_bit' ensures we do not deassert the enable too early
           sd_en_o[0]   = cmd_wr_en_q | cmd_wr_en_last_bit;
           sd_en_o[1]   = 1'b0;
           sd_en_o[3:2] = 2'b00;
@@ -610,8 +629,14 @@ module spi_host_fsm
           sd_en_o[3:0] = 4'h0;
         end
       endcase
-    end
+    end // else: !if(&csb_o)
   end
+
+  // The following signals are unused since their usages got removed in an ECO.  In order to
+  // minimize the netlist diff, the signals are kept in this code.
+  logic unused_sd_en_ff, unused_drive_posedge;
+  assign unused_sd_en_ff = ^{sd_en_ff_d, sd_en_ff_q};
+  assign unused_drive_posedge = drive_posedge;
 
   //
   // Assertions confirming valid user input.

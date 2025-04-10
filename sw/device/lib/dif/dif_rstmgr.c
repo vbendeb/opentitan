@@ -16,7 +16,7 @@
 #include "rstmgr_regs.h"  // Generated.
 
 // These assertions are only defined for the Earl Grey chip.
-#if defined(OPENTITAN_IS_EARLGREY)
+#if !OT_IS_ENGLISH_BREAKFAST
 // This macro simplifies the `static_assert` check to make sure that the
 // public reset info register bitfield matches register bits.
 #define RSTMGR_RESET_INFO_CHECK(pub_name, priv_name)         \
@@ -53,11 +53,7 @@ static_assert(
 static_assert(
     DIF_RSTMGR_ALERT_INFO_MAX_SIZE == RSTMGR_ALERT_INFO_CTRL_INDEX_MASK,
     "Alert info dump max size has grown, please update the public define!");
-#elif defined(OPENTITAN_IS_DARJEELING)
-// TODO: equivalent assertations are not yet defined for Darjeeling
-#else
-#error "dif_rstmgr does not support this top"
-#endif
+#endif  // !OT_IS_ENGLISH_BREAKFAST
 
 /**
  * Checks whether alert_info capture is disabled.
@@ -415,17 +411,6 @@ dif_result_t dif_rstmgr_software_device_reset(const dif_rstmgr_t *handle) {
                       kMultiBitBool4True);
 
   return kDifOk;
-}
-
-dif_result_t dif_rstmgr_get_sw_reset_index(dt_rstmgr_t dt, dt_reset_t reset,
-                                           size_t *sw_rst_idx) {
-  size_t sw_reset_count = dt_rstmgr_sw_reset_count(dt);
-  for (*sw_rst_idx = 0; *sw_rst_idx < sw_reset_count; ++(*sw_rst_idx)) {
-    if (dt_rstmgr_sw_reset(dt, *sw_rst_idx) == reset) {
-      return kDifOk;
-    }
-  }
-  return kDifBadArg;
 }
 
 dif_result_t dif_rstmgr_fatal_err_code_get_codes(

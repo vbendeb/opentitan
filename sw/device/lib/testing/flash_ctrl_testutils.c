@@ -8,7 +8,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "dt/dt_flash_ctrl.h"  // Generated
 #include "sw/device/lib/base/abs_mmio.h"
 #include "sw/device/lib/base/mmio.h"
 #include "sw/device/lib/dif/dif_flash_ctrl.h"
@@ -16,7 +15,8 @@
 #include "sw/device/lib/runtime/ibex.h"
 #include "sw/device/lib/testing/test_framework/check.h"
 
-#include "flash_ctrl_regs.h"  // Generated
+#include "flash_ctrl_regs.h"
+#include "hw/top_earlgrey/sw/autogen/top_earlgrey.h"
 
 #define MODULE_ID MAKE_MODULE_ID('f', 'c', 't')
 
@@ -293,6 +293,46 @@ status_t flash_ctrl_testutils_bank_erase(dif_flash_ctrl_state_t *flash_state,
 
   TRY(dif_flash_ctrl_set_bank_erase_enablement(flash_state, bank,
                                                bank_erase_enabled));
+  return OK_STATUS();
+}
+
+status_t flash_ctrl_testutils_backdoor_init(
+    dif_flash_ctrl_state_t *flash_state) {
+  TRY(dif_flash_ctrl_init_state(
+      flash_state,
+      mmio_region_from_addr(TOP_EARLGREY_FLASH_CTRL_CORE_BASE_ADDR)));
+
+  return flash_ctrl_testutils_default_region_access(flash_state,
+                                                    /*rd_en*/ true,
+                                                    /*prog_en*/ true,
+                                                    /*erase_en*/ true,
+                                                    /*scramble_en*/ false,
+                                                    /*ecc_en*/ false,
+                                                    /*he_en*/ false);
+}
+
+static void flash_ctrl_testutils_flush_read_buffers(void) {
+  // Cause read buffers to flush since it reads 32 bytes, which is the
+  // size of the read buffers.
+  enum { kBufferBytes = 32 };
+  static volatile const uint8_t kFlashFlusher[kBufferBytes];
+  for (int i = 0; i < sizeof(kFlashFlusher); ++i) {
+    (void)kFlashFlusher[i];
+  }
+}
+
+status_t flash_ctrl_testutils_backdoor_wait_update(const volatile uint8_t *addr,
+                                                   uint8_t prior_data,
+                                                   size_t timeout_usec) {
+  uint8_t new_data = 0;
+  const ibex_timeout_t timeout = ibex_timeout_init(timeout_usec);
+  do {
+    if (ibex_timeout_check(&timeout)) {
+      return DEADLINE_EXCEEDED();
+    }
+    flash_ctrl_testutils_flush_read_buffers();
+    new_data = addr[0];
+  } while (new_data == prior_data);
   return OK_STATUS();
 }
 

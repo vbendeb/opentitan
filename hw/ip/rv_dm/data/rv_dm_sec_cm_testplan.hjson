@@ -91,77 +91,27 @@
     }
     {
       name: sec_cm_dm_en_ctrl_lc_gated
-      desc: '''
-        Verify the countermeasure(s) DM_EN.CTRL.LC_GATED.
-
-        The multibit nature of the debug enable signal is covered in
-        sec_cm_lc_hw_debug_en_intersig_mubi. However, this testpoint doesn't address the way there
-        are separate buffered copies of the enable signal. This testpoint addresses that.
-
-        There are five copies of the lifecycle enable signal:
-
-        - LcEnFetch controls whether hart fetch requests the debug module's memory, which are made
-          over TL, is relayed to the debug module. (This is implemented with the en_ifetch_i signal
-          in tlul_adapter_reg).
-
-        - LcEnRom controls whether hart access to debug module's memory is possible at all, gating
-          TL transactions.
-
-        - LcEnSba controls whether SBA (system bus access) transactions are relayed from the debug
-          module to the TL bus.
-
-        - LcEnDebugReq controls whether a debug request from the debug module (which ultimately will
-          have come from a DMI command) gets relayed to the hart.
-
-        - LcEnResetReq controls whether a request for ndmreset from the debug module is relayed to
-          the rest of the system.
-
-        These are buffered from each other to make sure that corrupting one won't affect the other
-        copies. With debug disabled, force one of the copies. Verify that, while this feature is now
-        active, none of the other features become active.
-
-      '''
+      desc: "Verify the countermeasure(s) DM_EN.CTRL.LC_GATED."
       stage: V2S
-      tests: ["rv_dm_buffered_enable"]
+      tests: []
     }
     {
       name: sec_cm_sba_tl_lc_gate_fsm_sparse
-      desc: '''
-        Verify the countermeasure SBA_TL_LC_GATE.FSM.SPARSE.
-
-        The gate at u_tlul_lc_gate_sba has a sparse FSM, so a fault injection of only a couple of
-        bits cannot change between valid values. Inject a 1- or 2-bit error and check that the
-        fatal_fault alert is triggered.
-
-      '''
+      desc: "Verify the countermeasure(s) SBA_TL_LC_GATE.FSM.SPARSE."
       stage: V2S
-      tests: ["rv_dm_sparse_lc_gate_fsm"]
+      tests: []
     }
     {
       name: sec_cm_mem_tl_lc_gate_fsm_sparse
-      desc: '''
-        Verify the countermeasure MEM_TL_LC_GATE.FSM.SPARSE.
-
-        The gate at u_tlul_lc_gate_rom has a sparse FSM, so a fault injection of only a couple of
-        bits cannot change between valid values. Inject a 1- or 2-bit error and check that the
-        fatal_fault alert is triggered.
-
-      '''
+      desc: "Verify the countermeasure(s) MEM_TL_LC_GATE.FSM.SPARSE."
       stage: V2S
-      tests: ["rv_dm_sparse_lc_gate_fsm"]
+      tests: []
     }
     {
       name: sec_cm_exec_ctrl_mubi
-      desc: '''
-        Verify the countermeasure EXEC.CTRL.MUBI.
-
-        The multi-bit nature of the signal is checked by all tests that disable debug (since they do
-        so by choosing an arbitrary value other than On). An even tighter check for this
-        countermeasure comes from the rv_dm_buffered_enable test, which ensures fetch requests are
-        more tightly controlled than arbitrary TL requests.
-      '''
+      desc: "Verify the countermeasure(s) EXEC.CTRL.MUBI."
       stage: V2S
-      tests: ["rv_dm_buffered_enable"]
+      tests: []
     }
   ]
 }

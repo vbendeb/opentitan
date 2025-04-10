@@ -97,8 +97,6 @@ static rom_error_t load_attestation_keygen_seed(uint32_t additional_seed_idx,
       // If we encountered a read error, this means the attestation seed page
       // has not been provisioned yet. In this case, we clear the seed and
       // continue, which will simply result in generating an invalid identity.
-      dbg_puts(
-          "Warning: Attestation key seed flash info page not provisioned.\r\n");
       memset(seed, 0, kAttestationSeedBytes);
       return kErrorOk;
     }
@@ -272,10 +270,9 @@ rom_error_t otbn_boot_attestation_endorse(const hmac_digest_t *digest,
   return kErrorOk;
 }
 
-rom_error_t otbn_boot_sigverify(const ecdsa_p256_public_key_t *key,
-                                const ecdsa_p256_signature_t *sig,
-                                const hmac_digest_t *digest,
-                                uint32_t *recovered_r) {
+rom_error_t otbn_boot_sigverify_start(const ecdsa_p256_public_key_t *key,
+                                      const ecdsa_p256_signature_t *sig,
+                                      const hmac_digest_t *digest) {
   // Write the mode.
   uint32_t mode = kOtbnBootModeSigverify;
   HARDENED_RETURN_IF_ERROR(
@@ -298,9 +295,12 @@ rom_error_t otbn_boot_sigverify(const ecdsa_p256_public_key_t *key,
                                               sig->s, kOtbnVarBootS));
 
   // Start the OTBN routine.
-  HARDENED_RETURN_IF_ERROR(sc_otbn_execute());
   SEC_MMIO_WRITE_INCREMENT(kScOtbnSecMmioExecute);
+  return sc_otbn_execute_start();
+}
 
+rom_error_t otbn_boot_sigverify_finish(uint32_t *recovered_r) {
+  HARDENED_RETURN_IF_ERROR(sc_otbn_execute_finish());
   // Check if the signature passed basic checks.
   uint32_t ok;
   HARDENED_RETURN_IF_ERROR(sc_otbn_dmem_read(1, kOtbnVarBootOk, &ok));
@@ -317,4 +317,12 @@ rom_error_t otbn_boot_sigverify(const ecdsa_p256_public_key_t *key,
   // Read the recovered `r` value from DMEM.
   return sc_otbn_dmem_read(kEcdsaP256SignatureComponentWords, kOtbnVarBootXr,
                            recovered_r);
+}
+
+rom_error_t otbn_boot_sigverify(const ecdsa_p256_public_key_t *key,
+                                const ecdsa_p256_signature_t *sig,
+                                const hmac_digest_t *digest,
+                                uint32_t *recovered_r) {
+  HARDENED_RETURN_IF_ERROR(otbn_boot_sigverify_start(key, sig, digest));
+  return otbn_boot_sigverify_finish(recovered_r);
 }

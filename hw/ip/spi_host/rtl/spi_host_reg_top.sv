@@ -6,13 +6,7 @@
 
 `include "prim_assert.sv"
 
-module spi_host_reg_top
-  # (
-    parameter bit          EnableRacl           = 1'b0,
-    parameter bit          RaclErrorRsp         = 1'b1,
-    parameter top_racl_pkg::racl_policy_sel_t RaclPolicySelVec[spi_host_reg_pkg::NumRegs] =
-      '{spi_host_reg_pkg::NumRegs{0}}
-  ) (
+module spi_host_reg_top (
   input clk_i,
   input rst_ni,
   input  tlul_pkg::tl_h2d_t tl_i,
@@ -25,10 +19,6 @@ module spi_host_reg_top
   // To HW
   output spi_host_reg_pkg::spi_host_reg2hw_t reg2hw, // Write
   input  spi_host_reg_pkg::spi_host_hw2reg_t hw2reg, // Read
-
-  // RACL interface
-  input  top_racl_pkg::racl_policy_vec_t racl_policies_i,
-  output top_racl_pkg::racl_error_log_t  racl_error_o,
 
   // Integrity check errors
   output logic intg_err_o
@@ -172,8 +162,7 @@ module spi_host_reg_top
     .be_o    (reg_be),
     .busy_i  (reg_busy),
     .rdata_i (reg_rdata),
-    // Translate RACL error to TLUL error if enabled
-    .error_i (reg_error | (RaclErrorRsp & racl_error_o.valid))
+    .error_i (reg_error)
   );
 
   // cdc oversampling signals
@@ -224,28 +213,28 @@ module spi_host_reg_top
   logic status_active_qs;
   logic status_ready_qs;
   logic configopts_we;
-  logic [15:0] configopts_clkdiv_qs;
-  logic [15:0] configopts_clkdiv_wd;
-  logic [3:0] configopts_csnidle_qs;
-  logic [3:0] configopts_csnidle_wd;
-  logic [3:0] configopts_csntrail_qs;
-  logic [3:0] configopts_csntrail_wd;
-  logic [3:0] configopts_csnlead_qs;
-  logic [3:0] configopts_csnlead_wd;
-  logic configopts_fullcyc_qs;
-  logic configopts_fullcyc_wd;
-  logic configopts_cpha_qs;
-  logic configopts_cpha_wd;
-  logic configopts_cpol_qs;
-  logic configopts_cpol_wd;
+  logic [15:0] configopts_clkdiv_0_qs;
+  logic [15:0] configopts_clkdiv_0_wd;
+  logic [3:0] configopts_csnidle_0_qs;
+  logic [3:0] configopts_csnidle_0_wd;
+  logic [3:0] configopts_csntrail_0_qs;
+  logic [3:0] configopts_csntrail_0_wd;
+  logic [3:0] configopts_csnlead_0_qs;
+  logic [3:0] configopts_csnlead_0_wd;
+  logic configopts_fullcyc_0_qs;
+  logic configopts_fullcyc_0_wd;
+  logic configopts_cpha_0_qs;
+  logic configopts_cpha_0_wd;
+  logic configopts_cpol_0_qs;
+  logic configopts_cpol_0_wd;
   logic csid_we;
   logic [31:0] csid_qs;
   logic [31:0] csid_wd;
   logic command_we;
+  logic [8:0] command_len_wd;
   logic command_csaat_wd;
   logic [1:0] command_speed_wd;
   logic [1:0] command_direction_wd;
-  logic [19:0] command_len_wd;
   logic error_enable_we;
   logic error_enable_cmdbusy_qs;
   logic error_enable_cmdbusy_wd;
@@ -971,20 +960,21 @@ module spi_host_reg_top
   );
 
 
+  // Subregister 0 of Multireg configopts
   // R[configopts]: V(False)
-  //   F[clkdiv]: 15:0
+  //   F[clkdiv_0]: 15:0
   prim_subreg #(
     .DW      (16),
     .SwAccess(prim_subreg_pkg::SwAccessRW),
     .RESVAL  (16'h0),
     .Mubi    (1'b0)
-  ) u_configopts_clkdiv (
+  ) u_configopts_clkdiv_0 (
     .clk_i   (clk_i),
     .rst_ni  (rst_ni),
 
     // from register interface
     .we     (configopts_we),
-    .wd     (configopts_clkdiv_wd),
+    .wd     (configopts_clkdiv_0_wd),
 
     // from internal hardware
     .de     (1'b0),
@@ -992,26 +982,26 @@ module spi_host_reg_top
 
     // to internal hardware
     .qe     (),
-    .q      (reg2hw.configopts.clkdiv.q),
+    .q      (reg2hw.configopts[0].clkdiv.q),
     .ds     (),
 
     // to register interface (read)
-    .qs     (configopts_clkdiv_qs)
+    .qs     (configopts_clkdiv_0_qs)
   );
 
-  //   F[csnidle]: 19:16
+  //   F[csnidle_0]: 19:16
   prim_subreg #(
     .DW      (4),
     .SwAccess(prim_subreg_pkg::SwAccessRW),
     .RESVAL  (4'h0),
     .Mubi    (1'b0)
-  ) u_configopts_csnidle (
+  ) u_configopts_csnidle_0 (
     .clk_i   (clk_i),
     .rst_ni  (rst_ni),
 
     // from register interface
     .we     (configopts_we),
-    .wd     (configopts_csnidle_wd),
+    .wd     (configopts_csnidle_0_wd),
 
     // from internal hardware
     .de     (1'b0),
@@ -1019,26 +1009,26 @@ module spi_host_reg_top
 
     // to internal hardware
     .qe     (),
-    .q      (reg2hw.configopts.csnidle.q),
+    .q      (reg2hw.configopts[0].csnidle.q),
     .ds     (),
 
     // to register interface (read)
-    .qs     (configopts_csnidle_qs)
+    .qs     (configopts_csnidle_0_qs)
   );
 
-  //   F[csntrail]: 23:20
+  //   F[csntrail_0]: 23:20
   prim_subreg #(
     .DW      (4),
     .SwAccess(prim_subreg_pkg::SwAccessRW),
     .RESVAL  (4'h0),
     .Mubi    (1'b0)
-  ) u_configopts_csntrail (
+  ) u_configopts_csntrail_0 (
     .clk_i   (clk_i),
     .rst_ni  (rst_ni),
 
     // from register interface
     .we     (configopts_we),
-    .wd     (configopts_csntrail_wd),
+    .wd     (configopts_csntrail_0_wd),
 
     // from internal hardware
     .de     (1'b0),
@@ -1046,26 +1036,26 @@ module spi_host_reg_top
 
     // to internal hardware
     .qe     (),
-    .q      (reg2hw.configopts.csntrail.q),
+    .q      (reg2hw.configopts[0].csntrail.q),
     .ds     (),
 
     // to register interface (read)
-    .qs     (configopts_csntrail_qs)
+    .qs     (configopts_csntrail_0_qs)
   );
 
-  //   F[csnlead]: 27:24
+  //   F[csnlead_0]: 27:24
   prim_subreg #(
     .DW      (4),
     .SwAccess(prim_subreg_pkg::SwAccessRW),
     .RESVAL  (4'h0),
     .Mubi    (1'b0)
-  ) u_configopts_csnlead (
+  ) u_configopts_csnlead_0 (
     .clk_i   (clk_i),
     .rst_ni  (rst_ni),
 
     // from register interface
     .we     (configopts_we),
-    .wd     (configopts_csnlead_wd),
+    .wd     (configopts_csnlead_0_wd),
 
     // from internal hardware
     .de     (1'b0),
@@ -1073,26 +1063,26 @@ module spi_host_reg_top
 
     // to internal hardware
     .qe     (),
-    .q      (reg2hw.configopts.csnlead.q),
+    .q      (reg2hw.configopts[0].csnlead.q),
     .ds     (),
 
     // to register interface (read)
-    .qs     (configopts_csnlead_qs)
+    .qs     (configopts_csnlead_0_qs)
   );
 
-  //   F[fullcyc]: 29:29
+  //   F[fullcyc_0]: 29:29
   prim_subreg #(
     .DW      (1),
     .SwAccess(prim_subreg_pkg::SwAccessRW),
     .RESVAL  (1'h0),
     .Mubi    (1'b0)
-  ) u_configopts_fullcyc (
+  ) u_configopts_fullcyc_0 (
     .clk_i   (clk_i),
     .rst_ni  (rst_ni),
 
     // from register interface
     .we     (configopts_we),
-    .wd     (configopts_fullcyc_wd),
+    .wd     (configopts_fullcyc_0_wd),
 
     // from internal hardware
     .de     (1'b0),
@@ -1100,26 +1090,26 @@ module spi_host_reg_top
 
     // to internal hardware
     .qe     (),
-    .q      (reg2hw.configopts.fullcyc.q),
+    .q      (reg2hw.configopts[0].fullcyc.q),
     .ds     (),
 
     // to register interface (read)
-    .qs     (configopts_fullcyc_qs)
+    .qs     (configopts_fullcyc_0_qs)
   );
 
-  //   F[cpha]: 30:30
+  //   F[cpha_0]: 30:30
   prim_subreg #(
     .DW      (1),
     .SwAccess(prim_subreg_pkg::SwAccessRW),
     .RESVAL  (1'h0),
     .Mubi    (1'b0)
-  ) u_configopts_cpha (
+  ) u_configopts_cpha_0 (
     .clk_i   (clk_i),
     .rst_ni  (rst_ni),
 
     // from register interface
     .we     (configopts_we),
-    .wd     (configopts_cpha_wd),
+    .wd     (configopts_cpha_0_wd),
 
     // from internal hardware
     .de     (1'b0),
@@ -1127,26 +1117,26 @@ module spi_host_reg_top
 
     // to internal hardware
     .qe     (),
-    .q      (reg2hw.configopts.cpha.q),
+    .q      (reg2hw.configopts[0].cpha.q),
     .ds     (),
 
     // to register interface (read)
-    .qs     (configopts_cpha_qs)
+    .qs     (configopts_cpha_0_qs)
   );
 
-  //   F[cpol]: 31:31
+  //   F[cpol_0]: 31:31
   prim_subreg #(
     .DW      (1),
     .SwAccess(prim_subreg_pkg::SwAccessRW),
     .RESVAL  (1'h0),
     .Mubi    (1'b0)
-  ) u_configopts_cpol (
+  ) u_configopts_cpol_0 (
     .clk_i   (clk_i),
     .rst_ni  (rst_ni),
 
     // from register interface
     .we     (configopts_we),
-    .wd     (configopts_cpol_wd),
+    .wd     (configopts_cpol_0_wd),
 
     // from internal hardware
     .de     (1'b0),
@@ -1154,11 +1144,11 @@ module spi_host_reg_top
 
     // to internal hardware
     .qe     (),
-    .q      (reg2hw.configopts.cpol.q),
+    .q      (reg2hw.configopts[0].cpol.q),
     .ds     (),
 
     // to register interface (read)
-    .qs     (configopts_cpol_qs)
+    .qs     (configopts_cpol_0_qs)
   );
 
 
@@ -1194,7 +1184,23 @@ module spi_host_reg_top
   logic command_qe;
   logic [3:0] command_flds_we;
   assign command_qe = &command_flds_we;
-  //   F[csaat]: 0:0
+  //   F[len]: 8:0
+  prim_subreg_ext #(
+    .DW    (9)
+  ) u_command_len (
+    .re     (1'b0),
+    .we     (command_we),
+    .wd     (command_len_wd),
+    .d      ('0),
+    .qre    (),
+    .qe     (command_flds_we[0]),
+    .q      (reg2hw.command.len.q),
+    .ds     (),
+    .qs     ()
+  );
+  assign reg2hw.command.len.qe = command_qe;
+
+  //   F[csaat]: 9:9
   prim_subreg_ext #(
     .DW    (1)
   ) u_command_csaat (
@@ -1203,14 +1209,14 @@ module spi_host_reg_top
     .wd     (command_csaat_wd),
     .d      ('0),
     .qre    (),
-    .qe     (command_flds_we[0]),
+    .qe     (command_flds_we[1]),
     .q      (reg2hw.command.csaat.q),
     .ds     (),
     .qs     ()
   );
   assign reg2hw.command.csaat.qe = command_qe;
 
-  //   F[speed]: 2:1
+  //   F[speed]: 11:10
   prim_subreg_ext #(
     .DW    (2)
   ) u_command_speed (
@@ -1219,14 +1225,14 @@ module spi_host_reg_top
     .wd     (command_speed_wd),
     .d      ('0),
     .qre    (),
-    .qe     (command_flds_we[1]),
+    .qe     (command_flds_we[2]),
     .q      (reg2hw.command.speed.q),
     .ds     (),
     .qs     ()
   );
   assign reg2hw.command.speed.qe = command_qe;
 
-  //   F[direction]: 4:3
+  //   F[direction]: 13:12
   prim_subreg_ext #(
     .DW    (2)
   ) u_command_direction (
@@ -1235,28 +1241,12 @@ module spi_host_reg_top
     .wd     (command_direction_wd),
     .d      ('0),
     .qre    (),
-    .qe     (command_flds_we[2]),
+    .qe     (command_flds_we[3]),
     .q      (reg2hw.command.direction.q),
     .ds     (),
     .qs     ()
   );
   assign reg2hw.command.direction.qe = command_qe;
-
-  //   F[len]: 24:5
-  prim_subreg_ext #(
-    .DW    (20)
-  ) u_command_len (
-    .re     (1'b0),
-    .we     (command_we),
-    .wd     (command_len_wd),
-    .d      ('0),
-    .qre    (),
-    .qe     (command_flds_we[3]),
-    .q      (reg2hw.command.len.q),
-    .ds     (),
-    .qs     ()
-  );
-  assign reg2hw.command.len.qe = command_qe;
 
 
   // R[error_enable]: V(False)
@@ -1726,32 +1716,8 @@ module spi_host_reg_top
 
 
   logic [11:0] addr_hit;
-  top_racl_pkg::racl_role_vec_t racl_role_vec;
-  top_racl_pkg::racl_role_t racl_role;
-
-  logic [11:0] racl_addr_hit_read;
-  logic [11:0] racl_addr_hit_write;
-
-  if (EnableRacl) begin : gen_racl_role_logic
-    // Retrieve RACL role from user bits and one-hot encode that for the comparison bitmap
-    assign racl_role = top_racl_pkg::tlul_extract_racl_role_bits(tl_i.a_user.rsvd);
-
-    prim_onehot_enc #(
-      .OneHotWidth( $bits(top_racl_pkg::racl_role_vec_t) )
-    ) u_racl_role_encode (
-      .in_i ( racl_role     ),
-      .en_i ( 1'b1          ),
-      .out_o( racl_role_vec )
-    );
-  end else begin : gen_no_racl_role_logic
-    assign racl_role     = '0;
-    assign racl_role_vec = '0;
-  end
-
   always_comb begin
     addr_hit = '0;
-    racl_addr_hit_read  = '0;
-    racl_addr_hit_write = '0;
     addr_hit[ 0] = (reg_addr == SPI_HOST_INTR_STATE_OFFSET);
     addr_hit[ 1] = (reg_addr == SPI_HOST_INTR_ENABLE_OFFSET);
     addr_hit[ 2] = (reg_addr == SPI_HOST_INTR_TEST_OFFSET);
@@ -1764,73 +1730,45 @@ module spi_host_reg_top
     addr_hit[ 9] = (reg_addr == SPI_HOST_ERROR_ENABLE_OFFSET);
     addr_hit[10] = (reg_addr == SPI_HOST_ERROR_STATUS_OFFSET);
     addr_hit[11] = (reg_addr == SPI_HOST_EVENT_ENABLE_OFFSET);
-
-    if (EnableRacl) begin : gen_racl_hit
-      for (int unsigned slice_idx = 0; slice_idx < 12; slice_idx++) begin
-        racl_addr_hit_read[slice_idx] =
-            addr_hit[slice_idx] & (|(racl_policies_i[RaclPolicySelVec[slice_idx]].read_perm
-                                      & racl_role_vec));
-        racl_addr_hit_write[slice_idx] =
-            addr_hit[slice_idx] & (|(racl_policies_i[RaclPolicySelVec[slice_idx]].write_perm
-                                      & racl_role_vec));
-      end
-    end else begin : gen_no_racl
-      racl_addr_hit_read  = addr_hit;
-      racl_addr_hit_write = addr_hit;
-    end
   end
 
   assign addrmiss = (reg_re || reg_we) ? ~|addr_hit : 1'b0 ;
-  // A valid address hit, access, but failed the RACL check
-  assign racl_error_o.valid = |addr_hit & ((reg_re & ~|racl_addr_hit_read) |
-                                           (reg_we & ~|racl_addr_hit_write));
-  assign racl_error_o.request_address = top_pkg::TL_AW'(reg_addr);
-  assign racl_error_o.racl_role       = racl_role;
-  assign racl_error_o.overflow        = 1'b0;
-
-  if (EnableRacl) begin : gen_racl_log
-    assign racl_error_o.ctn_uid     = top_racl_pkg::tlul_extract_ctn_uid_bits(tl_i.a_user.rsvd);
-    assign racl_error_o.read_access = tl_i.a_opcode == tlul_pkg::Get;
-  end else begin : gen_no_racl_log
-    assign racl_error_o.ctn_uid     = '0;
-    assign racl_error_o.read_access = 1'b0;
-  end
 
   // Check sub-word write is permitted
   always_comb begin
     wr_err = (reg_we &
-              ((racl_addr_hit_write[ 0] & (|(SPI_HOST_PERMIT[ 0] & ~reg_be))) |
-               (racl_addr_hit_write[ 1] & (|(SPI_HOST_PERMIT[ 1] & ~reg_be))) |
-               (racl_addr_hit_write[ 2] & (|(SPI_HOST_PERMIT[ 2] & ~reg_be))) |
-               (racl_addr_hit_write[ 3] & (|(SPI_HOST_PERMIT[ 3] & ~reg_be))) |
-               (racl_addr_hit_write[ 4] & (|(SPI_HOST_PERMIT[ 4] & ~reg_be))) |
-               (racl_addr_hit_write[ 5] & (|(SPI_HOST_PERMIT[ 5] & ~reg_be))) |
-               (racl_addr_hit_write[ 6] & (|(SPI_HOST_PERMIT[ 6] & ~reg_be))) |
-               (racl_addr_hit_write[ 7] & (|(SPI_HOST_PERMIT[ 7] & ~reg_be))) |
-               (racl_addr_hit_write[ 8] & (|(SPI_HOST_PERMIT[ 8] & ~reg_be))) |
-               (racl_addr_hit_write[ 9] & (|(SPI_HOST_PERMIT[ 9] & ~reg_be))) |
-               (racl_addr_hit_write[10] & (|(SPI_HOST_PERMIT[10] & ~reg_be))) |
-               (racl_addr_hit_write[11] & (|(SPI_HOST_PERMIT[11] & ~reg_be)))));
+              ((addr_hit[ 0] & (|(SPI_HOST_PERMIT[ 0] & ~reg_be))) |
+               (addr_hit[ 1] & (|(SPI_HOST_PERMIT[ 1] & ~reg_be))) |
+               (addr_hit[ 2] & (|(SPI_HOST_PERMIT[ 2] & ~reg_be))) |
+               (addr_hit[ 3] & (|(SPI_HOST_PERMIT[ 3] & ~reg_be))) |
+               (addr_hit[ 4] & (|(SPI_HOST_PERMIT[ 4] & ~reg_be))) |
+               (addr_hit[ 5] & (|(SPI_HOST_PERMIT[ 5] & ~reg_be))) |
+               (addr_hit[ 6] & (|(SPI_HOST_PERMIT[ 6] & ~reg_be))) |
+               (addr_hit[ 7] & (|(SPI_HOST_PERMIT[ 7] & ~reg_be))) |
+               (addr_hit[ 8] & (|(SPI_HOST_PERMIT[ 8] & ~reg_be))) |
+               (addr_hit[ 9] & (|(SPI_HOST_PERMIT[ 9] & ~reg_be))) |
+               (addr_hit[10] & (|(SPI_HOST_PERMIT[10] & ~reg_be))) |
+               (addr_hit[11] & (|(SPI_HOST_PERMIT[11] & ~reg_be)))));
   end
 
   // Generate write-enables
-  assign intr_state_we = racl_addr_hit_write[0] & reg_we & !reg_error;
+  assign intr_state_we = addr_hit[0] & reg_we & !reg_error;
 
   assign intr_state_error_wd = reg_wdata[0];
-  assign intr_enable_we = racl_addr_hit_write[1] & reg_we & !reg_error;
+  assign intr_enable_we = addr_hit[1] & reg_we & !reg_error;
 
   assign intr_enable_error_wd = reg_wdata[0];
 
   assign intr_enable_spi_event_wd = reg_wdata[1];
-  assign intr_test_we = racl_addr_hit_write[2] & reg_we & !reg_error;
+  assign intr_test_we = addr_hit[2] & reg_we & !reg_error;
 
   assign intr_test_error_wd = reg_wdata[0];
 
   assign intr_test_spi_event_wd = reg_wdata[1];
-  assign alert_test_we = racl_addr_hit_write[3] & reg_we & !reg_error;
+  assign alert_test_we = addr_hit[3] & reg_we & !reg_error;
 
   assign alert_test_wd = reg_wdata[0];
-  assign control_we = racl_addr_hit_write[4] & reg_we & !reg_error;
+  assign control_we = addr_hit[4] & reg_we & !reg_error;
 
   assign control_rx_watermark_wd = reg_wdata[7:0];
 
@@ -1841,34 +1779,34 @@ module spi_host_reg_top
   assign control_sw_rst_wd = reg_wdata[30];
 
   assign control_spien_wd = reg_wdata[31];
-  assign configopts_we = racl_addr_hit_write[6] & reg_we & !reg_error;
+  assign configopts_we = addr_hit[6] & reg_we & !reg_error;
 
-  assign configopts_clkdiv_wd = reg_wdata[15:0];
+  assign configopts_clkdiv_0_wd = reg_wdata[15:0];
 
-  assign configopts_csnidle_wd = reg_wdata[19:16];
+  assign configopts_csnidle_0_wd = reg_wdata[19:16];
 
-  assign configopts_csntrail_wd = reg_wdata[23:20];
+  assign configopts_csntrail_0_wd = reg_wdata[23:20];
 
-  assign configopts_csnlead_wd = reg_wdata[27:24];
+  assign configopts_csnlead_0_wd = reg_wdata[27:24];
 
-  assign configopts_fullcyc_wd = reg_wdata[29];
+  assign configopts_fullcyc_0_wd = reg_wdata[29];
 
-  assign configopts_cpha_wd = reg_wdata[30];
+  assign configopts_cpha_0_wd = reg_wdata[30];
 
-  assign configopts_cpol_wd = reg_wdata[31];
-  assign csid_we = racl_addr_hit_write[7] & reg_we & !reg_error;
+  assign configopts_cpol_0_wd = reg_wdata[31];
+  assign csid_we = addr_hit[7] & reg_we & !reg_error;
 
   assign csid_wd = reg_wdata[31:0];
-  assign command_we = racl_addr_hit_write[8] & reg_we & !reg_error;
+  assign command_we = addr_hit[8] & reg_we & !reg_error;
 
-  assign command_csaat_wd = reg_wdata[0];
+  assign command_len_wd = reg_wdata[8:0];
 
-  assign command_speed_wd = reg_wdata[2:1];
+  assign command_csaat_wd = reg_wdata[9];
 
-  assign command_direction_wd = reg_wdata[4:3];
+  assign command_speed_wd = reg_wdata[11:10];
 
-  assign command_len_wd = reg_wdata[24:5];
-  assign error_enable_we = racl_addr_hit_write[9] & reg_we & !reg_error;
+  assign command_direction_wd = reg_wdata[13:12];
+  assign error_enable_we = addr_hit[9] & reg_we & !reg_error;
 
   assign error_enable_cmdbusy_wd = reg_wdata[0];
 
@@ -1879,7 +1817,7 @@ module spi_host_reg_top
   assign error_enable_cmdinval_wd = reg_wdata[3];
 
   assign error_enable_csidinval_wd = reg_wdata[4];
-  assign error_status_we = racl_addr_hit_write[10] & reg_we & !reg_error;
+  assign error_status_we = addr_hit[10] & reg_we & !reg_error;
 
   assign error_status_cmdbusy_wd = reg_wdata[0];
 
@@ -1892,7 +1830,7 @@ module spi_host_reg_top
   assign error_status_csidinval_wd = reg_wdata[4];
 
   assign error_status_accessinval_wd = reg_wdata[5];
-  assign event_enable_we = racl_addr_hit_write[11] & reg_we & !reg_error;
+  assign event_enable_we = addr_hit[11] & reg_we & !reg_error;
 
   assign event_enable_rxfull_wd = reg_wdata[0];
 
@@ -1927,26 +1865,26 @@ module spi_host_reg_top
   always_comb begin
     reg_rdata_next = '0;
     unique case (1'b1)
-      racl_addr_hit_read[0]: begin
+      addr_hit[0]: begin
         reg_rdata_next[0] = intr_state_error_qs;
         reg_rdata_next[1] = intr_state_spi_event_qs;
       end
 
-      racl_addr_hit_read[1]: begin
+      addr_hit[1]: begin
         reg_rdata_next[0] = intr_enable_error_qs;
         reg_rdata_next[1] = intr_enable_spi_event_qs;
       end
 
-      racl_addr_hit_read[2]: begin
+      addr_hit[2]: begin
         reg_rdata_next[0] = '0;
         reg_rdata_next[1] = '0;
       end
 
-      racl_addr_hit_read[3]: begin
+      addr_hit[3]: begin
         reg_rdata_next[0] = '0;
       end
 
-      racl_addr_hit_read[4]: begin
+      addr_hit[4]: begin
         reg_rdata_next[7:0] = control_rx_watermark_qs;
         reg_rdata_next[15:8] = control_tx_watermark_qs;
         reg_rdata_next[29] = control_output_en_qs;
@@ -1954,7 +1892,7 @@ module spi_host_reg_top
         reg_rdata_next[31] = control_spien_qs;
       end
 
-      racl_addr_hit_read[5]: begin
+      addr_hit[5]: begin
         reg_rdata_next[7:0] = status_txqd_qs;
         reg_rdata_next[15:8] = status_rxqd_qs;
         reg_rdata_next[19:16] = status_cmdqd_qs;
@@ -1971,28 +1909,28 @@ module spi_host_reg_top
         reg_rdata_next[31] = status_ready_qs;
       end
 
-      racl_addr_hit_read[6]: begin
-        reg_rdata_next[15:0] = configopts_clkdiv_qs;
-        reg_rdata_next[19:16] = configopts_csnidle_qs;
-        reg_rdata_next[23:20] = configopts_csntrail_qs;
-        reg_rdata_next[27:24] = configopts_csnlead_qs;
-        reg_rdata_next[29] = configopts_fullcyc_qs;
-        reg_rdata_next[30] = configopts_cpha_qs;
-        reg_rdata_next[31] = configopts_cpol_qs;
+      addr_hit[6]: begin
+        reg_rdata_next[15:0] = configopts_clkdiv_0_qs;
+        reg_rdata_next[19:16] = configopts_csnidle_0_qs;
+        reg_rdata_next[23:20] = configopts_csntrail_0_qs;
+        reg_rdata_next[27:24] = configopts_csnlead_0_qs;
+        reg_rdata_next[29] = configopts_fullcyc_0_qs;
+        reg_rdata_next[30] = configopts_cpha_0_qs;
+        reg_rdata_next[31] = configopts_cpol_0_qs;
       end
 
-      racl_addr_hit_read[7]: begin
+      addr_hit[7]: begin
         reg_rdata_next[31:0] = csid_qs;
       end
 
-      racl_addr_hit_read[8]: begin
-        reg_rdata_next[0] = '0;
-        reg_rdata_next[2:1] = '0;
-        reg_rdata_next[4:3] = '0;
-        reg_rdata_next[24:5] = '0;
+      addr_hit[8]: begin
+        reg_rdata_next[8:0] = '0;
+        reg_rdata_next[9] = '0;
+        reg_rdata_next[11:10] = '0;
+        reg_rdata_next[13:12] = '0;
       end
 
-      racl_addr_hit_read[9]: begin
+      addr_hit[9]: begin
         reg_rdata_next[0] = error_enable_cmdbusy_qs;
         reg_rdata_next[1] = error_enable_overflow_qs;
         reg_rdata_next[2] = error_enable_underflow_qs;
@@ -2000,7 +1938,7 @@ module spi_host_reg_top
         reg_rdata_next[4] = error_enable_csidinval_qs;
       end
 
-      racl_addr_hit_read[10]: begin
+      addr_hit[10]: begin
         reg_rdata_next[0] = error_status_cmdbusy_qs;
         reg_rdata_next[1] = error_status_overflow_qs;
         reg_rdata_next[2] = error_status_underflow_qs;
@@ -2009,7 +1947,7 @@ module spi_host_reg_top
         reg_rdata_next[5] = error_status_accessinval_qs;
       end
 
-      racl_addr_hit_read[11]: begin
+      addr_hit[11]: begin
         reg_rdata_next[0] = event_enable_rxfull_qs;
         reg_rdata_next[1] = event_enable_txempty_qs;
         reg_rdata_next[2] = event_enable_rxwm_qs;
@@ -2039,8 +1977,6 @@ module spi_host_reg_top
   logic unused_be;
   assign unused_wdata = ^reg_wdata;
   assign unused_be = ^reg_be;
-  logic unused_policy_sel;
-  assign unused_policy_sel = ^racl_policies_i;
 
   // Assertions for Register Interface
   `ASSERT_PULSE(wePulse, reg_we, clk_i, !rst_ni)

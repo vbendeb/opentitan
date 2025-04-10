@@ -254,7 +254,7 @@ sim_qemu = rule(
         "otp_sv": attr.label(
             allow_single_file = True,
             # TODO: should we really use Earl Grey as the default?
-            default = Label("//hw/top_earlgrey/ip_autogen/otp_ctrl:rtl/otp_ctrl_part_pkg.sv"),
+            default = Label("//hw/ip/otp_ctrl:rtl/otp_ctrl_part_pkg.sv"),
         ),
         "lc_sv": attr.label(
             allow_single_file = True,
@@ -262,7 +262,7 @@ sim_qemu = rule(
         ),
         "top_hjson": attr.label(
             allow_single_file = True,
-            default = Label("//hw/top_earlgrey/data/autogen:top_earlgrey.gen.hjson"),
+            default = Label("//hw/top_earlgrey/data:autogen/top_earlgrey.gen.hjson"),
         ),
     },
     toolchains = [LOCALTOOLS_TOOLCHAIN],

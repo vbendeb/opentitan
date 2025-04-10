@@ -9,13 +9,94 @@ load("@rules_cc//cc:action_names.bzl", "ACTION_NAMES", "C_COMPILE_ACTION_NAME")
 load("@bazel_skylib//lib:shell.bzl", "shell")
 load("@rules_cc//cc:find_cc_toolchain.bzl", "find_cc_toolchain")
 load("//rules:rv.bzl", "rv_rule")
-load("//rules/opentitan:toolchain.bzl", "LOCALTOOLS_TOOLCHAIN")
 
 def _ensure_tag(tags, *tag):
     for t in tag:
         if t not in tags:
             tags.append(t)
     return tags
+
+def _clang_format_impl(ctx):
+    out_file = ctx.actions.declare_file(ctx.label.name + ".bash")
+    exclude_patterns = ["\\! -path {}".format(shell.quote(p)) for p in ctx.attr.exclude_patterns]
+    include_patterns = ["-name {}".format(shell.quote(p)) for p in ctx.attr.patterns]
+    workspace = ctx.file.workspace.path if ctx.file.workspace else ""
+    substitutions = {
+        "@@EXCLUDE_PATTERNS@@": " ".join(exclude_patterns),
+        "@@INCLUDE_PATTERNS@@": " -o ".join(include_patterns),
+        "@@CLANG_FORMAT@@": shell.quote(ctx.executable.clang_format.short_path),
+        "@@DIFF_COMMAND@@": shell.quote(ctx.attr.diff_command),
+        "@@MODE@@": shell.quote(ctx.attr.mode),
+        "@@WORKSPACE@@": workspace,
+    }
+    ctx.actions.expand_template(
+        template = ctx.file._runner,
+        output = out_file,
+        substitutions = substitutions,
+        is_executable = True,
+    )
+
+    files = [ctx.executable.clang_format]
+    if ctx.file.workspace:
+        files.append(ctx.file.workspace)
+
+    return DefaultInfo(
+        runfiles = ctx.runfiles(files = files),
+        executable = out_file,
+    )
+
+clang_format_attrs = {
+    "patterns": attr.string_list(
+        default = ["*.c", "*.h", "*.cc", "*.cpp"],
+        doc = "Filename patterns for format checking",
+    ),
+    "exclude_patterns": attr.string_list(
+        doc = "Filename patterns to exclude from format checking",
+    ),
+    "mode": attr.string(
+        default = "diff",
+        values = ["diff", "fix"],
+        doc = "Execution mode: display diffs or fix formatting",
+    ),
+    "diff_command": attr.string(
+        default = "diff -u",
+        doc = "Command to execute to display diffs",
+    ),
+    "clang_format": attr.label(
+        default = "@lowrisc_rv32imcb_files//:bin/clang-format",
+        allow_single_file = True,
+        cfg = "host",
+        executable = True,
+        doc = "The clang-format executable",
+    ),
+    "workspace": attr.label(
+        allow_single_file = True,
+        doc = "Label of the WORKSPACE file",
+    ),
+    "_runner": attr.label(
+        default = "//rules/scripts:clang_format.template.sh",
+        allow_single_file = True,
+    ),
+}
+
+clang_format_check = rule(
+    implementation = _clang_format_impl,
+    attrs = clang_format_attrs,
+    executable = True,
+)
+
+_clang_format_test = rule(
+    implementation = _clang_format_impl,
+    attrs = clang_format_attrs,
+    test = True,
+)
+
+def clang_format_test(**kwargs):
+    tags = kwargs.get("tags", [])
+
+    # Note: the "external" tag is a workaround for bazelbuild#15516.
+    kwargs["tags"] = _ensure_tag(tags, "no-sandbox", "no-cache", "external")
+    _clang_format_test(**kwargs)
 
 def _cc_aspect_impl(target, ctx, action_callback):
     """Aspect implementation for C/C++ targets with configurable callback."""
@@ -110,7 +191,7 @@ def _cc_aspect_impl(target, ctx, action_callback):
 
 # To see which checks clang-tidy knows about, run this command:
 #
-#  ./bazelisk.sh run @lowrisc_rv32imcb_toolchain//:bin/clang-tidy -- --checks='*' --list-checks
+#  ./bazelisk.sh run @lowrisc_rv32imcb_files//:bin/clang-tidy -- --checks='*' --list-checks
 _CLANG_TIDY_CHECKS = [
     "clang-analyzer-core.*",
     # Disable advice to replace `memcpy` with `mempcy_s`.
@@ -183,7 +264,7 @@ def _make_clang_tidy_aspect(enable_fix):
                 executable = True,
             ),
             "_clang_tidy": attr.label(
-                default = "@lowrisc_rv32imcb_toolchain//:bin/clang-tidy",
+                default = "@lowrisc_rv32imcb_files//:bin/clang-tidy",
                 allow_single_file = True,
                 cfg = "host",
                 executable = True,
@@ -316,7 +397,6 @@ def _modid_check_aspect_impl(target, ctx):
     Verify that a binary (ELF file) does not contain conflicting module IDs
     using opentitantool.
     """
-    tc = ctx.toolchains[LOCALTOOLS_TOOLCHAIN]
 
     # If the target is //sw/device/lib/base:status, then it has module ID information,
     # this is the root of all the information.
@@ -347,15 +427,13 @@ def _modid_check_aspect_impl(target, ctx):
     # printing anything if the test is successful but by default opentitantool prints
     # unnecessary information that pollutes the output.
     args = ctx.actions.args()
-
-    #  The opentitantool binary returns a FilesToRun provider.
-    args.add_all([tc.tools.opentitantool.executable.path, generated_file])
+    args.add_all([ctx.file._validator, generated_file])
     args.add_all(target.files)
     ctx.actions.run(
         executable = ctx.executable._modid_check,
         arguments = [args],
-        inputs = target.files,
-        tools = [tc.tools.opentitantool],
+        inputs = depset([ctx.file._validator] + target.files.to_list()),
+        tools = [],
         outputs = [generated_file],
         progress_message = "Checking module IDs for %{label}",
     )
@@ -372,11 +450,83 @@ modid_check_aspect = aspect(
     # types of dependencies to reach the binaries.
     attr_aspects = ["*"],
     attrs = {
+        # The rules to which we apply the aspect may not depend on opentitantool
+        # so make sure that we depend on it. Make sure that it is built for the
+        # execution platform since this aspect will be applied to targets built
+        # for the OT platform.
+        # NOTE: Make sure this is NOT named _opentitantool. Due to how bazel works
+        # https://github.com/bazelbuild/bazel/issues/18286, private aspect attributes
+        # are merged with the attributes of rule they run on, which can cause inexplicable
+        # errors message.
+        "_validator": attr.label(
+            default = "//sw/host/opentitantool",
+            allow_single_file = True,
+            executable = True,
+            cfg = "exec",
+        ),
         "_modid_check": attr.label(
             default = "//rules/scripts:modid_check",
             executable = True,
             cfg = "exec",
         ),
     },
-    toolchains = [LOCALTOOLS_TOOLCHAIN],
+)
+
+def _rustfmt_impl(ctx):
+    # See rules/ujson.bzl
+    rustfmt_files = ctx.attr._rustfmt.data_runfiles.files.to_list()
+    rustfmt = [f for f in rustfmt_files if f.basename == "rustfmt"][0]
+
+    out_file = ctx.actions.declare_file(ctx.label.name + ".bash")
+    exclude_patterns = ["\\! -path {}".format(shell.quote(p)) for p in ctx.attr.exclude_patterns]
+    include_patterns = ["-name {}".format(shell.quote(p)) for p in ctx.attr.patterns]
+    workspace = ctx.file.workspace.path if ctx.file.workspace else ""
+    substitutions = {
+        "@@EXCLUDE_PATTERNS@@": " ".join(exclude_patterns),
+        "@@INCLUDE_PATTERNS@@": " -o ".join(include_patterns),
+        "@@RUSTFMT@@": shell.quote(rustfmt.short_path),
+        "@@WORKSPACE@@": workspace,
+    }
+    ctx.actions.expand_template(
+        template = ctx.file._runner,
+        output = out_file,
+        substitutions = substitutions,
+        is_executable = True,
+    )
+
+    files = [rustfmt]
+    if ctx.file.workspace:
+        files.append(ctx.file.workspace)
+
+    return DefaultInfo(
+        runfiles = ctx.runfiles(files = files),
+        executable = out_file,
+    )
+
+rustfmt_attrs = {
+    "patterns": attr.string_list(
+        default = ["*.rs"],
+        doc = "Filename patterns for format checking",
+    ),
+    "exclude_patterns": attr.string_list(
+        doc = "Filename patterns to exlucde from format checking",
+    ),
+    "workspace": attr.label(
+        allow_single_file = True,
+        doc = "Label of the WORKSPACE file",
+    ),
+    "_runner": attr.label(
+        default = "//rules/scripts:rustfmt.template.sh",
+        allow_single_file = True,
+    ),
+    "_rustfmt": attr.label(
+        default = "@rules_rust//rust/toolchain:current_rustfmt_files",
+        cfg = "exec",
+    ),
+}
+
+rustfmt_fix = rule(
+    implementation = _rustfmt_impl,
+    attrs = rustfmt_attrs,
+    executable = True,
 )

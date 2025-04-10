@@ -28,17 +28,10 @@
   lblock = block.name.lower()
   ublock = lblock.upper()
 
-  reg_pkg = f'{lblock}{alias_impl}_reg_pkg'
-  num_regs = f'NumRegs{if_name.title() if if_name else ""}'
-
   u_mod_base = mod_base.upper()
 
   reg2hw_t = gen_rtl.get_iface_tx_type(block, if_name, False)
   hw2reg_t = gen_rtl.get_iface_tx_type(block, if_name, True)
-
-  dynamic_racl_support = block.bus_interfaces.racl_support[if_name]
-  static_racl_support = block.bus_interfaces.static_racl_support[if_name]
-  racl_support = dynamic_racl_support or static_racl_support
 
   win_array_decl = f'  [{num_wins}]' if num_wins > 1 else ''
 
@@ -122,17 +115,7 @@
 %>
 `include "prim_assert.sv"
 
-module ${mod_name}${' (' if not racl_support else ''}
-% if racl_support:
-  # (
-    parameter bit          EnableRacl           = 1'b0,
-    parameter bit          RaclErrorRsp         = 1'b1${"," if dynamic_racl_support else ""}
-  % if dynamic_racl_support:
-    parameter top_racl_pkg::racl_policy_sel_t RaclPolicySelVec[${reg_pkg}::${num_regs}] =
-      '{${reg_pkg}::${num_regs}{0}}
-  % endif
-  ) (
-% endif
+module ${mod_name} (
   input clk_i,
   input rst_ni,
 % if rb.has_internal_shadowed_reg():
@@ -153,10 +136,10 @@ module ${mod_name}${' (' if not racl_support else ''}
 % endif
   // To HW
 % if rb.get_n_bits(["q","qe","re"]):
-  output ${reg_pkg}::${reg2hw_t} reg2hw, // Write
+  output ${lblock}${alias_impl}_reg_pkg::${reg2hw_t} reg2hw, // Write
 % endif
 % if rb.get_n_bits(["d","de"]):
-  input  ${reg_pkg}::${hw2reg_t} hw2reg, // Read
+  input  ${lblock}${alias_impl}_reg_pkg::${hw2reg_t} hw2reg, // Read
 % endif
 
 % if rb.has_internal_shadowed_reg():
@@ -164,19 +147,11 @@ module ${mod_name}${' (' if not racl_support else ''}
   output logic shadowed_update_err_o,
 
 %endif
-% if racl_support:
-  // RACL interface
-% if dynamic_racl_support:
-  input  top_racl_pkg::racl_policy_vec_t racl_policies_i,
-% endif
-  output top_racl_pkg::racl_error_log_t  racl_error_o,
-
-% endif
   // Integrity check errors
   output logic intg_err_o
 );
 
-  import ${reg_pkg}::* ;
+  import ${lblock}${alias_impl}_reg_pkg::* ;
 
 % if needs_aw:
   localparam int AW = ${addr_width};
@@ -412,12 +387,7 @@ module ${mod_name}${' (' if not racl_support else ''}
     .be_o    (reg_be),
     .busy_i  (reg_busy),
     .rdata_i (reg_rdata),
-  % if racl_support:
-    // Translate RACL error to TLUL error if enabled
-    .error_i (reg_error | (RaclErrorRsp & racl_error_o.valid))
-  % else:
     .error_i (reg_error)
-  % endif
   );
 
   // cdc oversampling signals
@@ -671,89 +641,14 @@ ${finst_gen(sr, field, finst_name, fsig_name, fidx)}
   % endfor
 
   logic [${len(regs_flat)-1}:0] addr_hit;
-% if racl_support:
-  top_racl_pkg::racl_role_vec_t racl_role_vec;
-  top_racl_pkg::racl_role_t racl_role;
-
-  logic [${len(regs_flat)-1}:0] racl_addr_hit_read;
-  logic [${len(regs_flat)-1}:0] racl_addr_hit_write;
-
-  if (EnableRacl) begin : gen_racl_role_logic
-    // Retrieve RACL role from user bits and one-hot encode that for the comparison bitmap
-    assign racl_role = top_racl_pkg::tlul_extract_racl_role_bits(tl_i.a_user.rsvd);
-
-    prim_onehot_enc #(
-      .OneHotWidth( $bits(top_racl_pkg::racl_role_vec_t) )
-    ) u_racl_role_encode (
-      .in_i ( racl_role     ),
-      .en_i ( 1'b1          ),
-      .out_o( racl_role_vec )
-    );
-  % if static_racl_support:
-    // For the static RACL assignment for racl_ctrl only one role (ROT_PRIVATE) is used,
-    // leaving others unread. Intentionally read them to avoid linting errors.
-    logic unused_role_vec;
-    assign unused_role_vec = ^racl_role_vec;
-  % endif
-  end else begin : gen_no_racl_role_logic
-    assign racl_role     = '0;
-    assign racl_role_vec = '0;
-  end
-
-% endif
   always_comb begin
     addr_hit = '0;
-  % if racl_support:
-    racl_addr_hit_read  = '0;
-    racl_addr_hit_write = '0;
-  % endif
     % for i,r in enumerate(regs_flat):
-<% slice = '{}'.format(i).rjust(max_regs_char) %>\
-    addr_hit[${slice}] = (reg_addr == ${ublock}_${r.name.upper()}_OFFSET);
+    addr_hit[${"{}".format(i).rjust(max_regs_char)}] = (reg_addr == ${ublock}_${r.name.upper()}_OFFSET);
     % endfor
-  % if racl_support:
-
-    if (EnableRacl) begin : gen_racl_hit
-      for (int unsigned slice_idx = 0; slice_idx < ${len(regs_flat)}; slice_idx++) begin
-      % if dynamic_racl_support:
-        racl_addr_hit_read[slice_idx] =
-            addr_hit[slice_idx] & (|(racl_policies_i[RaclPolicySelVec[slice_idx]].read_perm
-                                      & racl_role_vec));
-        racl_addr_hit_write[slice_idx] =
-            addr_hit[slice_idx] & (|(racl_policies_i[RaclPolicySelVec[slice_idx]].write_perm
-                                      & racl_role_vec));
-      % else:
-        // Static RACL protection with ROT_PRIVATE policy
-        racl_addr_hit_read[slice_idx] =
-          addr_hit[slice_idx] & (|(top_racl_pkg::RACL_POLICY_ROT_PRIVATE_RD & racl_role_vec));
-        racl_addr_hit_write[slice_idx] =
-          addr_hit[slice_idx] & (|(top_racl_pkg::RACL_POLICY_ROT_PRIVATE_WR & racl_role_vec));
-      % endif
-      end
-    end else begin : gen_no_racl
-      racl_addr_hit_read  = addr_hit;
-      racl_addr_hit_write = addr_hit;
-    end
-  % endif
   end
 
   assign addrmiss = (reg_re || reg_we) ? ~|addr_hit : 1'b0 ;
-% if racl_support:
-  // A valid address hit, access, but failed the RACL check
-  assign racl_error_o.valid = |addr_hit & ((reg_re & ~|racl_addr_hit_read) |
-                                           (reg_we & ~|racl_addr_hit_write));
-  assign racl_error_o.request_address = top_pkg::TL_AW'(reg_addr);
-  assign racl_error_o.racl_role       = racl_role;
-  assign racl_error_o.overflow        = 1'b0;
-
-  if (EnableRacl) begin : gen_racl_log
-    assign racl_error_o.ctn_uid     = top_racl_pkg::tlul_extract_ctn_uid_bits(tl_i.a_user.rsvd);
-    assign racl_error_o.read_access = tl_i.a_opcode == tlul_pkg::Get;
-  end else begin : gen_no_racl_log
-    assign racl_error_o.ctn_uid     = '0;
-    assign racl_error_o.read_access = 1'b0;
-  end
-% endif
 
   % if regs_flat:
 <%
@@ -761,11 +656,9 @@ ${finst_gen(sr, field, finst_name, fsig_name, fidx)}
     # any bytes that aren't supported by a register. That's true if a
     # addr_hit[i] and a bit is set in reg_be but not in *_PERMIT[i].
 
-    wr_addr_hit = 'racl_addr_hit_write' if racl_support else 'addr_hit'
-    wr_err_terms = ['({wr_addr_hit}[{idx}] & (|({mod}_PERMIT[{idx}] & ~reg_be)))'
+    wr_err_terms = ['(addr_hit[{idx}] & (|({mod}_PERMIT[{idx}] & ~reg_be)))'
                     .format(idx=str(i).rjust(max_regs_char),
-                            mod=u_mod_base,
-                            wr_addr_hit=wr_addr_hit)
+                            mod=u_mod_base)
                     for i in range(len(regs_flat))]
     wr_err_expr = (' |\n' + (' ' * 15)).join(wr_err_terms)
 %>\
@@ -822,19 +715,18 @@ ${field_wd_gen(f, r.name.lower() + "_" + f.name.lower(), r.hwext, r.shadowed, r.
   always_comb begin
     reg_rdata_next = '0;
     unique case (1'b1)
-<% read_addr_hit = 'racl_addr_hit_read' if racl_support else 'addr_hit' %>\
   % for i, r in enumerate(regs_flat):
     % if r.async_clk:
-      ${read_addr_hit}[${i}]: begin
+      addr_hit[${i}]: begin
         reg_rdata_next = DW'(${r.name.lower()}_qs);
       end
     % elif len(r.fields) == 1:
-      ${read_addr_hit}[${i}]: begin
+      addr_hit[${i}]: begin
 ${rdata_gen(r.fields[0], r.name.lower())}\
       end
 
     % else:
-      ${read_addr_hit}[${i}]: begin
+      addr_hit[${i}]: begin
       % for f in r.fields:
 ${rdata_gen(f, r.name.lower() + "_" + f.name.lower())}\
       % endfor
@@ -913,7 +805,7 @@ ${rdata_gen(f, r.name.lower() + "_" + f.name.lower())}\
   assign reg_busy = shadow_busy;
   % else:
   logic reg_busy_sel;
-  assign reg_busy = (reg_busy_sel | shadow_busy) & tl_i.a_valid;
+  assign reg_busy = reg_busy_sel | shadow_busy;
   always_comb begin
     reg_busy_sel = '0;
     unique case (1'b1)
@@ -932,6 +824,13 @@ ${rdata_gen(f, r.name.lower() + "_" + f.name.lower())}\
 % endif
 
   // Unused signal tieoff
+% if lblock == "clkmgr":
+
+  // Any write to the jitter_enable CSR writes MuBi4True.
+  // The actual write data is ignored.
+  logic unused_jitter_enable_wd;
+  assign unused_jitter_enable_wd = ^jitter_enable_wd;
+% endif
 % if rb.all_regs:
 
   // wdata / byte enable are not always fully used
@@ -940,10 +839,6 @@ ${rdata_gen(f, r.name.lower() + "_" + f.name.lower())}\
   logic unused_be;
   assign unused_wdata = ^reg_wdata;
   assign unused_be = ^reg_be;
-% endif
-% if dynamic_racl_support:
-  logic unused_policy_sel;
-  assign unused_policy_sel = ^racl_policies_i;
 % endif
 % if rb.all_regs:
 
@@ -1016,13 +911,16 @@ ${bits.msb}\
       we_expr = f'{clk_base_name}{reg_name}{gated_suffix}_{we_suffix}'
 
       # when async, pick from the cdc handled data
-      wd_expr = f'{finst_name}_wd'
-      if reg.async_clk:
-        if field.bits.msb == field.bits.lsb:
-          bit_sel = f'{field.bits.msb}'
-        else:
-          bit_sel = f'{field.bits.msb}:{field.bits.lsb}'
-        wd_expr = f'{clk_base_name}{reg_name}_wdata[{bit_sel}]'
+      if lblock == "clkmgr" and reg_name == "jitter_enable":
+        wd_expr = "prim_mubi_pkg::MuBi4True"
+      else:
+        wd_expr = f'{finst_name}_wd'
+        if reg.async_clk:
+          if field.bits.msb == field.bits.lsb:
+            bit_sel = f'{field.bits.msb}'
+          else:
+            bit_sel = f'{field.bits.msb}:{field.bits.lsb}'
+          wd_expr = f'{clk_base_name}{reg_name}_wdata[{bit_sel}]'
 
     else:
       we_expr = "1'b0"
@@ -1054,7 +952,7 @@ ${bits.msb}\
       mubi_expr = "1'b1"
     else:
       mubi_expr = "1'b0"
-
+    
     # when async, the outputs are aggregated first by the cdc module
     async_suffix = '_int' if reg.async_clk else ''
     qs_expr = f'{clk_base_name}{finst_name}_qs{async_suffix}' if field.swaccess.allows_read() else ''
@@ -1098,6 +996,32 @@ ${bits.msb}\
       % if reg.async_clk and reg.shadowed:
   logic async_${finst_name}_err_update;
   logic async_${finst_name}_err_storage;
+<%
+        excl_deglitcher = mod_name == "clkmgr_reg_top" and finst_name in [
+          "io_div2_meas_ctrl_shadowed_hi",
+          "io_div2_meas_ctrl_shadowed_lo",
+          "io_div4_meas_ctrl_shadowed_hi",
+          "io_div4_meas_ctrl_shadowed_lo",
+          "io_meas_ctrl_shadowed_hi",
+          "io_meas_ctrl_shadowed_lo",
+          "usb_meas_ctrl_shadowed_hi",
+          "usb_meas_ctrl_shadowed_lo",
+        ]
+%>\
+        % if not excl_deglitcher:
+  logic deglitched_${finst_name}_err_storage;
+
+  // flop storage error to filter combinational glitches before sending it across CDC
+  prim_flop #(
+    .Width(1),
+    .ResetValue('0)
+  ) u_${finst_name}_err_storage_deglitch (
+    .clk_i (${reg.async_clk.clock}),
+    .rst_ni(${reg.async_clk.reset}),
+    .d_i   (async_${finst_name}_err_storage),
+    .q_o   (deglitched_${finst_name}_err_storage)
+  );
+        % endif
 
   // storage error is persistent and can be sampled at any time
   prim_flop_2sync #(
@@ -1106,7 +1030,11 @@ ${bits.msb}\
   ) u_${finst_name}_err_storage_sync (
     .clk_i,
     .rst_ni,
+        % if not excl_deglitcher:
+    .d_i(deglitched_${finst_name}_err_storage),
+        % else:
     .d_i(async_${finst_name}_err_storage),
+        % endif
     .q_o(${finst_name}_storage_err)
   );
 
@@ -1180,13 +1108,11 @@ ${bits.msb}\
   % endif
 </%def>\
 <%def name="reg_enable_gen(reg, idx)">\
-<% wr_addr_hit = 'racl_addr_hit_write' if racl_support else 'addr_hit'%>\
-<% re_addr_hit = 'racl_addr_hit_read'  if racl_support else 'addr_hit'%>\
   % if reg.needs_re():
-  assign ${reg.name.lower()}_re = ${re_addr_hit}[${idx}] & reg_re & !reg_error;
+  assign ${reg.name.lower()}_re = addr_hit[${idx}] & reg_re & !reg_error;
   % endif
   % if reg.needs_we():
-  assign ${reg.name.lower()}_we = ${wr_addr_hit}[${idx}] & reg_we & !reg_error;
+  assign ${reg.name.lower()}_we = addr_hit[${idx}] & reg_we & !reg_error;
   % endif
 </%def>\
 <%def name="field_wd_gen(field, sig_name, hwext, shadowed, async_clk, reg_name, idx)">\

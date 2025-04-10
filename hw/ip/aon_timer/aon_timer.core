@@ -11,7 +11,6 @@ filesets:
       - lowrisc:prim:edge_detector
       - lowrisc:prim:lc_sync
       - lowrisc:ip:tlul
-      - lowrisc:virtual_constants:top_racl_pkg
     files:
       - rtl/aon_timer_reg_pkg.sv
       - rtl/aon_timer_reg_top.sv
@@ -33,6 +32,9 @@ filesets:
       # common waivers
       - lowrisc:lint:common
       - lowrisc:lint:comportable
+    files:
+      - lint/aon_timer.waiver
+    file_type: waiver
 
   files_veriblelint_waiver:
     depend:

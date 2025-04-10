@@ -7,7 +7,7 @@ description: "sysrst_ctrl"
 filesets:
   files_rtl:
     depend:
-      - lowrisc:virtual_constants:top_pkg
+      - lowrisc:constants:top_pkg
       - lowrisc:prim:all
       - lowrisc:ip:tlul
     files:

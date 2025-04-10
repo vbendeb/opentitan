@@ -99,10 +99,7 @@ dif_result_t dif_pwm_configure_channel(const dif_pwm_t *pwm,
   if (config.mode == kDifPwmModeHeartbeat) {
     param_reg =
         bitfield_bit32_write(param_reg, PWM_PWM_PARAM_0_HTBT_EN_0_BIT, true);
-  }
-  // Blink behavior is modified by the heartbeat enable and to use heartbeat
-  // mode we must therefore enable blinking too.
-  if (config.mode == kDifPwmModeBlink || config.mode == kDifPwmModeHeartbeat) {
+  } else if (config.mode == kDifPwmModeBlink) {
     param_reg =
         bitfield_bit32_write(param_reg, PWM_PWM_PARAM_0_BLINK_EN_0_BIT, true);
   }

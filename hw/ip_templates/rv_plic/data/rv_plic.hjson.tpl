@@ -38,11 +38,7 @@
   ],
   clocking: [{clock: "clk_i", reset: "rst_ni"}],
   bus_interfaces: [
-  % if racl_support:
-    { protocol: "tlul", direction: "device", racl_support: true }
-  % else:
     { protocol: "tlul", direction: "device" }
-  % endif
   ],
 
   param_list: [
@@ -100,28 +96,6 @@
       package: "",
       width:   "${target}"
     },
-  % if racl_support:
-    { struct:  "racl_policy_vec",
-      type:    "uni",
-      name:    "racl_policies",
-      act:     "rcv",
-      package: "top_racl_pkg",
-      desc:    '''
-        Incoming RACL policy vector from a racl_ctrl instance.
-        The policy selection vector (parameter) selects the policy for each register.
-      '''
-    }
-    { struct:  "racl_error_log",
-      type:    "uni",
-      name:    "racl_error",
-      act:     "req",
-      width:   "1"
-      package: "top_racl_pkg",
-      desc:    '''
-        RACL error log information of this module.
-      '''
-    }
-  % endif
   ]
 
   countermeasures: [
@@ -143,19 +117,16 @@
 
   regwidth: "32",
   registers: [
-    { multireg:
-      { name: "PRIO",
-        desc: "Interrupt Source Priority",
-        count: "NumSrc",
-        cname: "${(module_instance_name).upper()}",
-        swaccess: "rw",
-        hwaccess: "hro",
-        compact: false,
-        fields: [
-          { bits: "${(prio).bit_length()-1}:0" }
-        ],
-      }
+% for i in range(src):
+    { name: "PRIO${i}",
+      desc: "Interrupt Source ${i} Priority",
+      swaccess: "rw",
+      hwaccess: "hro",
+      fields: [
+        { bits: "${(prio).bit_length()-1}:0" }
+      ],
     }
+% endfor
     { skipto: "0x00001000" }
     { multireg: {
         name: "IP",

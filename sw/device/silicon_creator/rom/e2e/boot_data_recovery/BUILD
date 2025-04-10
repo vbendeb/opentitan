@@ -10,14 +10,20 @@ load(
     "fpga_params",
     "opentitan_test",
 )
-load("//rules/opentitan:keyutils.bzl", "ECDSA_ONLY_KEY_STRUCTS")
+load(
+    "//rules:opentitan.bzl",
+    "ECDSA_ONLY_KEY_STRUCTS",
+)
 load(
     "//rules:const.bzl",
     "CONST",
     "hex",
     "hex_digits",
 )
-load("//rules:manifest.bzl", "manifest")
+load(
+    "//rules:manifest.bzl",
+    "manifest",
+)
 load(
     "//rules:otp.bzl",
     "STD_OTP_OVERLAYS",
@@ -26,7 +32,10 @@ load(
     "otp_json",
     "otp_partition",
 )
-load("//rules:rom_e2e.bzl", "maybe_skip_in_ci")
+load(
+    "//rules:rom_e2e.bzl",
+    "maybe_skip_in_ci",
+)
 load(
     "//sw/device/silicon_creator/rom/e2e:defs.bzl",
     "MSG_PASS",
@@ -110,7 +119,7 @@ BOOT_DATA_RECOVERY_CASES = [
             case["lc_state"],
             case["default_boot_data"],
         ),
-        src = "//hw/top_earlgrey/data/otp:otp_json_{}".format(case["lc_state"]),
+        src = "//hw/ip/otp_ctrl/data:otp_json_{}".format(case["lc_state"]),
         overlays = STD_OTP_OVERLAYS + [":boot_data_recovery_creator_sw_cfg_{}_{}".format(
             case["lc_state"],
             case["default_boot_data"],

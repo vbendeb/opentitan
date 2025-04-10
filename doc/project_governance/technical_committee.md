@@ -18,15 +18,17 @@ Expectations of Technical Committee members include the following:
 ## Membership
 The OpenTitan Technical Committee membership is:
 * Andreas Kurth (chair)
+* Richard Bohn
 * Cyril Guyot
 * Felix Miller
-* Michael Munday (observer)
+* Dominic Rizzo (observer)
+* Michael Munday
 * Rupert Swarbrick
 * Michael Tempelmeier
+* Neeraj Upasani
 * Nir Tasher
 * Arnon Sharlin
 * Tim Trippel
 * Miles Dai
 * Shimeon Greenberg
 * Jade Philipoom
-* Ravi Sahita

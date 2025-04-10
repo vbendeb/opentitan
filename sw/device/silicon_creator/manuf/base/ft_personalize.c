@@ -8,12 +8,17 @@
 #include "sw/device/lib/base/macros.h"
 #include "sw/device/lib/crypto/drivers/entropy.h"
 #include "sw/device/lib/dif/dif_flash_ctrl.h"
+#include "sw/device/lib/dif/dif_gpio.h"
 #include "sw/device/lib/dif/dif_lc_ctrl.h"
 #include "sw/device/lib/dif/dif_otp_ctrl.h"
+#include "sw/device/lib/dif/dif_pinmux.h"
 #include "sw/device/lib/dif/dif_rstmgr.h"
 #include "sw/device/lib/runtime/log.h"
+#include "sw/device/lib/testing/flash_ctrl_testutils.h"
 #include "sw/device/lib/testing/json/provisioning_data.h"
 #include "sw/device/lib/testing/lc_ctrl_testutils.h"
+#include "sw/device/lib/testing/otp_ctrl_testutils.h"
+#include "sw/device/lib/testing/pinmux_testutils.h"
 #include "sw/device/lib/testing/rstmgr_testutils.h"
 #include "sw/device/lib/testing/test_framework/check.h"
 #include "sw/device/lib/testing/test_framework/ottf_main.h"
@@ -24,6 +29,7 @@
 #include "sw/device/silicon_creator/lib/base/boot_measurements.h"
 #include "sw/device/silicon_creator/lib/base/chip.h"
 #include "sw/device/silicon_creator/lib/base/util.h"
+#include "sw/device/silicon_creator/lib/boot_data.h"
 #include "sw/device/silicon_creator/lib/cert/cdi_0.h"  // Generated.
 #include "sw/device/silicon_creator/lib/cert/cdi_1.h"  // Generated.
 #include "sw/device/silicon_creator/lib/cert/cert.h"
@@ -34,21 +40,30 @@
 #include "sw/device/silicon_creator/lib/drivers/keymgr.h"
 #include "sw/device/silicon_creator/lib/drivers/kmac.h"
 #include "sw/device/silicon_creator/lib/drivers/otp.h"
+#include "sw/device/silicon_creator/lib/drivers/rstmgr.h"
+#include "sw/device/silicon_creator/lib/drivers/watchdog.h"
 #include "sw/device/silicon_creator/lib/error.h"
 #include "sw/device/silicon_creator/lib/manifest.h"
 #include "sw/device/silicon_creator/lib/otbn_boot_services.h"
+#include "sw/device/silicon_creator/lib/ownership/datatypes.h"
+#include "sw/device/silicon_creator/lib/ownership/owner_block.h"
+#include "sw/device/silicon_creator/lib/ownership/ownership_key.h"
+#include "sw/device/silicon_creator/manuf/base/flash_info_permissions.h"
 #include "sw/device/silicon_creator/manuf/base/perso_tlv_data.h"
 #include "sw/device/silicon_creator/manuf/base/personalize_ext.h"
 #include "sw/device/silicon_creator/manuf/lib/flash_info_fields.h"
 #include "sw/device/silicon_creator/manuf/lib/individualize_sw_cfg.h"
+#include "sw/device/silicon_creator/manuf/lib/otp_fields.h"
 #include "sw/device/silicon_creator/manuf/lib/personalize.h"
 
 #include "flash_ctrl_regs.h"  // Generated.
 #include "hw/top_earlgrey/sw/autogen/top_earlgrey.h"
+#include "otp_ctrl_regs.h"  // Generated.
 
 OTTF_DEFINE_TEST_CONFIG(.console.type = kOttfConsoleSpiDevice,
                         .console.base_addr = TOP_EARLGREY_SPI_DEVICE_BASE_ADDR,
-                        .console.test_may_clobber = false, );
+                        .console.test_may_clobber = false,
+                        .silence_console_prints = true);
 
 enum {
   /**
@@ -76,9 +91,18 @@ static_assert(
  * Peripheral handles.
  */
 static dif_flash_ctrl_state_t flash_ctrl_state;
+static dif_gpio_t gpio;
 static dif_lc_ctrl_t lc_ctrl;
 static dif_otp_ctrl_t otp_ctrl;
+static dif_pinmux_t pinmux;
 static dif_rstmgr_t rstmgr;
+
+// ATE Indicator GPIOs.
+static const dif_gpio_pin_t kGpioPinTestStart = 0;
+static const dif_gpio_pin_t kGpioPinTestDone = 1;
+static const dif_gpio_pin_t kGpioPinTestError = 2;
+static const dif_gpio_pin_t kGpioPinSpiConsoleTxReady = 3;
+static const dif_gpio_pin_t kGpioPinSpiConsoleRxReady = 4;
 
 /**
  * Keymgr binding values.
@@ -89,6 +113,7 @@ static keymgr_binding_value_t sealing_binding_value = {.data = {0}};
 /**
  * Certificate data.
  */
+static hmac_digest_t kZeroDigest = {.digest = {0, 0, 0, 0, 0, 0, 0, 0}};
 static hmac_digest_t otp_creator_sw_cfg_measurement;
 static hmac_digest_t otp_owner_sw_cfg_measurement;
 static hmac_digest_t otp_rot_creator_auth_codesign_measurement;
@@ -157,6 +182,19 @@ static cert_flash_info_layout_t cert_flash_layout[] = {
     },
 };
 
+/**
+ * Ownership initialization function.
+ */
+OT_WEAK rom_error_t
+sku_creator_owner_init(boot_data_t *bootdata, owner_config_t *config,
+                       owner_application_keyring_t *keyring) {
+  OT_DISCARD(bootdata);
+  OT_DISCARD(config);
+  OT_DISCARD(keyring);
+  LOG_ERROR("No ownership initialization");
+  return kErrorOk;
+}
+
 static void log_self_hash(void) {
   // clang-format off
   LOG_INFO("Personalization Firmware Hash: 0x%08x%08x%08x%08x%08x%08x%08x%08x",
@@ -196,10 +234,13 @@ static status_t peripheral_handles_init(void) {
   TRY(dif_flash_ctrl_init_state(
       &flash_ctrl_state,
       mmio_region_from_addr(TOP_EARLGREY_FLASH_CTRL_CORE_BASE_ADDR)));
-  TRY(dif_lc_ctrl_init(
-      mmio_region_from_addr(TOP_EARLGREY_LC_CTRL_REGS_BASE_ADDR), &lc_ctrl));
+  TRY(dif_gpio_init(mmio_region_from_addr(TOP_EARLGREY_GPIO_BASE_ADDR), &gpio));
+  TRY(dif_lc_ctrl_init(mmio_region_from_addr(TOP_EARLGREY_LC_CTRL_BASE_ADDR),
+                       &lc_ctrl));
   TRY(dif_otp_ctrl_init(
       mmio_region_from_addr(TOP_EARLGREY_OTP_CTRL_CORE_BASE_ADDR), &otp_ctrl));
+  TRY(dif_pinmux_init(mmio_region_from_addr(TOP_EARLGREY_PINMUX_AON_BASE_ADDR),
+                      &pinmux));
   TRY(dif_rstmgr_init(mmio_region_from_addr(TOP_EARLGREY_RSTMGR_AON_BASE_ADDR),
                       &rstmgr));
   return OK_STATUS();
@@ -238,7 +279,7 @@ static status_t measure_otp_partition(otp_partition_t partition,
                                       hmac_digest_t *measurement,
                                       bool use_expected_values) {
   // Compute the digest.
-  otp_dai_read(partition, /*address=*/0, otp_state,
+  otp_dai_read(partition, /*relative_address=*/0, otp_state,
                kOtpPartitions[partition].size / sizeof(uint32_t));
 
   if (use_expected_values) {
@@ -253,7 +294,17 @@ static status_t measure_otp_partition(otp_partition_t partition,
     }
   }
 
-  hmac_sha256(otp_state, kOtpPartitions[partition].size, measurement);
+  uint32_t *otp_state_ptr = otp_state;
+  size_t otp_state_size = kOtpPartitions[partition].size;
+  if (partition == kOtpPartitionCreatorSwCfg) {
+    // Note: we purposely exclude the AST configuration data field of this
+    // partition from the digest calculation. See
+    // sw/device/silicon_creator/manuf/lib/util.c for why.
+    otp_state_ptr = &otp_state[OTP_CTRL_PARAM_CREATOR_SW_CFG_AST_CFG_SIZE /
+                               sizeof(uint32_t)];
+    otp_state_size -= OTP_CTRL_PARAM_CREATOR_SW_CFG_AST_CFG_SIZE;
+  }
+  hmac_sha256(otp_state_ptr, otp_state_size, measurement);
 
   return OK_STATUS();
 }
@@ -284,8 +335,10 @@ static status_t personalize_otp_and_flash_secrets(ujson_t *uj) {
     // Wait for host the host generated RMA unlock token hash to arrive over the
     // console.
     LOG_INFO("Waiting For RMA Unlock Token Hash ...");
+    TRY(dif_gpio_write(&gpio, kGpioPinSpiConsoleRxReady, true));
     CHECK_STATUS_OK(
         UJSON_WITH_CRC(ujson_deserialize_lc_token_hash_t, uj, &token_hash));
+    TRY(dif_gpio_write(&gpio, kGpioPinSpiConsoleRxReady, false));
 
     TRY(manuf_personalize_device_secrets(&flash_ctrl_state, &lc_ctrl, &otp_ctrl,
                                          &token_hash));
@@ -312,35 +365,29 @@ static status_t personalize_otp_and_flash_secrets(ujson_t *uj) {
 }
 
 /**
- * Sets the attestation binding to the ROM_EXT measurement, and the sealing
- * binding to all zeros.
+ * Sets the attestation and sealing binding to all zeros.
  *
- * The sealing binding value is set to all zeros as it is unused in the current
- * personalization flow. This may be changed in the future.
+ * The attestation binding (and subsequently CDI_0) will be updated later when
+ * the ROM_EXT boots for the first time.
  */
-static void compute_keymgr_owner_int_binding(manuf_certgen_inputs_t *inputs) {
-  memcpy(attestation_binding_value.data, inputs->rom_ext_measurement,
-         kDiceMeasurementSizeInBytes);
+static void compute_keymgr_owner_int_binding(void) {
+  memset(attestation_binding_value.data, 0, kDiceMeasurementSizeInBytes);
+  // In the silicon_creator stage, we set the sealing binding to the
+  // manifest->identifier of the ROM_EXT stage.
   memset(sealing_binding_value.data, 0, kDiceMeasurementSizeInBytes);
+  sealing_binding_value.data[0] = CHIP_ROM_EXT_IDENTIFIER;
 }
 
 /**
- * Sets the attestation binding to a combination of the Owner firmware and
- * Ownership Manifest measurements, and the sealing binding to all zeros.
+ * Sets the attestation binding to all zeros as it (and subsequently CDI_1) will
+ * be updated later when the ROM_EXT boots for the first time.
  *
  * The sealing binding value is set to the TEST application key domain.
  */
-static void compute_keymgr_owner_binding(manuf_certgen_inputs_t *inputs) {
-  hmac_digest_t combined_measurements;
-  hmac_sha256_init();
-  hmac_sha256_update((unsigned char *)inputs->owner_measurement,
-                     kDiceMeasurementSizeInBytes);
-  hmac_sha256_update((unsigned char *)inputs->owner_manifest_measurement,
-                     kDiceMeasurementSizeInBytes);
-  hmac_sha256_process();
-  hmac_sha256_final(&combined_measurements);
-  memcpy(attestation_binding_value.data, combined_measurements.digest,
-         kDiceMeasurementSizeInBytes);
+static void compute_keymgr_owner_binding(void) {
+  memset(attestation_binding_value.data, 0, kDiceMeasurementSizeInBytes);
+  // We expect the owner to use a Application Key binding  of
+  // {`prod`, 0, ... }.
   memset(sealing_binding_value.data, 0, kDiceMeasurementSizeInBytes);
   sealing_binding_value.data[0] = kOwnerAppDomainProd;
 }
@@ -437,7 +484,9 @@ static status_t personalize_gen_dice_certificates(ujson_t *uj) {
   // DO NOT CHANGE THE BELOW STRING without modifying the host code in
   // sw/host/provisioning/ft_lib/src/lib.rs
   LOG_INFO("Waiting for certificate inputs ...");
+  TRY(dif_gpio_write(&gpio, kGpioPinSpiConsoleRxReady, true));
   TRY(ujson_deserialize_manuf_certgen_inputs_t(uj, &certgen_inputs));
+  TRY(dif_gpio_write(&gpio, kGpioPinSpiConsoleRxReady, false));
   // We copy over the UDS endorsement key ID to an SHA256 digest type, since
   // this is the format of key IDs generated on-dice.
   memcpy(uds_endorsement_key_id.digest, certgen_inputs.dice_auth_key_key_id,
@@ -503,18 +552,19 @@ static status_t personalize_gen_dice_certificates(ujson_t *uj) {
       kDiceCertFormat, all_certs, curr_cert_size, &perso_blob_to_host));
   LOG_INFO("Generated UDS certificate.");
 
+  ownership_seal_init();
+  LOG_INFO("Initialized ownership sealing in UDS state.");
+
   // Generate CDI_0 keys and cert.
   curr_cert_size = kCdi0MaxCertSizeBytes;
-  compute_keymgr_owner_int_binding(&certgen_inputs);
+  compute_keymgr_owner_int_binding();
   TRY(sc_keymgr_owner_int_advance(&sealing_binding_value,
                                   &attestation_binding_value,
                                   /*max_key_version=*/0));
   TRY(otbn_boot_cert_ecc_p256_keygen(kDiceKeyCdi0, &cdi_0_pubkey_id,
                                      &curr_pubkey));
-  TRY(dice_cdi_0_cert_build((hmac_digest_t *)certgen_inputs.rom_ext_measurement,
-                            certgen_inputs.rom_ext_security_version,
-                            &cdi_0_key_ids, &curr_pubkey, all_certs,
-                            &curr_cert_size));
+  TRY(dice_cdi_0_cert_build(&kZeroDigest, 0, &cdi_0_key_ids, &curr_pubkey,
+                            all_certs, &curr_cert_size));
   cdi_0_offset = perso_blob_to_host.next_free;
   // DO NOT CHANGE THE "CDI_0" STRING BELOW with modifying the `dice_cert_names`
   // collection in sw/host/provisioning/ft_lib/src/lib.rs.
@@ -525,17 +575,15 @@ static status_t personalize_gen_dice_certificates(ujson_t *uj) {
 
   // Generate CDI_1 keys and cert.
   curr_cert_size = kCdi1MaxCertSizeBytes;
-  compute_keymgr_owner_binding(&certgen_inputs);
+  compute_keymgr_owner_binding();
   TRY(sc_keymgr_owner_advance(&sealing_binding_value,
                               &attestation_binding_value,
                               /*max_key_version=*/0));
   TRY(otbn_boot_cert_ecc_p256_keygen(kDiceKeyCdi1, &cdi_1_pubkey_id,
                                      &curr_pubkey));
-  TRY(dice_cdi_1_cert_build(
-      (hmac_digest_t *)certgen_inputs.owner_measurement,
-      (hmac_digest_t *)certgen_inputs.owner_manifest_measurement,
-      certgen_inputs.owner_security_version, kOwnerAppDomainProd,
-      &cdi_1_key_ids, &curr_pubkey, all_certs, &curr_cert_size));
+  TRY(dice_cdi_1_cert_build(&kZeroDigest, &kZeroDigest, &kZeroDigest, 0,
+                            kOwnerAppDomainProd, &cdi_1_key_ids, &curr_pubkey,
+                            all_certs, &curr_cert_size));
   cdi_1_offset = perso_blob_to_host.next_free;
   // DO NOT CHANGE THE "CDI_1" STRING BELOW with modifying the `dice_cert_names`
   // collection in sw/host/provisioning/ft_lib/src/lib.rs.
@@ -544,6 +592,148 @@ static status_t personalize_gen_dice_certificates(ujson_t *uj) {
                                         curr_cert_size, &perso_blob_to_host));
   LOG_INFO("Generated CDI_1 certificate.");
 
+  return OK_STATUS();
+}
+
+static status_t compute_tbs_was_hmac(perso_blob_t *perso_blob_to_host) {
+  // Read out the WAS from flash.
+  hmac_key_t was;
+  static_assert(
+      kFlashInfoFieldWaferAuthSecretSizeIn32BitWords == kHmacKeyNumWords,
+      "WAS size expected to be same size as HMAC-SHA256 key.");
+  TRY(flash_ctrl_testutils_info_region_setup_properties(
+      &flash_ctrl_state, kFlashInfoFieldWaferAuthSecret.page,
+      kFlashInfoFieldWaferAuthSecret.bank,
+      kFlashInfoFieldWaferAuthSecret.partition, kFlashInfoPage3ReadPermissions,
+      /*offset=*/NULL));
+  TRY(manuf_flash_info_field_read(
+      &flash_ctrl_state, kFlashInfoFieldWaferAuthSecret, was.key,
+      kFlashInfoFieldWaferAuthSecretSizeIn32BitWords));
+
+  // Compute HMAC of TBS certs with WAS as the key.
+  // HSMs and host tooling will compute an HMAC in big endian format, so we do
+  // the same to make the comparison easier.
+  hmac_hmac_sha256_init(was, /*big_endian_digest=*/true);
+  uint8_t *tlv_buf = perso_blob_to_host->body;
+  uint16_t obj_size;
+  perso_tlv_object_type_t obj_type;
+  perso_tlv_cert_obj_t cert_obj;
+  for (size_t i = 0; i < perso_blob_to_host->num_objs; ++i) {
+    // Parse the TLV object header.
+    perso_tlv_object_header_t obj_header = *(uint16_t *)tlv_buf;
+    PERSO_TLV_GET_FIELD(Objh, Type, obj_header, &obj_type);
+    PERSO_TLV_GET_FIELD(Objh, Size, obj_header, &obj_size);
+    if (obj_type == kPersoObjectTypeX509Tbs) {
+      TRY(perso_tlv_get_cert_obj(tlv_buf, obj_size, &cert_obj));
+      hmac_sha256_update(cert_obj.cert_body_p, cert_obj.cert_body_size);
+    }
+    tlv_buf += obj_size;
+  }
+  hmac_sha256_process();
+  hmac_digest_t digest;
+  hmac_sha256_final(&digest);
+
+  // Push hash into perso blob.
+  perso_tlv_object_header_t was_hmac_tlv_header = 0;
+  obj_size = sizeof(perso_tlv_object_header_t) + sizeof(hmac_digest_t);
+  PERSO_TLV_SET_FIELD(Objh, Type, was_hmac_tlv_header,
+                      kPersoObjectTypeWasTbsHmac);
+  PERSO_TLV_SET_FIELD(Objh, Size, was_hmac_tlv_header, obj_size);
+  TRY(perso_tlv_push_to_perso_blob(&was_hmac_tlv_header,
+                                   sizeof(perso_tlv_object_header_t),
+                                   perso_blob_to_host));
+  TRY(perso_tlv_push_to_perso_blob(digest.digest, kHmacDigestNumBytes,
+                                   perso_blob_to_host));
+  perso_blob_to_host->num_objs++;
+
+  // Read complete device ID and push into perso blob. The host will need the
+  // device ID to reconstruct the WAS.
+  uint32_t device_id[kHwCfgDeviceIdSizeIn32BitWords] = {0};
+  TRY(otp_ctrl_testutils_dai_read32_array(&otp_ctrl, kDifOtpCtrlPartitionHwCfg0,
+                                          kHwCfgDeviceIdOffset, device_id,
+                                          ARRAYSIZE(device_id)));
+  perso_tlv_object_header_t device_id_header = 0;
+  obj_size = sizeof(perso_tlv_object_header_t) + kHwCfgDeviceIdSizeInBytes;
+  PERSO_TLV_SET_FIELD(Objh, Type, device_id_header, kPersoObjectTypeDeviceId);
+  PERSO_TLV_SET_FIELD(Objh, Size, device_id_header, obj_size);
+  TRY(perso_tlv_push_to_perso_blob(&device_id_header,
+                                   sizeof(perso_tlv_object_header_t),
+                                   perso_blob_to_host));
+  TRY(perso_tlv_push_to_perso_blob(device_id, kHwCfgDeviceIdSizeInBytes,
+                                   perso_blob_to_host));
+  perso_blob_to_host->num_objs++;
+
+  return OK_STATUS();
+}
+
+static status_t boot_data_cfg_initialize(void) {
+  // Configure the boot data OTP word.
+  if (!status_ok(manuf_individualize_device_flash_info_boot_data_cfg_check(
+          &otp_ctrl))) {
+    TRY(manuf_individualize_device_field_cfg(
+        &otp_ctrl,
+        OTP_CTRL_PARAM_CREATOR_SW_CFG_FLASH_INFO_BOOT_DATA_CFG_OFFSET));
+  }
+
+  // Loads the boot data configuration from OTP.
+  flash_ctrl_cfg_t boot_data_cfg = flash_ctrl_boot_data_cfg_get();
+
+  flash_ctrl_perms_t perm = {
+      .read = kMultiBitBool4False,
+      .write = kMultiBitBool4False,
+      .erase = kMultiBitBool4True,
+  };
+
+  // Erase the BootData pages. This is necessary to ensure that the owner
+  // block is written to a clean page and to avoid ECC errors in the
+  // next boot.
+  flash_ctrl_info_perms_set(&kFlashCtrlInfoPageBootData0, perm);
+  flash_ctrl_info_perms_set(&kFlashCtrlInfoPageBootData1, perm);
+  flash_ctrl_info_cfg_set(&kFlashCtrlInfoPageBootData0, boot_data_cfg);
+  flash_ctrl_info_cfg_set(&kFlashCtrlInfoPageBootData1, boot_data_cfg);
+
+  TRY(flash_ctrl_info_erase(&kFlashCtrlInfoPageBootData0,
+                            kFlashCtrlEraseTypePage));
+  TRY(flash_ctrl_info_erase(&kFlashCtrlInfoPageBootData1,
+                            kFlashCtrlEraseTypePage));
+
+  return OK_STATUS();
+}
+
+static status_t install_owner(void) {
+  // Get the boot_data; installing the owner will write it back with the
+  // ownership_state set to LockedOwner.
+  boot_data_t boot_data;
+  TRY(boot_data_read(kLcStateProd, &boot_data));
+
+  // Initialize the ownership-related flash pages.
+  flash_ctrl_perms_t perm = {
+      .read = kMultiBitBool4True,
+      .write = kMultiBitBool4True,
+      .erase = kMultiBitBool4True,
+  };
+  flash_ctrl_cfg_t cfg = {
+      .scrambling = kMultiBitBool4True,
+      .ecc = kMultiBitBool4True,
+      .he = kMultiBitBool4False,
+  };
+  flash_ctrl_info_perms_set(&kFlashCtrlInfoPageOwnerSlot0, perm);
+  flash_ctrl_info_cfg_set(&kFlashCtrlInfoPageOwnerSlot0, cfg);
+  flash_ctrl_info_perms_set(&kFlashCtrlInfoPageOwnerSlot1, perm);
+  flash_ctrl_info_cfg_set(&kFlashCtrlInfoPageOwnerSlot1, cfg);
+
+  // Initializes the boot data flash configuration in OTP, and erases the boot
+  // data pages to avoid integrity errors in the next boot.
+  // `sku_creator_owner_init` will write the owner block to the flash.
+  TRY(boot_data_cfg_initialize());
+
+  // Initialize ownership.  This will write the owner block into OwnerSlot0 and
+  // set the ownership_state to LockedOwner.  The first boot of the ROM_EXT
+  // will create a redundanty copy in OwnerSlot1.
+  owner_config_t config;
+  owner_config_default(&config);
+  owner_application_keyring_t keyring = {0};
+  TRY(sku_creator_owner_init(&boot_data, &config, &keyring));
   return OK_STATUS();
 }
 
@@ -656,14 +846,17 @@ static status_t personalize_endorse_certificates(ujson_t *uj) {
   // DO NOT CHANGE THE BELOW STRING without modifying the host code in
   // sw/host/provisioning/ft_lib/src/lib.rs
   LOG_INFO("Exporting TBS certificates ...");
-
+  TRY(dif_gpio_write(&gpio, kGpioPinSpiConsoleTxReady, true));
   RESP_OK(ujson_serialize_perso_blob_t, uj, &perso_blob_to_host);
+  TRY(dif_gpio_write(&gpio, kGpioPinSpiConsoleTxReady, false));
 
   // Import endorsed certificates from the provisioning appliance.
   // DO NOT CHANGE THE BELOW STRING without modifying the host code in
   // sw/host/provisioning/ft_lib/src/lib.rs
   LOG_INFO("Importing endorsed certificates ...");
+  TRY(dif_gpio_write(&gpio, kGpioPinSpiConsoleRxReady, true));
   TRY(ujson_deserialize_perso_blob_t(uj, &perso_blob_from_host));
+  TRY(dif_gpio_write(&gpio, kGpioPinSpiConsoleRxReady, false));
 
   /*****************************************************************************
    * Rearrange certificates to prepare for writing to flash.
@@ -768,7 +961,10 @@ static status_t personalize_endorse_certificates(ujson_t *uj) {
 }
 
 static status_t send_final_hash(ujson_t *uj, serdes_sha256_hash_t *hash) {
-  return RESP_OK(ujson_serialize_serdes_sha256_hash_t, uj, hash);
+  TRY(dif_gpio_write(&gpio, kGpioPinSpiConsoleTxReady, true));
+  TRY(RESP_OK(ujson_serialize_serdes_sha256_hash_t, uj, hash));
+  TRY(dif_gpio_write(&gpio, kGpioPinSpiConsoleTxReady, false));
+  return OK_STATUS();
 }
 
 /**
@@ -803,8 +999,6 @@ static status_t check_otp_measurement_post_lock(hmac_digest_t *measurement,
 }
 
 static status_t finalize_otp_partitions(void) {
-  // TODO(#21554): Complete the provisioning of the root keys and key policies.
-
   TRY(check_next_slot_bootable());
 
   // Complete the provisioning of OTP OwnerSwCfg partition.
@@ -836,16 +1030,40 @@ static status_t finalize_otp_partitions(void) {
   return OK_STATUS();
 }
 
-bool test_main(void) {
-  CHECK_STATUS_OK(peripheral_handles_init());
-  ujson_t uj = ujson_ottf_console();
-  log_self_hash();
-  CHECK_STATUS_OK(lc_ctrl_testutils_operational_state_check(&lc_ctrl));
-  CHECK_STATUS_OK(personalize_otp_and_flash_secrets(&uj));
-  CHECK_STATUS_OK(personalize_gen_dice_certificates(&uj));
+static status_t configure_ate_gpio_indicators(void) {
+  // IOA6 / GPIO4 is for SPI console RX ready signal.
+  TRY(dif_pinmux_output_select(
+      &pinmux, kTopEarlgreyPinmuxMioOutIoa6,
+      kTopEarlgreyPinmuxOutselGpioGpio0 + kGpioPinSpiConsoleRxReady));
+  // IOA5 / GPIO3 is for SPI console TX ready signal.
+  TRY(dif_pinmux_output_select(
+      &pinmux, kTopEarlgreyPinmuxMioOutIoa5,
+      kTopEarlgreyPinmuxOutselGpioGpio0 + kGpioPinSpiConsoleTxReady));
+  // IOA0 / GPIO2 is for error reporting.
+  TRY(dif_pinmux_output_select(
+      &pinmux, kTopEarlgreyPinmuxMioOutIoa0,
+      kTopEarlgreyPinmuxOutselGpioGpio0 + kGpioPinTestError));
+  // IOA1 / GPIO1 is for test done reporting.
+  TRY(dif_pinmux_output_select(
+      &pinmux, kTopEarlgreyPinmuxMioOutIoa1,
+      kTopEarlgreyPinmuxOutselGpioGpio0 + kGpioPinTestDone));
+  // IOA4 / GPIO0 is for test start reporting.
+  TRY(dif_pinmux_output_select(
+      &pinmux, kTopEarlgreyPinmuxMioOutIoa4,
+      kTopEarlgreyPinmuxOutselGpioGpio0 + kGpioPinTestStart));
+  TRY(dif_gpio_output_set_enabled_all(&gpio, 0x1f));  // Enable first 5 GPIOs.
+  TRY(dif_gpio_write_all(&gpio, /*write_val=*/0));    // Intialize all to 0.
+  return OK_STATUS();
+}
 
+static status_t provision(ujson_t *uj) {
+  // Provision OTP, flash secrets, certs, and install the first owner.
+  TRY(lc_ctrl_testutils_operational_state_check(&lc_ctrl));
+  TRY(personalize_otp_and_flash_secrets(uj));
+  TRY(personalize_gen_dice_certificates(uj));
+  TRY(install_owner());
   personalize_extension_pre_endorse_t pre_endorse = {
-      .uj = &uj,
+      .uj = uj,
       .certgen_inputs = &certgen_inputs,
       .perso_blob_to_host = &perso_blob_to_host,
       .cert_flash_layout = cert_flash_layout,
@@ -858,27 +1076,63 @@ bool test_main(void) {
           &otp_rot_creator_auth_codesign_measurement,
       .otp_rot_creator_auth_state_measurement =
           &otp_rot_creator_auth_state_measurement};
-  CHECK_STATUS_OK(personalize_extension_pre_cert_endorse(&pre_endorse));
+  TRY(personalize_extension_pre_cert_endorse(&pre_endorse));
+  TRY(compute_tbs_was_hmac(pre_endorse.perso_blob_to_host));
 
-  CHECK_STATUS_OK(personalize_endorse_certificates(&uj));
-  CHECK_STATUS_OK(hash_all_certs());
-
+  // Endorse TBS certs and install in flash.
+  TRY(personalize_endorse_certificates(uj));
+  TRY(hash_all_certs());
   personalize_extension_post_endorse_t post_endorse = {
-      .uj = &uj,
+      .uj = uj,
       .perso_blob_from_host = &perso_blob_from_host,
       .cert_flash_layout = cert_flash_layout};
-  CHECK_STATUS_OK(personalize_extension_post_cert_endorse(&post_endorse));
+  TRY(personalize_extension_post_cert_endorse(&post_endorse));
 
   // Log the hash of all perso objects to the host and console.
   serdes_sha256_hash_t hash;
   hmac_sha256_process();
   hmac_sha256_final((hmac_digest_t *)&hash);
-  CHECK_STATUS_OK(send_final_hash(&uj, &hash));
+  TRY(send_final_hash(uj, &hash));
   LOG_INFO("SHA256 hash of all perso objects: %08x%08x%08x%08x%08x%08x%08x%08x",
            hash.data[7], hash.data[6], hash.data[5], hash.data[4], hash.data[3],
            hash.data[2], hash.data[1], hash.data[0]);
 
-  CHECK_STATUS_OK(finalize_otp_partitions());
+  // Complete any remaining OTP programming.
+  TRY(finalize_otp_partitions());
+
+  return OK_STATUS();
+}
+
+bool test_main(void) {
+  // Unconditionally disable the watchdog timer.
+  // This is needed to avoid a watchdog reset if enabled in the ROM.
+  watchdog_disable();
+
+  // Enable peripherals, ATE GPIO indicators, and the SPI console.
+  CHECK_STATUS_OK(peripheral_handles_init());
+  pinmux_testutils_init(&pinmux);
+  CHECK_STATUS_OK(configure_ate_gpio_indicators());
+  CHECK_DIF_OK(dif_gpio_write(&gpio, kGpioPinTestStart, true));
+  ujson_t uj = ujson_ottf_console();
+
+  log_self_hash();
+
+  // Read the reset reason directly from the RSTMGR.
+  // This is needed to clear the reset reason before the first call to
+  // `personalize_otp_and_flash_secrets()`, which will reset the device.
+  uint32_t reason = rstmgr_reason_get();
+  if (reason != 0) {
+    rstmgr_reason_clear(reason);
+  }
+
+  // Execute personalization provisioning sequence.
+  status_t result = provision(&uj);
+  if (!status_ok(result)) {
+    CHECK_DIF_OK(dif_gpio_write(&gpio, kGpioPinTestError, true));
+  } else {
+    CHECK_DIF_OK(dif_gpio_write(&gpio, kGpioPinTestDone, true));
+  }
+
   // DO NOT CHANGE THE BELOW STRING without modifying the host code in
   // sw/host/provisioning/ft_lib/src/lib.rs
   LOG_INFO("Personalization done.");

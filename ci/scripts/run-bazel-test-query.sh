@@ -48,7 +48,7 @@ negative_regex="[\[ ](${negative_tags_or})[,\]]"
 targets=$(IFS="|"; echo "$*")
 targets="${targets/|/ union }"
 # Finally build the bazel query
-./bazelisk.sh query \
+./ci/bazelisk.sh query \
     --noimplicit_deps \
     --noinclude_aspects \
     --output=label \

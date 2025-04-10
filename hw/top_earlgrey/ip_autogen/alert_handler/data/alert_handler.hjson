@@ -26,22 +26,17 @@
     { protocol: "tlul", direction: "device", hier_path: "u_reg_wrap.u_reg" }
   ],
   regwidth: "32",
-  # The number of escalation severities and ping count width parameters
-  # have a local and non-local varieties instantiated with the same value.
-  # This is to work around the restriction in CSR generation to only allow
-  # local parameters, or the value may become inconsistent when the
-  # parameter gets an override.
   param_list: [
     // Random netlist constants
     { name:      "RndCnstLfsrSeed",
       desc:      "Compile-time random bits for initial LFSR seed",
-      type:      "alert_handler_pkg::lfsr_seed_t"
+      type:      "alert_pkg::lfsr_seed_t"
       randcount: "32",
       randtype:  "data", // randomize randcount databits
     }
     { name:      "RndCnstLfsrPerm",
       desc:      "Compile-time random permutation for LFSR output",
-      type:      "alert_handler_pkg::lfsr_perm_t"
+      type:      "alert_pkg::lfsr_perm_t"
       randcount: "32",
       randtype:  "perm", // random permutation for randcount elements
     }
@@ -235,20 +230,9 @@
       default: "4",
       local: "true"
     },
-    { name: "EscNumSeverities",
-      desc: "Number of escalation severities as regular parameter",
-      type: "int",
-      # NOTE: If this value is to be changed, pass the exposed parameter as
-      # a regular override to all IPs with prim_esc_receiver
-      default: "4",
-      expose: "true",
-      local: "false"
-    },
     { name: "N_ESC_SEV",
       desc: "Number of escalation severities",
       type: "int",
-      # NOTE: If this value is to be changed, ensure all IPs with
-      # prim_esc_receiver get updated as well.
       default: "4",
       local: "true"
     },
@@ -264,20 +248,9 @@
       default: "7",
       local: "true"
     },
-    { name: "EscPingCountWidth",
-      desc: "Width of ping counter as regular parameter",
-      type: "int",
-      # NOTE: If this value is to be changed, pass the exposed parameter as
-      # a regular override to all IPs with prim_esc_receiver
-      default: "16",
-      expose: "true",
-      local: "false"
-    },
     { name: "PING_CNT_DW",
       desc: "Width of ping counter",
       type: "int",
-      # NOTE: If this value is to be changed, ensure all IPs with
-      # prim_esc_receiver get updated as well.
       default: "16",
       local: "true"
     },
@@ -348,7 +321,7 @@
       type:    "uni",
       name:    "crashdump",
       act:     "req",
-      package: "alert_handler_pkg"
+      package: "alert_pkg"
     },
     { struct:  "edn"
       type:    "req_rsp"

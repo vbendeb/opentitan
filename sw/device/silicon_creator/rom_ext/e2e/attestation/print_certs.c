@@ -32,8 +32,8 @@ static void base64_encode(char *dest, const uint8_t *data, int32_t len) {
 static status_t print_cert(char *dest,
                            const flash_ctrl_info_page_t *info_page) {
   uint8_t data[2048];
-  TRY(flash_ctrl_info_read_zeros_on_read_error(
-      info_page, 0, sizeof(data) / sizeof(uint32_t), data));
+  TRY(flash_ctrl_info_read(info_page, 0, sizeof(data) / sizeof(uint32_t),
+                           data));
 
   uint32_t offset = 0;
   size_t len = sizeof(data);
@@ -64,7 +64,14 @@ static status_t print_owner_block(char *dest,
 static status_t print_certs(void) {
   char buf[3072];
   // Print certificates.
-  TRY(print_cert(buf, &kFlashCtrlInfoPageFactoryCerts));
+  // TODO: print factory certs on FPGA;
+  // On non-silicon targets, the factory certs pages will not be provisioned,
+  // and it is not updated by the ROM_EXT if it is not provisioned. This will
+  // trigger an ECC error when trying to read a page that has scrambling setup
+  // by the ROM_EXT but is not erased after.
+  if (kDeviceType == kDeviceSilicon) {
+    TRY(print_cert(buf, &kFlashCtrlInfoPageFactoryCerts));
+  }
   TRY(print_cert(buf, &kFlashCtrlInfoPageDiceCerts));
 
   // Print owner information.

@@ -14,10 +14,8 @@ module prim_generic_ram_1r1w import prim_ram_2p_pkg::*; #(
 
   localparam int Aw              = $clog2(Depth)  // derived parameter
 ) (
-  input logic              clk_a_i,
-  input logic              clk_b_i,
-  input logic              rst_a_ni,
-  input logic              rst_b_ni,
+  input clk_a_i,
+  input clk_b_i,
 
   // Port A can only write
   input                    a_req_i,
@@ -30,8 +28,7 @@ module prim_generic_ram_1r1w import prim_ram_2p_pkg::*; #(
   input        [Aw-1:0]    b_addr_i,
   output logic [Width-1:0] b_rdata_o,
 
-  input  ram_2p_cfg_t      cfg_i,
-  output ram_2p_cfg_rsp_t  cfg_rsp_o
+  input ram_2p_cfg_t       cfg_i
 );
 
 // For certain synthesis experiments we compile the design with generic models to get an unmapped
@@ -44,9 +41,8 @@ module prim_generic_ram_1r1w import prim_ram_2p_pkg::*; #(
 // these runs with the following macro.
 `ifndef SYNTHESIS_MEMORY_BLACK_BOXING
 
-  logic unused_signals;
-  assign unused_signals = ^{cfg_i, rst_a_ni, rst_b_ni};
-  assign cfg_rsp_o      = '0;
+  logic unused_cfg;
+  assign unused_cfg = ^cfg_i;
 
   // Width of internal write mask. Note *_wmask_i input into the module is always assumed
   // to be the full bit mask.

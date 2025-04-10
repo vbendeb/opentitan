@@ -42,9 +42,9 @@ cc_library(
     deps = [
         ":ast_program",
         ":sram_start_headers",
-        "//hw/top:csrng_c_regs",
-        "//hw/top:edn_c_regs",
-        "//hw/top:entropy_src_c_regs",
+        "//hw/ip/csrng/data:csrng_c_regs",
+        "//hw/ip/edn/data:edn_c_regs",
+        "//hw/ip/entropy_src/data:entropy_src_c_regs",
         "//hw/top_earlgrey/sw/autogen:top_earlgrey",
         "//sw/device/lib/crt",
         "//sw/device/lib/testing/test_framework:ottf_isrs",
@@ -58,9 +58,9 @@ cc_library(
     deps = [
         ":ast_program",
         ":sram_start_headers",
-        "//hw/top:csrng_c_regs",
-        "//hw/top:edn_c_regs",
-        "//hw/top:entropy_src_c_regs",
+        "//hw/ip/csrng/data:csrng_c_regs",
+        "//hw/ip/edn/data:edn_c_regs",
+        "//hw/ip/entropy_src/data:entropy_src_c_regs",
         "//hw/top_earlgrey/sw/autogen:top_earlgrey",
         "//sw/device/lib/crt",
         "//sw/device/lib/testing/test_framework:ottf_isrs",
@@ -72,9 +72,9 @@ cc_library(
     srcs = ["flash_info_fields.c"],
     hdrs = ["flash_info_fields.h"],
     deps = [
-        "//hw/top:ast_c_regs",
-        "//hw/top:flash_ctrl_c_regs",
-        "//hw/top:otp_ctrl_c_regs",
+        "//hw/ip/otp_ctrl/data:otp_ctrl_c_regs",
+        "//hw/top_earlgrey/ip/ast/data:ast_c_regs",
+        "//hw/top_earlgrey/ip_autogen/flash_ctrl:flash_ctrl_c_regs",
         "//sw/device/lib/base:status",
         "//sw/device/lib/dif:flash_ctrl",
         "//sw/device/lib/testing:flash_ctrl_testutils",
@@ -87,7 +87,7 @@ cc_library(
     srcs = ["otp_fields.c"],
     hdrs = ["otp_fields.h"],
     deps = [
-        "//hw/top:otp_ctrl_c_regs",
+        "//hw/ip/otp_ctrl/data:otp_ctrl_c_regs",
         "//sw/device/lib/base:bitfield",
     ],
 )
@@ -102,7 +102,7 @@ cc_library(
     srcs = ["util.c"],
     hdrs = ["util.h"],
     deps = [
-        "//hw/top:otp_ctrl_c_regs",
+        "//hw/ip/otp_ctrl/data:otp_ctrl_c_regs",
         "//hw/top_earlgrey/sw/autogen:top_earlgrey",
         "//sw/device/lib/base:status",
         "//sw/device/lib/crypto/impl:hash",
@@ -146,10 +146,11 @@ opentitan_test(
     },
     fpga = fpga_params(
         changes_otp = True,
-        otp = "//hw/top_earlgrey/data/otp:img_test_unlocked1",
+        otp = "//hw/ip/otp_ctrl/data:img_test_unlocked1",
         tags = ["manuf"],
     ),
     deps = [
+        ":flash_info_fields",
         ":individualize",
         ":otp_fields",
         "//hw/top_earlgrey/sw/autogen:top_earlgrey",
@@ -158,7 +159,9 @@ opentitan_test(
         "//sw/device/lib/dif:lc_ctrl",
         "//sw/device/lib/dif:otp_ctrl",
         "//sw/device/lib/dif:rstmgr",
+        "//sw/device/lib/testing:flash_ctrl_testutils",
         "//sw/device/lib/testing:lc_ctrl_testutils",
+        "//sw/device/lib/testing:otp_ctrl_testutils",
         "//sw/device/lib/testing:rstmgr_testutils",
         "//sw/device/lib/testing/json:provisioning_data",
         "//sw/device/lib/testing/test_framework:ottf_main",
@@ -175,10 +178,9 @@ cc_library(
         ":flash_info_fields",
         ":otp_img_types",
         ":util",
-        "//hw/top:otp_ctrl_c_regs",
+        "//hw/ip/otp_ctrl/data:otp_ctrl_c_regs",
         "//hw/top_earlgrey/sw/autogen:top_earlgrey",
         "//sw/device/lib/base:macros",
-        "//sw/device/lib/base:memory",
         "//sw/device/lib/base:status",
         "//sw/device/lib/crypto/impl:hash",
         "//sw/device/lib/dif:flash_ctrl",
@@ -210,7 +212,7 @@ opentitan_test(
     },
     fpga = fpga_params(
         changes_otp = True,
-        otp = "//hw/top_earlgrey/data/otp:img_test_unlocked1",
+        otp = "//hw/ip/otp_ctrl/data:img_test_unlocked1",
         tags = ["manuf"],
         test_cmd = """
             --bootstrap={firmware}
@@ -219,9 +221,9 @@ opentitan_test(
     ),
     deps = [
         ":flash_info_fields",
-        # Testing sival SKU only should be sufficient.
-        ":individualize_sw_cfg_sival",
-        "//hw/top:otp_ctrl_c_regs",
+        # Testing emulation SKU only should be sufficient.
+        ":individualize_sw_cfg_em00",
+        "//hw/ip/otp_ctrl/data:otp_ctrl_c_regs",
         "//hw/top_earlgrey/sw/autogen:top_earlgrey",
         "//sw/device/lib/base:status",
         "//sw/device/lib/dif:flash_ctrl",
@@ -233,6 +235,7 @@ opentitan_test(
         "//sw/device/lib/testing:otp_ctrl_testutils",
         "//sw/device/lib/testing:rstmgr_testutils",
         "//sw/device/lib/testing/test_framework:ottf_main",
+        "//sw/device/silicon_creator/lib/drivers:hmac",
     ],
 )
 
@@ -273,7 +276,7 @@ opentitan_test(
     fpga = fpga_params(
         changes_otp = True,
         needs_jtag = True,
-        otp = "//hw/top_earlgrey/data/otp/sival_skus:otp_img_dev_manuf_individualized",
+        otp = "//hw/ip/otp_ctrl/data/earlgrey_skus/emulation:otp_img_dev_manuf_individualized",
         tags = [
             "lc_dev",
             "manuf",
@@ -287,9 +290,9 @@ opentitan_test(
     deps = [
         ":flash_info_fields",
         ":personalize",
-        "//hw/top:flash_ctrl_c_regs",
-        "//hw/top:lc_ctrl_c_regs",
-        "//hw/top:otp_ctrl_c_regs",
+        "//hw/ip/lc_ctrl/data:lc_ctrl_c_regs",
+        "//hw/ip/otp_ctrl/data:otp_ctrl_c_regs",
+        "//hw/top_earlgrey/ip_autogen/flash_ctrl:flash_ctrl_c_regs",
         "//hw/top_earlgrey/sw/autogen:top_earlgrey",
         "//sw/device/lib/base:status",
         "//sw/device/lib/dif:flash_ctrl",

@@ -60,7 +60,6 @@ struct Inner {
     host_out_device_in: Option<Rc<dyn GpioPin>>,
     host_in_device_out: Option<Rc<dyn GpioPin>>,
     chip_select: Option<Rc<dyn GpioPin>>,
-    gsc_ready: Option<Rc<dyn GpioPin>>,
 }
 
 impl LogicalSpiWrapper {
@@ -82,7 +81,6 @@ impl LogicalSpiWrapper {
                 host_out_device_in: Self::lookup_pin(transport, &conf.host_out_device_in)?,
                 host_in_device_out: Self::lookup_pin(transport, &conf.host_in_device_out)?,
                 chip_select: Self::lookup_pin(transport, &conf.chip_select)?,
-                gsc_ready: Self::lookup_pin(transport, &conf.gsc_ready)?,
             }),
         })
     }
@@ -125,13 +123,12 @@ impl LogicalSpiWrapper {
             inner.host_out_device_in.as_ref(),
             inner.host_in_device_out.as_ref(),
             inner.chip_select.as_ref(),
-            inner.gsc_ready.as_ref(),
         ) {
-            (None, None, None, None, None) => (),
-            (clock, hodi, hido, cs, rdy) => self
+            (None, None, None, None) => (),
+            (clock, hodi, hido, cs) => self
                 .physical_wrapper
                 .underlying_target
-                .set_pins(clock, hodi, hido, cs, rdy)?,
+                .set_pins(clock, hodi, hido, cs)?,
         }
         self.physical_wrapper.last_used_by_uid.set(Some(self.uid));
         Ok(())
@@ -169,17 +166,12 @@ impl Target for LogicalSpiWrapper {
             .supports_bidirectional_transfer()
     }
 
-    fn supports_tpm_poll(&self) -> Result<bool> {
-        self.physical_wrapper.underlying_target.supports_tpm_poll()
-    }
-
     fn set_pins(
         &self,
         serial_clock: Option<&Rc<dyn GpioPin>>,
         host_out_device_in: Option<&Rc<dyn GpioPin>>,
         host_in_device_out: Option<&Rc<dyn GpioPin>>,
         chip_select: Option<&Rc<dyn GpioPin>>,
-        gsc_ready: Option<&Rc<dyn GpioPin>>,
     ) -> Result<()> {
         let mut inner = self.inner.borrow_mut();
         if serial_clock.is_some() {
@@ -193,9 +185,6 @@ impl Target for LogicalSpiWrapper {
         }
         if chip_select.is_some() {
             inner.chip_select = chip_select.map(Rc::clone);
-        }
-        if gsc_ready.is_some() {
-            inner.gsc_ready = gsc_ready.map(Rc::clone);
         }
         Ok(())
     }
@@ -214,13 +203,6 @@ impl Target for LogicalSpiWrapper {
 
     fn set_voltage(&self, voltage: crate::util::voltage::Voltage) -> Result<()> {
         self.physical_wrapper.underlying_target.set_voltage(voltage)
-    }
-
-    fn get_flashrom_programmer(&self) -> Result<String> {
-        self.apply_settings_to_underlying()?;
-        self.physical_wrapper
-            .underlying_target
-            .get_flashrom_programmer()
     }
 
     fn run_transaction(&self, transaction: &mut [spi::Transfer]) -> Result<()> {

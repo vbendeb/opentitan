@@ -18,9 +18,6 @@ class sram_ctrl_env_cfg #(parameter int AddrWidth = 10)
   // This tracks when the ram is undergoing initialization in the scoreboard.
   bit in_init = 1'b0;
 
-  // Disables certain checks for FI tests.
-  bit is_fi_test = 1'b0;
-
   // ext component cfgs
   rand push_pull_agent_cfg#(.DeviceDataWidth(KDI_DATA_SIZE)) m_kdi_cfg;
 
@@ -29,7 +26,7 @@ class sram_ctrl_env_cfg #(parameter int AddrWidth = 10)
   virtual clk_rst_if otp_clk_rst_vif;
   virtual sram_ctrl_lc_if lc_vif;
   virtual sram_ctrl_exec_if exec_vif;
-  sram_ctrl_bkdr_util sram_ctrl_bkdr_util_h;
+  mem_bkdr_util mem_bkdr_util_h;
 
   // Store the scb handle for seq. When seq initializes the mem, we should initialize mem_model in
   // scb as well.

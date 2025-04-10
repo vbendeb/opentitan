@@ -20,7 +20,7 @@ Parameter                        | Default (Max)  | Top Earlgrey   | Description
 Referring to the [Comportable guideline for peripheral device functionality](https://opentitan.org/book/doc/contributing/hw/comportability), the module **`lc_ctrl`** has the following hardware interfaces defined
 - Primary Clock: **`clk_i`**
 - Other Clocks: **`clk_kmac_i`**
-- Bus Device Interfaces (TL-UL): **`regs_tl`**, **`dmi_tl`**
+- Bus Device Interfaces (TL-UL): **`tl`**
 - Bus Host Interfaces (TL-UL): *none*
 - Peripheral Pins for Chip IO: *none*
 - Interrupts: *none*
@@ -34,12 +34,11 @@ Referring to the [Comportable guideline for peripheral device functionality](htt
 | esc_scrap_state0_rx      | prim_esc_pkg::esc_rx             | uni     | req   |       1 |                                                                                                                                                                                                                                                                                 |
 | esc_scrap_state1_tx      | prim_esc_pkg::esc_tx             | uni     | rcv   |       1 |                                                                                                                                                                                                                                                                                 |
 | esc_scrap_state1_rx      | prim_esc_pkg::esc_rx             | uni     | req   |       1 |                                                                                                                                                                                                                                                                                 |
-| pwr_lc                   | lc_ctrl_pkg::pwr_lc              | req_rsp | rsp   |       1 |                                                                                                                                                                                                                                                                                 |
+| pwr_lc                   | pwrmgr_pkg::pwr_lc               | req_rsp | rsp   |       1 |                                                                                                                                                                                                                                                                                 |
 | lc_otp_vendor_test       | otp_ctrl_pkg::lc_otp_vendor_test | req_rsp | req   |       1 |                                                                                                                                                                                                                                                                                 |
 | otp_lc_data              | otp_ctrl_pkg::otp_lc_data        | uni     | rcv   |       1 |                                                                                                                                                                                                                                                                                 |
 | lc_otp_program           | otp_ctrl_pkg::lc_otp_program     | req_rsp | req   |       1 |                                                                                                                                                                                                                                                                                 |
 | kmac_data                | kmac_pkg::app                    | req_rsp | req   |       1 |                                                                                                                                                                                                                                                                                 |
-| lc_raw_test_rma          | lc_ctrl_pkg::lc_tx               | uni     | req   |       1 |                                                                                                                                                                                                                                                                                 |
 | lc_dft_en                | lc_ctrl_pkg::lc_tx               | uni     | req   |       1 |                                                                                                                                                                                                                                                                                 |
 | lc_nvm_debug_en          | lc_ctrl_pkg::lc_tx               | uni     | req   |       1 |                                                                                                                                                                                                                                                                                 |
 | lc_hw_debug_en           | lc_ctrl_pkg::lc_tx               | uni     | req   |       1 |                                                                                                                                                                                                                                                                                 |
@@ -62,8 +61,7 @@ Referring to the [Comportable guideline for peripheral device functionality](htt
 | otp_manuf_state          | otp_ctrl_pkg::otp_manuf_state    | uni     | rcv   |       1 |                                                                                                                                                                                                                                                                                 |
 | hw_rev                   | lc_ctrl_pkg::lc_hw_rev           | uni     | req   |       1 |                                                                                                                                                                                                                                                                                 |
 | strap_en_override        | logic                            | uni     | req   |       1 | This signal transitions from 0 -> 1 by the lc_ctrl manager after volatile RAW_UNLOCK in order to re-sample the HW straps. The signal stays at 1 until reset. Note that this is only used in test chips when SecVolatileRawUnlockEn = 1. Otherwise this signal is tied off to 0. |
-| regs_tl                  | tlul_pkg::tl                     | req_rsp | rsp   |       1 |                                                                                                                                                                                                                                                                                 |
-| dmi_tl                   | tlul_pkg::tl                     | req_rsp | rsp   |       1 |                                                                                                                                                                                                                                                                                 |
+| tl                       | tlul_pkg::tl                     | req_rsp | rsp   |       1 |                                                                                                                                                                                                                                                                                 |
 
 ## Security Alerts
 
@@ -153,7 +151,7 @@ See also [power manager documentation](../../../top_earlgrey/ip_autogen/pwrmgr/R
 
 #### OTP Interfaces
 
-All interfaces to and from OTP are explained in detail in the OTP Specification Document (for example, see [earlgrey's OTP specification](../../../top_earlgrey/ip_autogen/otp_ctrl/README.md#life-cycle-interfaces)).
+All interfaces to and from OTP are explained in detail in the [OTP Specification Document](../../otp_ctrl/README.md#life-cycle-interfaces).
 
 #### KMAC Interface
 

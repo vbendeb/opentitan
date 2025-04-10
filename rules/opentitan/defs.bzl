@@ -4,7 +4,6 @@
 
 """Rules to build OpenTitan for the RISC-V target"""
 
-load("@bazel_skylib//lib:sets.bzl", "sets")
 load(
     "@lowrisc_opentitan//rules:rv.bzl",
     _OPENTITAN_CPU = "OPENTITAN_CPU",
@@ -15,10 +14,6 @@ load(
     "@lowrisc_opentitan//rules/opentitan:cc.bzl",
     _opentitan_binary = "opentitan_binary",
     _opentitan_test = "opentitan_test",
-)
-load(
-    "@lowrisc_opentitan//rules/opentitan:ci.bzl",
-    "ci_orchestrator",
 )
 load(
     "@lowrisc_opentitan//rules/opentitan:fpga.bzl",
@@ -37,10 +32,6 @@ load(
     _spx_key_for_lc_state = "spx_key_for_lc_state",
 )
 load(
-    "@lowrisc_opentitan//rules/opentitan:manual.bzl",
-    _opentitan_manual_test = "opentitan_manual_test",
-)
-load(
     "@lowrisc_opentitan//rules/opentitan:silicon.bzl",
     _silicon = "silicon",
     _silicon_params = "silicon_params",
@@ -56,14 +47,18 @@ load(
     _verilator_params = "verilator_params",
 )
 load(
+    "@lowrisc_opentitan//rules/opentitan:ci.bzl",
+    "ci_orchestrator",
+)
+load(
+    "@provisioning_exts//:cfg.bzl",
+    "EXT_EXEC_ENV_SILICON_ROM_EXT",
+)
+load("@bazel_skylib//lib:sets.bzl", "sets")
+load(
     "@lowrisc_opentitan//rules/opentitan:qemu.bzl",
     _qemu_params = "qemu_params",
     _sim_qemu = "sim_qemu",
-)
-load(
-    "@lowrisc_opentitan//hw/top:defs.bzl",
-    "ALL_TOPS",
-    "opentitan_select_top",
 )
 
 # The following definition is used to clear the key set in the signing
@@ -71,11 +66,13 @@ load(
 # and opentitan_binary rules.
 CLEAR_KEY_SET = {"//signing:none_key": "none_key"}
 
-# Re-exports of names from transition.bzl
+# Re-exports of names from transition.bzl; many files in the repo use opentitan.bzl
+# to get to them.
 OPENTITAN_CPU = _OPENTITAN_CPU
 OPENTITAN_PLATFORM = _OPENTITAN_PLATFORM
 opentitan_transition = _opentitan_transition
 
+opentitan_binary = _opentitan_binary
 fpga_cw305 = _fpga_cw305
 fpga_cw310 = _fpga_cw310
 fpga_cw340 = _fpga_cw340
@@ -105,8 +102,6 @@ rsa_key_by_name = _rsa_key_by_name
 spx_key_for_lc_state = _spx_key_for_lc_state
 spx_key_by_name = _spx_key_by_name
 
-opentitan_manual_test = _opentitan_manual_test
-
 # The default set of test environments for Earlgrey.
 EARLGREY_TEST_ENVS = {
     "//hw/top_earlgrey:fpga_cw310_sival_rom_ext": None,
@@ -119,7 +114,7 @@ EARLGREY_TEST_ENVS = {
 # The default set of test environments for Earlgrey.
 EARLGREY_SILICON_OWNER_ROM_EXT_ENVS = {
     "//hw/top_earlgrey:silicon_owner_sival_rom_ext": None,
-}
+} | EXT_EXEC_ENV_SILICON_ROM_EXT
 
 # All CW340 test environments for Earlgrey.
 EARLGREY_CW340_TEST_ENVS = {
@@ -128,11 +123,6 @@ EARLGREY_CW340_TEST_ENVS = {
     "//hw/top_earlgrey:fpga_cw340_sival": None,
     "//hw/top_earlgrey:fpga_cw340_sival_rom_ext": None,
     "//hw/top_earlgrey:fpga_cw340_rom_ext": None,
-}
-
-# The default set of test environments for Darjeeling.
-DARJEELING_TEST_ENVS = {
-    "//hw/top_darjeeling:sim_dv": None,
 }
 
 # Messages we expect for possible test outcomes.
@@ -195,93 +185,13 @@ def _hacky_tags(env):
         tags.append(suffix)
     return tags
 
-def _exec_env_to_top_map(exec_env):
-    """
-    Given a list of execution environments, return a map that indicates for
-    each one which top it corresponds to.
-
-    For this to work, this macros expects that all executions environments satisfy
-    one of the two following requirements:
-    - either they must be defined in the corresponding top's directory, e.g.
-      //hw/top_earlgrey:<name_of_exec_env>. This directory is determined from the path
-      of the top's hjson created by topgen.
-    - or the target name must start with "top_<topname>", e.g.
-      top_earlgrey_fpga_cw310_sival_rom_ext_no_hyper
-    """
-    top_map = {}
-    for top in ALL_TOPS:
-        # Extract the top's package from the hjson path.
-        suffix = "/data/autogen:top_{}.gen.hjson".format(top.name)
-        if not top.hjson.endswith(suffix):
-            fail("top {}'s hjson does not end with the expected suffix".format(top.name))
-        pkg = top.hjson.removesuffix(suffix)
-        top_map[pkg] = top.name
-
-    ev_map = {}
-    for env in exec_env:
-        (pkg, target) = env.split(":")
-
-        # Remove @ if starting with @//
-        if pkg.startswith("@//"):
-            pkg = pkg[1:]
-        if pkg in top_map:
-            ev_map[env] = top_map[pkg]
-        else:
-            # Check if the target name starts with top_<topname>
-            for top in ALL_TOPS:
-                if target.startswith("top_" + top.name):
-                    ev_map[env] = top.name
-
-            # Check if we found one
-            if env not in ev_map:
-                fail("exec env {} does not match any known top. See _exec_env_to_top_map() for details".format(env))
-    return ev_map
-
-# Note about multitop behaviour:
-# This rules allows `exec_env` to list execution environments from multiple tops.
-# It will automatically filter the relevant ones based on the value of //hw/top:top.
-# This means that the targets created by opentitan_binary() will expose only the
-# binaries which can be compiled for the active top.
-#
-# See _exec_env_to_top_map() for constraints on the exec_env for this work.
-def opentitan_binary(name, exec_env, **kwargs):
-    # Filter execution environments by top.
-    ev_map = _exec_env_to_top_map(exec_env)
-    select_map = {}
-    for ev in exec_env:
-        topname = ev_map[ev]
-        select_map[topname] = select_map.get(topname, []) + [ev]
-
-    kwargs["target_compatible_with"] = \
-        kwargs.get("target_compatible_with", []) + \
-        opentitan_select_top(
-            {
-                top: []
-                for top in select_map.keys()
-            },
-            ["@platforms//:incompatible"],
-        )
-
-    _opentitan_binary(
-        name = name,
-        exec_env = opentitan_select_top(select_map, []),
-        **kwargs
-    )
-
-# Note about multitop behaviour:
-# This rules allows `exec_env` to list execution environments from multiple tops.
-# It will automatically filter the relevant ones based on the value of //hw/top:top.
-# This means that the targets created by opentitan_test() will expose only the
-# test which can be compiled/run for the active top.
-#
-# See _exec_env_to_top_map() for constraints on the exec_env for this work.
-
 def opentitan_test(
         name,
         srcs = [],
         kind = "flash",
         deps = [],
         copts = [],
+        data = [],
         defines = [],
         local_defines = [],
         includes = [],
@@ -297,7 +207,6 @@ def opentitan_test(
         silicon = _silicon_params(),
         verilator = _verilator_params(),
         qemu = _qemu_params(),
-        data = [],
         run_in_ci = None,
         **kwargs):
     """Instantiate a test per execution environment.
@@ -341,10 +250,8 @@ def opentitan_test(
     test_parameters.update(kwargs)
     kwargs_unused = kwargs.keys()
 
-    # Build a map from execution environment to test parameters.
-    # Find all exec_env which are not marked as broken at the same time.
-    env_to_tparam = {}
-    non_broken_exec_env = []
+    # Precompute parameters.
+    all_test_params = []
     for (env, pname) in exec_env.items():
         pname = _parameter_name(env, pname)
 
@@ -352,119 +259,34 @@ def opentitan_test(
         # Prevents merge skew problems while the default parameter name changes.
         if pname == "fpga" and pname not in kwargs_unused:
             pname = "cw310"
+
+        extra_tags = _hacky_tags(env)
+        tparam = test_parameters[pname]
         if pname in kwargs_unused:
             kwargs_unused.remove(pname)
-        if pname not in test_parameters:
-            fail("execution environment {} wants test parameters '{}' but those are not specified".format(env, pname))
-        env_to_tparam[env] = test_parameters[pname]
-        if not "broken" in env_to_tparam[env].tags:
+        all_test_params.append((env, pname, tparam, extra_tags))
+
+    # Find all exec_envs which are not marked as broken.
+    non_broken_exec_env = []
+    for (env, pname, tparam, extra_tags) in all_test_params:
+        if not ("broken" in tparam.tags + extra_tags):
             non_broken_exec_env.append(env)
 
-    # Make sure that we used all elements in kwargs.
-    if len(kwargs_unused) > 0:
-        fail("the following arguments passed to opentitan_test were not used: {}".format(", ".join(kwargs_unused)))
-
-    # Compute set of exec_env that should be marked as skip_in_ci.
     if run_in_ci == None:
         skip_in_ci = sets.make(ci_orchestrator(name, non_broken_exec_env))
-        all_envs = sets.make(exec_env.keys())
+        all_envs = sets.make([env for (env, _, _, _) in all_test_params])
         run_in_ci = sets.difference(all_envs, skip_in_ci)
     else:
         run_in_ci = sets.make(run_in_ci)
 
-    # List of test parameters and how they map to the _opentitan_test attributes
-    # and which default values they use if not present.
-    TEST_PARAM_ATTRS = {
-        # _opentitan_test attr -> (test param field name, default value)
-        "defines": ("defines", []),
-        "tags": ("tags", []),
-        "timeout": ("timeout", None),
-        "test_harness": ("test_harness", None),
-        "binaries": ("binaries", {}),
-        "rom": ("rom", None),
-        "rom_ext": ("rom_ext", None),
-        "otp": ("otp", None),
-        "bitstream": ("bitstream", None),
-        "post_test_cmd": ("post_test_cmd", ""),
-        "post_test_harness": ("post_test_harness", None),
-        "test_cmd": ("test_cmd", ""),
-        "data": ("data", []),
-        "param": ("param", None),
-        "needs_jtag": ("needs_jtag", False),
-    }
-
-    # Precompute parameters.
-    all_test_kwargs = {}
-    for (env, tparam) in env_to_tparam.items():
-        test_args = {}
-
-        # Copy all arguments from the test params into the arguments.
-        for (arg, (targ, default)) in TEST_PARAM_ATTRS.items():
-            test_args[arg] = getattr(tparam, targ, default)
-        if pname in kwargs_unused:
-            kwargs_unused.remove(pname)
-
-        # Modify test parameters to account for global parameters.
-        test_args["defines"] = defines + test_args["defines"]
-        test_args["data"] = data + test_args["data"]
-        test_args["tags"] = test_args["tags"] + _hacky_tags(env)
-
-        # Tag test if it must not run in CI.
-        if not sets.contains(run_in_ci, env):
-            test_args["tags"].append("skip_in_ci")
-        all_test_kwargs[env] = test_args
-
-    # With multitop, it is possible to have several exec_env with the same suffix
-    # but which belong to different tops, e.g. //hw/top_earlgrey:sim_dv and
-    # //hw/top_darjeeling:sim_dv. In this case, we still create a single
-    # test call "<testname>_<sim_dv>" but the definition will use select() statements
-    # based on the top. To do that, first we precompute a map from suffixes to list
-    # of exec env.
-    suffix_map = {}
-    for env in exec_env:
-        (_, suffix) = env.split(":")
-        suffix_map[suffix] = suffix_map.get(suffix, []) + [env]
-    ev_to_top_map = _exec_env_to_top_map(exec_env)
-
     all_tests = []
-    for (suffix, env_list) in suffix_map.items():
-        # Build a list of kwargs with select statements in them.
-        test_kwargs = {}
-        test_kwargs["exec_env"] = opentitan_select_top(
-            {
-                ev_to_top_map[env]: env
-                for env in env_list
-            },
-            None,
-        )
-        test_kwargs["target_compatible_with"] = opentitan_select_top(
-            {
-                ev_to_top_map[env]: []
-                for env in env_list
-            },
-            ["@platforms//:incompatible"],
-        )
-        for (arg, (_, default)) in TEST_PARAM_ATTRS.items():
-            # Some attributes are not configurable and therefore cannot use
-            # a select statement. For those, simply check that all cases are
-            # the same.
-            if arg in ["tags", "timeout"]:
-                first_val = None
-                first_env = None
-                for env in env_list:
-                    v = all_test_kwargs[env][arg]
-                    if first_val == None:
-                        first_val, first_env = v, env
-                    elif first_val != v:
-                        fail("attribute {} is not configurable and must have the same values for the following exec_env: {}".format(arg, env_list))
-                test_kwargs[arg] = first_val
-            else:
-                select_args = {
-                    ev_to_top_map[env]: all_test_kwargs[env][arg]
-                    for env in env_list
-                }
-                test_kwargs[arg] = opentitan_select_top(select_args, default)
+    for (env, pname, tparam, extra_tags) in all_test_params:
+        # Tag test if it must not run in CI.
+        skip_in_ci = []
+        if not sets.contains(run_in_ci, env):
+            skip_in_ci.append("skip_in_ci")
 
+        (_, suffix) = env.split(":")
         test_name = "{}_{}".format(name, suffix)
         all_tests.append(":" + test_name)
         _opentitan_test(
@@ -473,17 +295,39 @@ def opentitan_test(
             kind = kind,
             deps = deps,
             copts = copts,
+            defines = defines + getattr(tparam, "defines", []),
             local_defines = local_defines,
             includes = includes,
             linker_script = linker_script,
             linkopts = linkopts,
+            exec_env = env,
             naming_convention = "{name}",
+            # Tagging and timeout info always comes from a param block.
+            tags = tparam.tags + extra_tags + skip_in_ci,
+            timeout = tparam.timeout,
+            local = tparam.local,
+            # Override parameters in the test rule.
+            test_harness = tparam.test_harness,
+            binaries = tparam.binaries,
+            rom = tparam.rom,
+            rom_ext = tparam.rom_ext,
+            otp = tparam.otp,
+            bitstream = tparam.bitstream,
+            post_test_cmd = getattr(tparam, "post_test_cmd", ""),
+            post_test_harness = getattr(tparam, "post_test_harness", None),
+            test_cmd = tparam.test_cmd,
+            param = tparam.param,
+            data = data + tparam.data,
             ecdsa_key = ecdsa_key,
             rsa_key = rsa_key,
             spx_key = spx_key,
             manifest = manifest,
-            **test_kwargs
+            needs_jtag = getattr(tparam, "needs_jtag", False),
         )
+
+    # Make sure that we used all elements in kwargs
+    if len(kwargs_unused) > 0:
+        fail("the following arguments passed to opentitan_test were not used: {}".format(", ".join(kwargs_unused)))
 
     native.test_suite(
         name = name,

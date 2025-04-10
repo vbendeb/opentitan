@@ -28,9 +28,7 @@ module kmac
   parameter int SecCmdDelay = 0,
 
   // Accept SW message when idle and before receiving a START command. Useful for SCA only.
-  parameter bit SecIdleAcceptSwMsg          = 1'b0,
-  parameter int unsigned NumAppIntf         = 3,
-  parameter app_config_t AppCfg[NumAppIntf] = '{AppCfgKeyMgr, AppCfgLcCtrl, AppCfgRomCtrl},
+  parameter bit SecIdleAcceptSwMsg = 1'b0,
 
   parameter lfsr_perm_t RndCnstLfsrPerm = RndCnstLfsrPermDefault,
   parameter lfsr_seed_t RndCnstLfsrSeed = RndCnstLfsrSeedDefault,
@@ -1018,7 +1016,6 @@ module kmac
     .wdata_o                    (tlram_wdata),
     .wmask_o                    (tlram_wmask),
     .intg_error_o               (           ),
-    .user_rsvd_o                (           ),
     .rdata_i                    (tlram_rdata),
     .rvalid_i                   (tlram_rvalid),
     .rerror_i                   (tlram_rerror),
@@ -1045,9 +1042,7 @@ module kmac
   // Application interface Mux/Demux
   kmac_app #(
     .EnMasking(EnMasking),
-    .SecIdleAcceptSwMsg(SecIdleAcceptSwMsg),
-    .NumAppIntf(NumAppIntf),
-    .AppCfg(AppCfg)
+    .SecIdleAcceptSwMsg(SecIdleAcceptSwMsg)
   ) u_app_intf (
     .clk_i,
     .rst_ni,

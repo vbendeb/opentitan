@@ -25,9 +25,7 @@ module ${module_instance_name}_bind_fpv;
     .claim,
     .complete,
     .prio,
-    .threshold,
-    .fatal_alert_i (alerts[0]),
-    .tl_o
+    .threshold
   );
 
   bind ${module_instance_name} tlul_assert #(

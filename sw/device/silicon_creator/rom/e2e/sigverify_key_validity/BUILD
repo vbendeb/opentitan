@@ -16,7 +16,7 @@ load(
     "hex_digits",
 )
 load(
-    "//rules/opentitan:keyutils.bzl",
+    "//rules:opentitan.bzl",
     "ECDSA_SPX_KEY_STRUCTS",
     "filter_key_structs_for_lc_state",
 )
@@ -197,7 +197,7 @@ KEY_VALIDITY_TESTS = [
             test["name"],
             lc_state,
         ),
-        src = "//hw/top_earlgrey/data/otp:otp_json_{}".format(lc_state),
+        src = "//hw/ip/otp_ctrl/data:otp_json_{}".format(lc_state),
         overlays = STD_OTP_OVERLAYS + [
             ":otp_json_sigverify_key_validity_{}".format(test["name"]),
         ],

@@ -19,7 +19,7 @@
       si_stage: SV2
       lc_states: ["PROD"]
       tests: []
-      bazel: []
+      bazel: ["//sw/device/tests:usbdev_mem_test"]
     }
     {
       name: chip_sw_usbdev_vbus

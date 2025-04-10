@@ -20,16 +20,6 @@ module spi_host_bind;
     .d2h    (tl_o)
   );
 
-  bind spi_host spi_host_data_stable_sva #(
-    .NumCS(spi_host_env_cfg_pkg::SPI_HOST_NUM_CS)
-  ) spi_host_data_stable_assert (
-    .rst_ni,
-    .cio_sck_o,
-    .cio_csb_o,
-    .cio_sd_i,
-    .cio_sd_en_o,
-    .configopts(reg2hw.configopts),
-    .passthrough_i
-  );
+  bind spi_host spi_host_data_stable_sva spi_host_data_stable_assert (.*);
 
 endmodule

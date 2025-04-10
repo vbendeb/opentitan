@@ -7,14 +7,8 @@ load("@rules_pkg//pkg:mappings.bzl", "pkg_files")
 load("//rules:cross_platform.bzl", "dual_cc_library", "dual_inputs")
 load("//rules:files.bzl", "output_groups")
 load("//rules:linker.bzl", "ld_library")
-load(
-    "//rules/opentitan:defs.bzl",
-    "OPENTITAN_CPU",
-    "fpga_params",
-    "opentitan_binary",
-    "opentitan_manual_test",
-    "opentitan_test",
-)
+load("//rules:opentitan_test.bzl", "manual_test")
+load("//rules/opentitan:defs.bzl", "OPENTITAN_CPU", "fpga_params", "opentitan_binary", "opentitan_test")
 load("//rules/opentitan:legacy.bzl", "legacy_rom_targets")
 
 package(default_visibility = ["//visibility:public"])
@@ -85,7 +79,7 @@ cc_library(
     hdrs = ["rom_isrs.h"],
     target_compatible_with = [OPENTITAN_CPU],
     deps = [
-        "//hw/top:flash_ctrl_c_regs",
+        "//hw/top_earlgrey/ip_autogen/flash_ctrl:flash_ctrl_c_regs",
         "//hw/top_earlgrey/sw/autogen:top_earlgrey",
         "//sw/device/lib/base:csr",
         "//sw/device/lib/base:macros",
@@ -98,23 +92,24 @@ cc_library(
     srcs = ["rom_start.S"],
     target_compatible_with = [OPENTITAN_CPU],
     deps = [
+        ":linker_script",
         ":rom_common",
         ":rom_epmp",
-        "//hw/top:aon_timer_c_regs",
-        "//hw/top:ast_c_regs",
-        "//hw/top:clkmgr_c_regs",
-        "//hw/top:csrng_c_regs",
-        "//hw/top:edn_c_regs",
-        "//hw/top:entropy_src_c_regs",
-        "//hw/top:gpio_c_regs",
-        "//hw/top:lc_ctrl_c_regs",
-        "//hw/top:otp_ctrl_c_regs",
-        "//hw/top:pinmux_c_regs",
-        "//hw/top:pwrmgr_c_regs",
-        "//hw/top:rstmgr_c_regs",
-        "//hw/top:rv_core_ibex_c_regs",
-        "//hw/top:sensor_ctrl_c_regs",
-        "//hw/top:sram_ctrl_c_regs",
+        "//hw/ip/aon_timer/data:aon_timer_c_regs",
+        "//hw/ip/csrng/data:csrng_c_regs",
+        "//hw/ip/edn/data:edn_c_regs",
+        "//hw/ip/entropy_src/data:entropy_src_c_regs",
+        "//hw/ip/gpio/data:gpio_c_regs",
+        "//hw/ip/lc_ctrl/data:lc_ctrl_c_regs",
+        "//hw/ip/otp_ctrl/data:otp_ctrl_c_regs",
+        "//hw/ip/rv_core_ibex/data:rv_core_ibex_c_regs",
+        "//hw/ip/sram_ctrl/data:sram_ctrl_c_regs",
+        "//hw/top_earlgrey/ip/ast/data:ast_c_regs",
+        "//hw/top_earlgrey/ip/pinmux/data/autogen:pinmux_c_regs",
+        "//hw/top_earlgrey/ip/sensor_ctrl/data:sensor_ctrl_c_regs",
+        "//hw/top_earlgrey/ip_autogen/clkmgr:clkmgr_c_regs",
+        "//hw/top_earlgrey/ip_autogen/pwrmgr:pwrmgr_c_regs",
+        "//hw/top_earlgrey/ip_autogen/rstmgr:rstmgr_c_regs",
         "//hw/top_earlgrey/sw/autogen:top_earlgrey",
         "//sw/device/lib/base:hardened",
         "//sw/device/lib/base:multibits",
@@ -137,7 +132,7 @@ cc_library(
         ":sigverify_keys_ecdsa_p256",
         ":sigverify_keys_spx",
         ":sigverify_otp_keys",
-        "//hw/top:aon_timer_c_regs",
+        "//hw/ip/aon_timer/data:aon_timer_c_regs",
         "//sw/device/lib/arch:device",
         "//sw/device/lib/base:bitfield",
         "//sw/device/lib/base:csr",
@@ -159,6 +154,7 @@ cc_library(
         "//sw/device/silicon_creator/lib/base:chip",
         "//sw/device/silicon_creator/lib/base:sec_mmio",
         "//sw/device/silicon_creator/lib/base:static_critical",
+        "//sw/device/silicon_creator/lib/base:util",
         "//sw/device/silicon_creator/lib/drivers:alert",
         "//sw/device/silicon_creator/lib/drivers:ast",
         "//sw/device/silicon_creator/lib/drivers:flash_ctrl",
@@ -204,11 +200,6 @@ opentitan_binary(
     ],
     kind = "rom",
     linker_script = ":linker_script",
-    transitive_features = [
-        "use_lld",
-        "lto",
-        "minsize",
-    ],
     deps = [
         ":mask_rom_lib",
         # We depend on rom_isrs here rather than in mask_rom_lib so that the
@@ -282,7 +273,7 @@ opentitan_test(
     ],
     deps = [
         ":mask_rom_lib",
-        "//hw/top:flash_ctrl_c_regs",
+        "//hw/top_earlgrey/ip_autogen/flash_ctrl:flash_ctrl_c_regs",
         "//sw/device/lib/arch:device",
         "//sw/device/lib/base:abs_mmio",
         "//sw/device/lib/base:bitfield",
@@ -323,9 +314,9 @@ cc_library(
     srcs = ["bootstrap.c"],
     hdrs = ["bootstrap.h"],
     deps = [
-        "//hw/top:flash_ctrl_c_regs",
-        "//hw/top:gpio_c_regs",
-        "//hw/top:otp_ctrl_c_regs",
+        "//hw/ip/gpio/data:gpio_c_regs",
+        "//hw/ip/otp_ctrl/data:otp_ctrl_c_regs",
+        "//hw/top_earlgrey/ip_autogen/flash_ctrl:flash_ctrl_c_regs",
         "//hw/top_earlgrey/sw/autogen:top_earlgrey",
         "//sw/device/lib/base:abs_mmio",
         "//sw/device/lib/base:bitfield",
@@ -343,9 +334,9 @@ cc_test(
     srcs = ["bootstrap_unittest.cc"],
     deps = [
         ":bootstrap",
-        "//hw/top:flash_ctrl_c_regs",
-        "//hw/top:gpio_c_regs",
-        "//hw/top:otp_ctrl_c_regs",
+        "//hw/ip/gpio/data:gpio_c_regs",
+        "//hw/ip/otp_ctrl/data:otp_ctrl_c_regs",
+        "//hw/top_earlgrey/ip_autogen/flash_ctrl:flash_ctrl_c_regs",
         "//hw/top_earlgrey/sw/autogen:top_earlgrey",
         "//sw/device/silicon_creator/lib:bootstrap_unittest_util",
         "@googletest//:gtest_main",
@@ -373,7 +364,7 @@ cc_library(
     hdrs = ["sigverify_otp_keys.h"],
     deps = [
         ":sigverify_key_types",
-        "//hw/top:otp_ctrl_c_regs",
+        "//hw/ip/otp_ctrl/data:otp_ctrl_c_regs",
         "//sw/device/lib/base:macros",
         "//sw/device/silicon_creator/lib:error",
         "//sw/device/silicon_creator/lib/drivers:hmac",
@@ -423,7 +414,7 @@ cc_library(
     deps = [
         ":sigverify_key_types",
         ":sigverify_otp_keys",
-        "//hw/top:otp_ctrl_c_regs",
+        "//hw/ip/otp_ctrl/data:otp_ctrl_c_regs",
         "//sw/device/lib/base:macros",
         "//sw/device/silicon_creator/lib:error",
         "//sw/device/silicon_creator/lib/drivers:lifecycle",
@@ -466,7 +457,7 @@ pkg_files(
     prefix = "earlgrey/rom",
 )
 
-opentitan_manual_test(
+manual_test(
     name = "manual_test",
     tags = [
         "manual",

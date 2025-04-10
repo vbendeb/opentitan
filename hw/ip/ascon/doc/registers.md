@@ -214,7 +214,6 @@ Otherwise the engine stalls until all registers have been written.
 For Ascon 128 the upper 64 bit can be set to any value
 For partial blocks the unused bytes can be set to any value.
 The order in which the registers are updated does not matter.
-Writing to this register will invalidate previous values in the [`MSG_OUT`](#msg_out) register.
 - Reset default: `0x0`
 - Reset mask: `0xffffffff`
 
@@ -252,7 +251,6 @@ This basically disables input masking.
 For Ascon 128 the upper 64 bit can be set to any value.
 For partial blocks the unused bytes can be set to any value.
 The order in which the registers are updated does not matter.
-Writing to this register will invalidate previous values in the [`MSG_OUT`](#msg_out) register.
 - Reset default: `0x0`
 - Reset mask: `0xffffffff`
 
@@ -378,35 +376,32 @@ Any write operation to this register will clear the status tracking required for
 A write to the Control Register is considered the start of a new message.
 Hence, software needs to provide a new Nonce and input data afterwards.
 - Offset: `0x94`
-- Reset default: `0x9600`
-- Reset mask: `0xffff`
+- Reset default: `0x0`
+- Reset mask: `0xff`
 
 ### Fields
 
 ```wavejson
-{"reg": [{"name": "OPERATION", "bits": 3, "attr": ["rw"], "rotate": -90}, {"name": "ASCON_VARIANT", "bits": 2, "attr": ["rw"], "rotate": -90}, {"name": "SIDELOAD_KEY", "bits": 1, "attr": ["rw"], "rotate": -90}, {"name": "MASKED_AD_INPUT", "bits": 1, "attr": ["rw"], "rotate": -90}, {"name": "MASKED_MSG_INPUT", "bits": 1, "attr": ["rw"], "rotate": -90}, {"name": "NO_MSG", "bits": 4, "attr": ["rw"], "rotate": 0}, {"name": "NO_AD", "bits": 4, "attr": ["rw"], "rotate": 0}, {"bits": 16}], "config": {"lanes": 1, "fontsize": 10, "vspace": 180}}
+{"reg": [{"name": "OPERATION", "bits": 3, "attr": ["rw"], "rotate": -90}, {"name": "SIDELOAD_KEY", "bits": 1, "attr": ["rw"], "rotate": -90}, {"name": "MASKED_AD_INPUT", "bits": 1, "attr": ["rw"], "rotate": -90}, {"name": "MASKED_MSG_INPUT", "bits": 1, "attr": ["rw"], "rotate": -90}, {"name": "NO_MSG", "bits": 1, "attr": ["rw"], "rotate": -90}, {"name": "NO_AD", "bits": 1, "attr": ["rw"], "rotate": -90}, {"bits": 24}], "config": {"lanes": 1, "fontsize": 10, "vspace": 180}}
 ```
 
 |  Bits  |  Type  |  Reset  | Name                                                 |
 |:------:|:------:|:-------:|:-----------------------------------------------------|
-| 31:16  |        |         | Reserved                                             |
-| 15:12  |   rw   |   0x9   | [NO_AD](#ctrl_shadowed--no_ad)                       |
-|  11:8  |   rw   |   0x6   | [NO_MSG](#ctrl_shadowed--no_msg)                     |
-|   7    |   rw   |   0x0   | [MASKED_MSG_INPUT](#ctrl_shadowed--masked_msg_input) |
-|   6    |   rw   |   0x0   | [MASKED_AD_INPUT](#ctrl_shadowed--masked_ad_input)   |
-|   5    |   rw   |   0x0   | [SIDELOAD_KEY](#ctrl_shadowed--sideload_key)         |
-|  4:3   |   rw   |   0x0   | [ASCON_VARIANT](#ctrl_shadowed--ascon_variant)       |
+|  31:8  |        |         | Reserved                                             |
+|   7    |   rw   |   0x0   | [NO_AD](#ctrl_shadowed--no_ad)                       |
+|   6    |   rw   |   0x0   | [NO_MSG](#ctrl_shadowed--no_msg)                     |
+|   5    |   rw   |   0x0   | [MASKED_MSG_INPUT](#ctrl_shadowed--masked_msg_input) |
+|   4    |   rw   |   0x0   | [MASKED_AD_INPUT](#ctrl_shadowed--masked_ad_input)   |
+|   3    |   rw   |   0x0   | [SIDELOAD_KEY](#ctrl_shadowed--sideload_key)         |
 |  2:0   |   rw   |   0x0   | [OPERATION](#ctrl_shadowed--operation)               |
 
 ### CTRL_SHADOWED . NO_AD
-This field is mubi4 encoded.
-Mubi4True:  There are no associated data to be processed.
-Mubi4False: There are associated data.
+There is no (1) associated data to be processed.
+There is (0) associated data.
 
 ### CTRL_SHADOWED . NO_MSG
-This field is mubi4 encoded.
-Mubi4True:  There is no message (plaintext/ciphertext) to be processed.
-Mubi4False: There is a message.
+There is no (1) message (plaintext/ciphertext) to be processed.
+There is (0) a message.
 
 ### CTRL_SHADOWED . MASKED_MSG_INPUT
 Controls whether the message input is provided in shares (1) or not (0).
@@ -427,21 +422,6 @@ Once all registers of Share 0 have been written, Ascon starts to process the dat
 ### CTRL_SHADOWED . SIDELOAD_KEY
 Controls whether the Ascon unit uses the key provided by the key manager via key sideload interface (1)
 or the key provided by software via Initial Key Registers KEY_SHARE1 and KEY_SHARE_0 (0).
-
-### CTRL_SHADOWED . ASCON_VARIANT
-Specifies which variant of Ascon is used.
-It can be either Ascon-128 (2'b01) or Ascon-128a (2'b10).
-They only differ in the input block size and the number of permutations per round.
-The size of the key, nonce, tag is 128 bits for both variants.
-This field is only relevant for encryption or decryption.
-It is ignored for Ascon-XOF.
-
-| Value   | Name       | Description                                                                                                                                                      |
-|:--------|:-----------|:-----------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| 0x1     | ASCON_128  | Ascon-128 is the primary choice. In this mode, the rate and thus the input block size is 64 bit. There are 6 rounds of permutation between different inputs.     |
-| 0x2     | ASCON_128a | Ascon-128a is the secondary choice. In this mode, the rate and thus the input block size is 128 bit. There are 8 rounds of permutation between different inputs. |
-
-Other values are reserved.
 
 ### CTRL_SHADOWED . OPERATION
 Specifies which operation ascon should perform.
@@ -551,23 +531,25 @@ Writes to the Message and associated data Registers are not ignored but the data
 Status Register
 - Offset: `0xa8`
 - Reset default: `0x0`
-- Reset mask: `0x3f`
+- Reset mask: `0xff`
 
 ### Fields
 
 ```wavejson
-{"reg": [{"name": "IDLE", "bits": 1, "attr": ["ro"], "rotate": -90}, {"name": "STALL", "bits": 1, "attr": ["ro"], "rotate": -90}, {"name": "WAIT_EDN", "bits": 1, "attr": ["ro"], "rotate": -90}, {"name": "ASCON_ERROR", "bits": 1, "attr": ["ro"], "rotate": -90}, {"name": "ALERT_RECOV_CTRL_UPDATE_ERR", "bits": 1, "attr": ["ro"], "rotate": -90}, {"name": "ALERT_FATAL_FAULT", "bits": 1, "attr": ["ro"], "rotate": -90}, {"bits": 26}], "config": {"lanes": 1, "fontsize": 10, "vspace": 290}}
+{"reg": [{"name": "IDLE", "bits": 1, "attr": ["ro"], "rotate": -90}, {"name": "STALL", "bits": 1, "attr": ["ro"], "rotate": -90}, {"name": "WAIT_EDN", "bits": 1, "attr": ["ro"], "rotate": -90}, {"name": "ASCON_ERROR", "bits": 1, "attr": ["ro"], "rotate": -90}, {"name": "ALERT_RECOV_CTRL_UPDATE_ERR", "bits": 1, "attr": ["ro"], "rotate": -90}, {"name": "ALERT_RECOV_CTRL_AUX_UPDATE_ERR", "bits": 1, "attr": ["ro"], "rotate": -90}, {"name": "ALERT_RECOV_BLOCK_CTRL_UPDATE_ERR", "bits": 1, "attr": ["ro"], "rotate": -90}, {"name": "ALERT_FATAL_FAULT", "bits": 1, "attr": ["ro"], "rotate": -90}, {"bits": 24}], "config": {"lanes": 1, "fontsize": 10, "vspace": 350}}
 ```
 
-|  Bits  |  Type  |  Reset  | Name                                                                |
-|:------:|:------:|:-------:|:--------------------------------------------------------------------|
-|  31:6  |        |         | Reserved                                                            |
-|   5    |   ro   |   0x0   | [ALERT_FATAL_FAULT](#status--alert_fatal_fault)                     |
-|   4    |   ro   |   0x0   | [ALERT_RECOV_CTRL_UPDATE_ERR](#status--alert_recov_ctrl_update_err) |
-|   3    |   ro   |   0x0   | [ASCON_ERROR](#status--ascon_error)                                 |
-|   2    |   ro   |   0x0   | [WAIT_EDN](#status--wait_edn)                                       |
-|   1    |   ro   |   0x0   | [STALL](#status--stall)                                             |
-|   0    |   ro   |   0x0   | [IDLE](#status--idle)                                               |
+|  Bits  |  Type  |  Reset  | Name                                                                            |
+|:------:|:------:|:-------:|:--------------------------------------------------------------------------------|
+|  31:8  |        |         | Reserved                                                                        |
+|   7    |   ro   |   0x0   | [ALERT_FATAL_FAULT](#status--alert_fatal_fault)                                 |
+|   6    |   ro   |   0x0   | [ALERT_RECOV_BLOCK_CTRL_UPDATE_ERR](#status--alert_recov_block_ctrl_update_err) |
+|   5    |   ro   |   0x0   | [ALERT_RECOV_CTRL_AUX_UPDATE_ERR](#status--alert_recov_ctrl_aux_update_err)     |
+|   4    |   ro   |   0x0   | [ALERT_RECOV_CTRL_UPDATE_ERR](#status--alert_recov_ctrl_update_err)             |
+|   3    |   ro   |   0x0   | [ASCON_ERROR](#status--ascon_error)                                             |
+|   2    |   ro   |   0x0   | [WAIT_EDN](#status--wait_edn)                                                   |
+|   1    |   ro   |   0x0   | [STALL](#status--stall)                                                         |
+|   0    |   ro   |   0x0   | [IDLE](#status--idle)                                                           |
 
 ### STATUS . ALERT_FATAL_FAULT
 No fatal fault has occurred inside the Asconunit (0).
@@ -580,9 +562,17 @@ iv) errors in the internal round counter,
 v) escalations triggered by the life cycle controller, and
 vi) fatal integrity failures on the TL-UL bus.
 
+### STATUS . ALERT_RECOV_BLOCK_CTRL_UPDATE_ERR
+An update error has not occurred (0) or has occurred (1) in the shadowed block Control Register.
+The register has to be rewritten.
+
+### STATUS . ALERT_RECOV_CTRL_AUX_UPDATE_ERR
+An update error has not occurred (0) or has occurred (1) in the shadowed Auxiliary Control Register.
+The register has to be rewritten.
+
 ### STATUS . ALERT_RECOV_CTRL_UPDATE_ERR
-An update error has not occurred (0) or has occurred (1) in one of the shadowed Control
-Registers. Ascon operation needs to be restarted by re-writing the Control Registers.
+An update error has not occurred (0) or has occurred (1) in the shadowed Control Register.
+Ascon operation needs to be restarted by re-writing the Control Register.
 
 ### STATUS . ASCON_ERROR
 An error due to a misconfiguration has happened.
@@ -601,24 +591,23 @@ The Ascon unit is idle (0) or busy (1).
 
 ## OUTPUT_VALID
 Output Valid Register
-This register specifies which output register contains valid data.
+This register specifies which output register contains valid data and should be read next.
 It also contains the status information whether the TAG comparison was valid or not.
 - Offset: `0xac`
 - Reset default: `0x0`
-- Reset mask: `0xf`
+- Reset mask: `0x1f`
 
 ### Fields
 
 ```wavejson
-{"reg": [{"name": "MSG_VALID", "bits": 1, "attr": ["ro"], "rotate": -90}, {"name": "TAG_VALID", "bits": 1, "attr": ["ro"], "rotate": -90}, {"name": "TAG_COMPARISON_VALID", "bits": 2, "attr": ["ro"], "rotate": -90}, {"bits": 28}], "config": {"lanes": 1, "fontsize": 10, "vspace": 220}}
+{"reg": [{"name": "DATA_TYPE", "bits": 3, "attr": ["ro"], "rotate": -90}, {"name": "TAG_COMPARISON_VALID", "bits": 2, "attr": ["ro"], "rotate": -90}, {"bits": 27}], "config": {"lanes": 1, "fontsize": 10, "vspace": 220}}
 ```
 
-|  Bits  |  Type  |  Reset  | Name                 | Description                                                                                                                                                                                                                                                       |
-|:------:|:------:|:-------:|:---------------------|:------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|  31:4  |        |         |                      | Reserved                                                                                                                                                                                                                                                          |
-|  3:2   |   ro   |   0x0   | TAG_COMPARISON_VALID | Indicates if the tag could be successfully compared 2'b01, or not 2'b10 2'b00 indicates that the tag hasn't been calculated, yet 2'b11 is invalid.                                                                                                                |
-|   1    |   ro   |   0x0   | TAG_VALID            | Indicates if there is (1) or if there is not (0) valid data in the [`TAG_OUT`](#tag_out) register. If [`OUTPUT_VALID.MSG_VALID`](#output_valid) and [`OUTPUT_VALID.TAG_VALID`](#output_valid) are both set, [`MSG_OUT`](#msg_out) should be read before !TAG_OUT. |
-|   0    |   ro   |   0x0   | MSG_VALID            | Indicates if there is (1) or if there is not (0) valid data in the [`MSG_OUT`](#msg_out) register. If [`OUTPUT_VALID.MSG_VALID`](#output_valid) and [`OUTPUT_VALID.TAG_VALID`](#output_valid) are both set, [`MSG_OUT`](#msg_out) should be read before !TAG_OUT. |
+|  Bits  |  Type  |  Reset  | Name                 | Description                                                                                                                                        |
+|:------:|:------:|:-------:|:---------------------|:---------------------------------------------------------------------------------------------------------------------------------------------------|
+|  31:5  |        |         |                      | Reserved                                                                                                                                           |
+|  4:3   |   ro   |   0x0   | TAG_COMPARISON_VALID | Indicates if the tag could be successfully compared 2'b01, or not 2'b10 2'b00 indicates that the tag hasn't been calculated, yet 2'b11 is invalid. |
+|  2:0   |   ro   |   0x0   | DATA_TYPE            | Specifies which output type/register is valid. There are: PT_OUT, CT_OUT, TAG_OUT, NONE                                                            |
 
 ## FSM_STATE
 Main FSM State register.

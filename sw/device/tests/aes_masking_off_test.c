@@ -16,6 +16,8 @@
 #include "sw/device/lib/testing/test_framework/check.h"
 #include "sw/device/lib/testing/test_framework/ottf_main.h"
 
+#include "hw/top_earlgrey/sw/autogen/top_earlgrey.h"
+
 enum {
   kTestTimeout = (1000 * 1000),
 };
@@ -29,20 +31,11 @@ static const uint8_t kKeyShare1[] = {
     0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
 };
 
-static_assert(kDtAesCount >= 1, "This test requires at least one AES instance");
-static_assert(kDtCsrngCount >= 1,
-              "This test requires at least one CSRNG instance");
-static_assert(kDtEdnCount >= 1, "This test requires at least one EDN instance");
-
-static dt_aes_t kTestAes = (dt_aes_t)0;
-static dt_csrng_t kTestCsrng = (dt_csrng_t)0;
-static dt_edn_t kTestEdn = (dt_edn_t)0;
-
 OTTF_DEFINE_TEST_CONFIG();
 
-status_t execute_test(const dif_csrng_t *csrng, const dif_edn_t *edn0) {
+status_t execute_test(void) {
   // Perform the known-answer testing on the CSRNG SW application interface.
-  CHECK_STATUS_OK(aes_testutils_csrng_kat(csrng));
+  CHECK_STATUS_OK(aes_testutils_csrng_kat());
 
   // Test AES with masking switched off.
   //
@@ -58,11 +51,12 @@ status_t execute_test(const dif_csrng_t *csrng, const dif_edn_t *edn0) {
   LOG_INFO("Testing AES with masking switched off");
 
   // Initialize EDN and CSRNG to generate the required seed.
-  CHECK_STATUS_OK(aes_testutils_masking_prng_zero_output_seed(csrng, edn0));
+  CHECK_STATUS_OK(aes_testutils_masking_prng_zero_output_seed());
 
   // Initialise AES.
   dif_aes_t aes;
-  CHECK_DIF_OK(dif_aes_init_from_dt(kTestAes, &aes));
+  CHECK_DIF_OK(
+      dif_aes_init(mmio_region_from_addr(TOP_EARLGREY_AES_BASE_ADDR), &aes));
   CHECK_DIF_OK(dif_aes_reset(&aes));
 
   // Mask the key. Note that this should not be done manually. Software is
@@ -137,15 +131,15 @@ bool test_main(void) {
   LOG_INFO("Testing CSRNG SW application interface");
 
   // Disable EDN connected to AES as well as CSRNG.
-  dif_csrng_t csrng;
-  dif_edn_t edn;
-  CHECK_DIF_OK(dif_csrng_init_from_dt(kTestCsrng, &csrng));
-  CHECK_DIF_OK(dif_edn_init_from_dt(kTestEdn, &edn));
+  const dif_edn_t edn = {
+      .base_addr = mmio_region_from_addr(TOP_EARLGREY_EDN0_BASE_ADDR)};
+  const dif_csrng_t csrng = {
+      .base_addr = mmio_region_from_addr(TOP_EARLGREY_CSRNG_BASE_ADDR)};
   CHECK_DIF_OK(dif_edn_stop(&edn));
   CHECK_DIF_OK(dif_csrng_stop(&csrng));
 
   // Re-enable CSRNG.
   CHECK_DIF_OK(dif_csrng_configure(&csrng));
 
-  return status_ok(execute_test(&csrng, &edn));
+  return status_ok(execute_test());
 }

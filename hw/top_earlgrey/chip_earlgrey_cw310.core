@@ -10,9 +10,9 @@ filesets:
       - lowrisc:prim_xilinx:earlgrey_xilinx_prim_pkg
       - lowrisc:systems:top_earlgrey:0.1
       - lowrisc:systems:top_earlgrey_pkg
-      - lowrisc:systems:top_earlgrey_ast
-      - lowrisc:systems:top_earlgrey_padring
-      - lowrisc:earlgrey_systems:scan_role_pkg
+      - lowrisc:systems:ast
+      - lowrisc:systems:padring
+      - lowrisc:systems:scan_role_pkg
     files:
       - rtl/clkgen_xil7series.sv
       - rtl/usr_access_xil7series.sv
@@ -70,6 +70,10 @@ parameters:
   AST_BYPASS_CLK:
     datatype: bool
     paramtype: vlogdefine
+  IBEX_CUSTOM_PMP_RESET_VALUES:
+    datatype: bool
+    default: true
+    paramtype: vlogdefine
 
 targets:
   default: &default_target
@@ -78,6 +82,7 @@ targets:
       - files_ascentlint_waiver
     toplevel: chip_earlgrey_cw310
     parameters:
+      - IBEX_CUSTOM_PMP_RESET_VALUES
       - AST_BYPASS_CLK=true
 
   synth:
@@ -91,6 +96,7 @@ targets:
       - BootRomInitFile
       - OtpCtrlMemInitFile
       - PRIM_DEFAULT_IMPL=prim_pkg::ImplXilinx
+      - IBEX_CUSTOM_PMP_RESET_VALUES
       - AST_BYPASS_CLK=true
     tools:
       vivado:

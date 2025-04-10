@@ -9,8 +9,8 @@ cc_library(
     srcs = ["crypto_fi.c"],
     hdrs = ["crypto_fi.h"],
     deps = [
-        "//hw/top:aes_c_regs",
-        "//hw/top:kmac_c_regs",
+        "//hw/ip/aes/data:aes_c_regs",
+        "//hw/ip/kmac/data:kmac_c_regs",
         "//sw/device/lib/base:abs_mmio",
         "//sw/device/lib/base:memory",
         "//sw/device/lib/base:status",
@@ -34,7 +34,7 @@ cc_library(
     ],
     hdrs = ["ibex_fi.h"],
     deps = [
-        "//hw/top:otp_ctrl_c_regs",
+        "//hw/ip/otp_ctrl/data:otp_ctrl_c_regs",
         "//sw/device/lib/base:csr",
         "//sw/device/lib/base:memory",
         "//sw/device/lib/base:status",
@@ -126,7 +126,6 @@ cc_library(
         "//sw/device/lib/runtime:log",
         "//sw/device/lib/testing:csrng_testutils",
         "//sw/device/lib/testing:edn_testutils",
-        "//sw/device/lib/testing:entropy_src_testutils",
         "//sw/device/lib/testing:entropy_testutils",
         "//sw/device/lib/testing:rv_core_ibex_testutils",
         "//sw/device/lib/testing/test_framework:ujson_ottf",
@@ -158,7 +157,7 @@ cc_library(
     srcs = ["rom_fi.c"],
     hdrs = ["rom_fi.h"],
     deps = [
-        "//hw/top:rom_ctrl_c_regs",
+        "//hw/ip/rom_ctrl/data:rom_ctrl_c_regs",
         "//sw/device/lib/base:abs_mmio",
         "//sw/device/lib/base:memory",
         "//sw/device/lib/base:status",

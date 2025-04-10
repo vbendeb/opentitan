@@ -5,11 +5,11 @@
 
 set -ex
 
-# Prefetch bazel airgapped dependencies if not already done.
-if [ ! -d bazel-airgapped ]; then
-  echo "Airgapped environment not found, preparing..." >&2
-  util/prep-bazel-airgapped-build.sh -f
-fi
+# Prefetch bazel airgapped dependencies.
+util/prep-bazel-airgapped-build.sh -f
+
+# Clean out bazel cache so no remnants exist for test.
+"${PWD}/bazel-airgapped/bazel" clean --expunge
 
 # Remove the airgapped network namespace.
 remove_airgapped_netns() {
@@ -26,7 +26,7 @@ sudo ip netns exec airgapped ip link set dev lo up
 sudo ip netns exec airgapped sudo -u "$USER" \
   env \
     BAZEL_BITSTREAMS_CACHE="${PWD}/bazel-airgapped/bitstreams-cache" \
-    OT_AIRGAPPED="true"                                              \
+    BAZEL_PYTHON_WHEELS_REPO="${PWD}/bazel-airgapped/ot_python_wheels" \
     BITSTREAM="--offline latest"                                     \
   "${PWD}/bazel-airgapped/bazel" build                               \
     --distdir="${PWD}/bazel-airgapped/bazel-distdir"                 \

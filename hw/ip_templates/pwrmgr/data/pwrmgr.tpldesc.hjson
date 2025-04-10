@@ -10,12 +10,6 @@
       default: ""
     }
     {
-      name: "uniquified_modules"
-      desc: "A dictionary mapping template_names to uniquified_names"
-      type: "object"
-      default: {"clkmgr": "clkmgr1"}
-    }
-    {
       name: "NumWkups"
       desc: "Number of wakeup requests"
       type: "int"
@@ -57,36 +51,6 @@
       desc: "The number of peripheral requests"
       type: "int"
       default: "2"
-    }
-    {
-      name: "wait_for_external_reset"
-      desc: "Wait for external reset requests"
-      type: "bool"
-      default: false
-    }
-    {
-      name: "NumRomInputs"
-      desc: "Number of ROM inputs"
-      type: "int"
-      default: "1"
-    }
-    {
-      name: "module_instance_name"
-      desc: "instance name in case there are multiple pwrmgr instances. Not yet implemented."
-      type: "string"
-      default: "pwrmgr"
-    }
-    {
-      name: "has_aon_clk"
-      desc: "true if there is an input aon clock"
-      type: "bool"
-      default: True
-    }
-    {
-      name: "src_clks"
-      desc: "the source clock names for this top, as in 'main', 'io', 'usb'"
-      type: "object"
-      default: ["main", "io", "usb"]
     }
   ]
 }

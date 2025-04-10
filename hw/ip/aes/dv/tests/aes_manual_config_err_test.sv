@@ -21,10 +21,8 @@ class aes_manual_config_err_test extends aes_base_test;
     // all should have error
     cfg.config_error_pct         = 100;
     // only allow mode errors
-    cfg.config_error_type_en     = '{key_len:  1'b0,
-                                     mode:     1'b1,
-                                     rsd_rate: 1'b0,
-                                     op:       1'b0};
+    cfg.config_error_type        = 3'b010;
+
     cfg.num_messages_min         = 1;
     cfg.num_messages_max         = 1;
     // message related knobs

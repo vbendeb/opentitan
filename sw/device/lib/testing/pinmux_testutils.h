@@ -7,25 +7,26 @@
 
 #include <stdint.h>
 
-#include "dt/dt_pinmux.h"
 #include "sw/device/lib/base/status.h"
 #include "sw/device/lib/dif/dif_gpio.h"
 #include "sw/device/lib/dif/dif_pinmux.h"
+
+#include "hw/top_earlgrey/sw/autogen/top_earlgrey.h"
 
 /**
  * Define a pinmux configuration for a peripheral input and output .
  */
 typedef struct pinmux_testutils_peripheral_pin {
-  dt_pinmux_peripheral_in_t peripheral_in;
-  dt_pinmux_outsel_t outsel;
+  top_earlgrey_pinmux_peripheral_in_t peripheral_in;
+  top_earlgrey_pinmux_outsel_t outsel;
 } pinmux_testutils_peripheral_pin_t;
 
 /**
  * Define a pinmux configuration for a mio input and output.
  */
 typedef struct pinmux_testutils_mio_pin {
-  dt_pinmux_mio_out_t mio_out;
-  dt_pinmux_insel_t insel;
+  top_earlgrey_pinmux_mio_out_t mio_out;
+  top_earlgrey_pinmux_insel_t insel;
 } pinmux_testutils_mio_pin_t;
 
 /**
@@ -44,38 +45,8 @@ void pinmux_testutils_init(dif_pinmux_t *pinmux);
 /**
  * Maps the chip IOs to the GPIO peripheral in input and output directions.
  */
-extern const dt_pad_t kPinmuxTestutilsGpioPads[kDifGpioNumPins];
-
-/**
- * Connect a peripheral I/O to a pad.
- *
- * This will try connect a peripheral I/O to a pad. More precisely,
- * the behaviour depends on the type of the I/O and pad:
- * - If both the peripheral I/O and the pad are of MIO type, this
- *   function will configure the MIO to connect them. Depending on the
- *   direction indicated by the `dir` argument, it will connect the input,
- *   output or both. If the MIO pad is an input/output but the requested
- *   direction is only an input, the MIO output will be configured as
- *   high-Z.
- * - If both are of DIO type, this function will not do anything but
- *   it will check that this peripheral I/O is indeed directly connected
- *   to this pad.
- * - Any other combination will produce an error.
- *
- * In all cases, this function will return an error if the direction(s)
- * passed as argument are incompatible with the direction(s) of the
- * peripheral I/O and the pad.
- *
- * @param pinmux A pinmux handle
- * @param pin A peripheral I/O.
- * @param dir Direction(s) to configure.
- * @param pad A pad.
- * @return The result of the operation.
- */
-OT_WARN_UNUSED_RESULT
-status_t pinmux_testutils_connect(const dif_pinmux_t *pinmux,
-                                  dt_periph_io_t periph_io,
-                                  dt_periph_io_dir_t dir, dt_pad_t pad);
+extern const dif_pinmux_index_t kPinmuxTestutilsGpioInselPins[kDifGpioNumPins];
+extern const dif_pinmux_index_t kPinmuxTestutilsGpioMioOutPins[kDifGpioNumPins];
 
 /**
  * Returns the mask of testable GPIO pins.
@@ -102,7 +73,8 @@ uint32_t pinmux_testutils_get_testable_gpios_mask(void);
  * @return A result in the range [0..3].
  */
 uint32_t pinmux_testutils_read_strap_pin(dif_pinmux_t *pinmux, dif_gpio_t *gpio,
-                                         dif_gpio_pin_t io, dt_pad_t pad);
+                                         dif_gpio_pin_t io,
+                                         top_earlgrey_muxed_pads_t pad);
 
 /**
  * Reads the OpenTitan sw strap pins for the strap configuration value.
@@ -121,7 +93,8 @@ uint32_t pinmux_testutils_read_straps(dif_pinmux_t *pinmux, dif_gpio_t *gpio);
  * A convenience struct to associate pad attributes with a specific pad.
  */
 typedef struct pinmux_pad_attributes {
-  dt_pad_t pad;
+  dif_pinmux_index_t pad;
+  dif_pinmux_pad_kind_t kind;
   dif_pinmux_pad_attr_flags_t flags;
 } pinmux_pad_attributes_t;
 

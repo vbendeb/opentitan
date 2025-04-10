@@ -12,69 +12,51 @@ module sram_ctrl
   import sram_ctrl_reg_pkg::*;
 #(
   // Number of words stored in the SRAM.
-  parameter int MemSizeRam                                 = 32'h1000,
-  parameter int InstSize                                   = MemSizeRam,
-  parameter int NumRamInst                                 = 1,
+  parameter int MemSizeRam = 32'h1000,
   // Enable asynchronous transitions on alerts.
-  parameter logic [NumAlerts-1:0] AlertAsyncOn             = {NumAlerts{1'b1}},
+  parameter logic [NumAlerts-1:0] AlertAsyncOn          = {NumAlerts{1'b1}},
   // Enables the execute from SRAM feature.
-  parameter bit InstrExec                                  = 1,
+  parameter bit InstrExec                               = 1,
   // Number of PRINCE half rounds for the SRAM scrambling feature, can be [1..5].
   // Note that this needs to be low-latency, hence we have to keep the amount of cipher rounds low.
   // PRINCE has 5 half rounds in its original form, which corresponds to 2*5 + 1 effective rounds.
   // Setting this to 3 lowers this to approximately 7 effective rounds.
-  parameter int NumPrinceRoundsHalf                        = 3,
-  // Number of outstanding TLUL transfers
-  parameter int Outstanding                                = 2,
-  // Enable single-bit error correction and error logging
-  parameter bit                         EccCorrection      = 0,
-  // RACL configuration
-  parameter bit                         EnableRacl       = 1'b0,
-  parameter bit                         RaclErrorRsp     = EnableRacl,
-  parameter top_racl_pkg::racl_policy_sel_t RaclPolicySelVecRegs[NumRegsRegs] = '{NumRegsRegs{0}},
-  parameter int unsigned                RaclPolicySelRangesRamNum = 1,
+  parameter int NumPrinceRoundsHalf                     = 3,
   // Random netlist constants
-  parameter  otp_ctrl_pkg::sram_key_t   RndCnstSramKey   = RndCnstSramKeyDefault,
-  parameter  otp_ctrl_pkg::sram_nonce_t RndCnstSramNonce = RndCnstSramNonceDefault,
-  parameter  lfsr_seed_t                RndCnstLfsrSeed  = RndCnstLfsrSeedDefault,
-  parameter  lfsr_perm_t                RndCnstLfsrPerm  = RndCnstLfsrPermDefault
+  parameter otp_ctrl_pkg::sram_key_t   RndCnstSramKey   = RndCnstSramKeyDefault,
+  parameter otp_ctrl_pkg::sram_nonce_t RndCnstSramNonce = RndCnstSramNonceDefault,
+  parameter lfsr_seed_t                RndCnstLfsrSeed  = RndCnstLfsrSeedDefault,
+  parameter lfsr_perm_t                RndCnstLfsrPerm  = RndCnstLfsrPermDefault
 ) (
   // SRAM Clock
-  input  logic                                               clk_i,
-  input  logic                                               rst_ni,
+  input  logic                                       clk_i,
+  input  logic                                       rst_ni,
   // OTP Clock (for key interface)
-  input  logic                                               clk_otp_i,
-  input  logic                                               rst_otp_ni,
+  input  logic                                       clk_otp_i,
+  input  logic                                       rst_otp_ni,
   // Bus Interface (device) for SRAM
-  input  tlul_pkg::tl_h2d_t                                  ram_tl_i,
-  output tlul_pkg::tl_d2h_t                                  ram_tl_o,
+  input  tlul_pkg::tl_h2d_t                          ram_tl_i,
+  output tlul_pkg::tl_d2h_t                          ram_tl_o,
   // Bus Interface (device) for CSRs
-  input  tlul_pkg::tl_h2d_t                                  regs_tl_i,
-  output tlul_pkg::tl_d2h_t                                  regs_tl_o,
+  input  tlul_pkg::tl_h2d_t                          regs_tl_i,
+  output tlul_pkg::tl_d2h_t                          regs_tl_o,
   // Alert outputs.
-  input  prim_alert_pkg::alert_rx_t [NumAlerts-1:0]          alert_rx_i,
-  output prim_alert_pkg::alert_tx_t [NumAlerts-1:0]          alert_tx_o,
-  // RACL interface
-  input  top_racl_pkg::racl_policy_vec_t                     racl_policies_i,
-  output top_racl_pkg::racl_error_log_t                      racl_error_o,
-  input  top_racl_pkg::racl_range_t [RaclPolicySelRangesRamNum-1:0] racl_policy_sel_ranges_ram_i,
+  input  prim_alert_pkg::alert_rx_t [NumAlerts-1:0]  alert_rx_i,
+  output prim_alert_pkg::alert_tx_t [NumAlerts-1:0]  alert_tx_o,
   // Life-cycle escalation input (scraps the scrambling keys)
   // SEC_CM: LC_ESCALATE_EN.INTERSIG.MUBI
-  input  lc_ctrl_pkg::lc_tx_t                                lc_escalate_en_i,
+  input  lc_ctrl_pkg::lc_tx_t                        lc_escalate_en_i,
   // SEC_CM: LC_HW_DEBUG_EN.INTERSIG.MUBI
-  input  lc_ctrl_pkg::lc_tx_t                                lc_hw_debug_en_i,
+  input  lc_ctrl_pkg::lc_tx_t                        lc_hw_debug_en_i,
   // Otp configuration for sram execution
   // SEC_CM: EXEC.INTERSIG.MUBI
-  input  prim_mubi_pkg::mubi8_t                              otp_en_sram_ifetch_i,
+  input  prim_mubi_pkg::mubi8_t                      otp_en_sram_ifetch_i,
   // Key request to OTP (running on clk_fixed)
   // SEC_CM: SCRAMBLE.KEY.SIDELOAD
-  output otp_ctrl_pkg::sram_otp_key_req_t                    sram_otp_key_o,
-  input  otp_ctrl_pkg::sram_otp_key_rsp_t                    sram_otp_key_i,
+  output otp_ctrl_pkg::sram_otp_key_req_t            sram_otp_key_o,
+  input  otp_ctrl_pkg::sram_otp_key_rsp_t            sram_otp_key_i,
   // config
-  input   prim_ram_1p_pkg::ram_1p_cfg_t     [NumRamInst-1:0] cfg_i,
-  output  prim_ram_1p_pkg::ram_1p_cfg_rsp_t [NumRamInst-1:0] cfg_rsp_o,
-  // Error record
-  output sram_ctrl_pkg::sram_error_t                         sram_rerror_o
+  input  prim_ram_1p_pkg::ram_1p_cfg_t               cfg_i
 );
 
   import lc_ctrl_pkg::lc_tx_t;
@@ -90,31 +72,11 @@ module sram_ctrl
   import prim_mubi_pkg::mubi8_test_true_strict;
 
   // This is later on pruned to the correct width at the SRAM wrapper interface.
-  localparam int unsigned Depth = MemSizeRam >> 2;
-  localparam int unsigned InstDepth = InstSize >> 2;
-  localparam int unsigned AddrWidth = prim_util_pkg::vbits(Depth);
-
-  `ASSERT_INIT(NumRamInstSameAsComputed_A,
-               NumRamInst == prim_util_pkg::ceil_div(MemSizeRam, InstSize))
+  parameter int unsigned Depth = MemSizeRam >> 2;
+  parameter int unsigned AddrWidth = prim_util_pkg::vbits(Depth);
 
   `ASSERT_INIT(NonceWidthsLessThanSource_A, NonceWidth + LfsrWidth <= otp_ctrl_pkg::SramNonceWidth)
 
-  top_racl_pkg::racl_error_log_t racl_error[2];
-  if (EnableRacl) begin : gen_racl_error_arb
-    // Arbitrate between all simultaneously valid error log requests.
-    prim_racl_error_arb #(
-      .N ( 2 )
-    ) u_prim_err_arb (
-      .clk_i,
-      .rst_ni,
-      .error_log_i ( racl_error   ),
-      .error_log_o ( racl_error_o )
-    );
-  end else begin : gen_no_racl_error_arb
-    logic unused_signals;
-    assign unused_signals = ^{racl_error[0] ^ racl_error[1]};
-    assign racl_error_o   = '0;
-  end
 
   /////////////////////////////////////
   // Anchor incoming seeds and constants
@@ -148,23 +110,15 @@ module sram_ctrl
 
   // SEC_CM: CTRL.CONFIG.REGWEN
   // SEC_CM: EXEC.CONFIG.REGWEN
-  // SEC_CM: READBACK.CONFIG.REGWEN
-  sram_ctrl_regs_reg_top #(
-    .EnableRacl       ( EnableRacl           ),
-    .RaclErrorRsp     ( RaclErrorRsp         ),
-    .RaclPolicySelVec ( RaclPolicySelVecRegs )
-  ) u_reg_regs (
+  sram_ctrl_regs_reg_top u_reg_regs (
     .clk_i,
     .rst_ni,
-    .tl_i             ( regs_tl_i          ),
-    .tl_o             ( regs_tl_o          ),
+    .tl_i      (regs_tl_i),
+    .tl_o      (regs_tl_o),
     .reg2hw,
     .hw2reg,
-    // RACL interface
-    .racl_policies_i  ( racl_policies_i    ),
-    .racl_error_o     ( racl_error[0]      ),
     // SEC_CM: BUS.INTEGRITY
-    .intg_err_o       ( bus_integ_error[0] )
+    .intg_err_o(bus_integ_error[0])
    );
 
   // Key and attribute outputs to scrambling device
@@ -324,13 +278,8 @@ module sram_ctrl
 
   // The scrambling key and nonce have to be requested from the OTP controller via a req/ack
   // protocol. Since the OTP controller works in a different clock domain, we have to synchronize
-  // the req/ack protocol as described in more details in the OTP controller documentation.
-  //
-  // This is specialised for different tops that use it but the req/ack protocol is the same in each
-  // case. For one example, see
-  //
-  // https://opentitan.org/book/hw/top_earlgrey/
-  //    ip_autogen/otp_ctrl/doc/interfaces.html#interfaces-to-sram-and-otbn-scramblers
+  // the req/ack protocol as described in more details here:
+  // https://docs.opentitan.org/hw/ip/otp_ctrl/doc/index.html#interfaces-to-sram-and-otbn-scramblers
   logic key_req, key_ack;
   assign key_req = reg2hw.ctrl.renew_scr_key.q &&
                    reg2hw.ctrl.renew_scr_key.qe &&
@@ -486,8 +435,7 @@ module sram_ctrl
 
   // SEC_CM: RAM_TL_LC_GATE.FSM.SPARSE
   tlul_lc_gate #(
-    .NumGatesPerDirection(2),
-    .Outstanding(Outstanding)
+    .NumGatesPerDirection(2)
   ) u_tlul_lc_gate (
     .clk_i,
     .rst_ni,
@@ -510,10 +458,9 @@ module sram_ctrl
   logic [AddrWidth-1:0] tlul_addr;
   logic [DataWidth-1:0] tlul_wdata, tlul_wmask;
 
-  logic sram_intg_error, sram_req, sram_gnt, sram_we, sram_rvalid, sram_rvalid_scr;
-  logic [1:0] sram_rerror, sram_rerror_scr;
-  logic [AddrWidth-1:0] sram_addr, sram_rerror_addr_scr;
-  logic [DataWidth-1:0] sram_wdata, sram_wmask, sram_rdata, sram_rdata_scr;
+  logic sram_intg_error, sram_req, sram_gnt, sram_we, sram_rvalid;
+  logic [AddrWidth-1:0] sram_addr;
+  logic [DataWidth-1:0] sram_wdata, sram_wmask, sram_rdata;
   logic                 sram_wpending, sram_wr_collision;
 
   logic sram_compound_txn_in_progress;
@@ -523,21 +470,18 @@ module sram_ctrl
   mubi4_t reg_readback_en;
   assign reg_readback_en = mubi4_t'(reg2hw.readback.q);
 
-  tlul_adapter_sram_racl #(
+  tlul_adapter_sram #(
     .SramAw(AddrWidth),
     .SramDw(DataWidth - tlul_pkg::DataIntgWidth),
-    .Outstanding(Outstanding),
+    .Outstanding(2),
     .ByteAccess(1),
     .CmdIntgCheck(1),
     .EnableRspIntgGen(1),
     .EnableDataIntgGen(0),
     .EnableDataIntgPt(1), // SEC_CM: MEM.INTEGRITY
     .SecFifoPtr      (1), // SEC_CM: TLUL_FIFO.CTR.REDUN
-    .EnableReadback  (1), // SEC_CM: MEM.READBACK
-    .EnableRacl(EnableRacl),
-    .RaclErrorRsp(RaclErrorRsp),
-    .RaclPolicySelNumRanges(RaclPolicySelRangesRamNum)
-  ) u_tlul_adapter_sram_racl (
+    .EnableReadback  (1)  // SEC_CM: MEM.READBACK
+  ) u_tlul_adapter_sram (
     .clk_i,
     .rst_ni,
     .tl_i                       (ram_tl_in_gated),
@@ -552,19 +496,14 @@ module sram_ctrl
     .wmask_o                    (tlul_wmask),
     // SEC_CM: BUS.INTEGRITY
     .intg_error_o               (bus_integ_error[1]),
-    .user_rsvd_o                (),
     .rdata_i                    (sram_rdata),
     .rvalid_i                   (sram_rvalid),
-    .rerror_i                   (sram_rerror),
+    .rerror_i                   ('0),
     .compound_txn_in_progress_o (sram_compound_txn_in_progress),
     .readback_en_i              (reg_readback_en),
     .readback_error_o           (readback_error),
     .wr_collision_i             (sram_wr_collision),
-    .write_pending_i            (sram_wpending),
-    // RACL interface
-    .racl_policies_i            (racl_policies_i),
-    .racl_error_o               (racl_error[1]),
-    .racl_policy_sel_ranges     (racl_policy_sel_ranges_ram_i)
+    .write_pending_i            (sram_wpending)
   );
 
   logic key_valid;
@@ -583,82 +522,6 @@ module sram_ctrl
   assign sram_wdata      = (init_req) ? lfsr_out_integ    : tlul_wdata;
   assign sram_wmask      = (init_req) ? {DataWidth{1'b1}} : tlul_wmask;
 
-  if (EccCorrection) begin : gen_ecc_correction
-    // Detect ECC errors and decode data. If data is correctable, data is genuine and we
-    // can use it further and re-encode
-    logic [31:0] dec_data;
-    logic [1:0] ecc_error;
-    prim_secded_inv_39_32_dec u_dec (
-      .data_i     (sram_rdata_scr),
-      .data_o     (dec_data),
-      .syndrome_o (),
-      .err_o      (ecc_error)
-    );
-
-    logic [DataWidth-1:0] ecc_enc_data;
-    prim_secded_inv_39_32_enc u_enc (
-      .data_i(dec_data),
-      .data_o(ecc_enc_data)
-    );
-
-    logic uncorrectable_error_q;
-    prim_flop #(
-      .Width(1)
-    ) u_flop_uncorr_error (
-      .clk_i,
-      .rst_ni,
-      .d_i(ecc_error[1]),
-      .q_o(uncorrectable_error_q)
-    );
-
-    // Correctable errors are corrected.
-    // Uncorrectable errors are passed through to the requester.
-    assign sram_rerror[0] = 1'b0;
-    assign sram_rerror[1] = uncorrectable_error_q;
-
-    // Error log if any error happened
-    assign sram_rerror_o.valid   = sram_rvalid_scr & |ecc_error;
-    assign ecc_error.correctable = sram_rvalid_scr & ~ecc_error[1];
-
-    // Translate word address to byte address and fill remaining bits with 0
-    always_comb begin
-      sram_rerror_o.address               = '0;
-      sram_rerror_o.address[2+:AddrWidth] = sram_rerror_addr_scr;
-    end
-
-    prim_flop #(
-      .Width(1)
-    ) u_flop_rvalid (
-      .clk_i,
-      .rst_ni,
-      .d_i(sram_rvalid_scr),
-      .q_o(sram_rvalid)
-    );
-
-    prim_flop #(
-      .Width(DataWidth)
-    ) u_flop_enc_data (
-      .clk_i,
-      .rst_ni,
-      .d_i(ecc_enc_data),
-      .q_o(sram_rdata)
-    );
-
-    // We don't use the read error from the prim, we re-compute it here
-    logic unused_rerror;
-    assign unused_rerror = ^sram_rerror_scr;
-  end else begin : gen_no_ecc_correction
-    assign sram_rdata  = sram_rdata_scr;
-    assign sram_rerror = sram_rerror_scr;
-    assign sram_rvalid = sram_rvalid_scr;
-    // ECC errors are not detected (and thus not reported either) in this configuration.
-    assign sram_rerror_o = '0;
-
-    // Error address not used here
-    logic unused_rerror_addr;
-    assign unused_rerror_addr = ^sram_rerror_addr_scr;
-  end
-
   // The SRAM scrambling wrapper will not accept any transactions while the
   // key req is pending or if we have escalated. Note that we're not using
   // the scr_key_valid CSR here, such that the SRAM can be used right after
@@ -672,11 +535,10 @@ module sram_ctrl
     (key_req_pending_q)         ? 1'b0 :
     (reg2hw.status.escalated.q) ? (tl_gate_resp_pending & sram_compound_txn_in_progress) : 1'b1;
 
-  // SEC_CM: MEM.SCRAMBLE, ADDR.SCRAMBLE, PRIM_RAM.CTRL.MUBI
+  // SEC_CM: MEM.SCRAMBLE, ADDR.SCRAMBLE
   prim_ram_1p_scr #(
     .Width(DataWidth),
     .Depth(Depth),
-    .InstDepth(InstDepth),
     .EnableParity(0),
     .DataBitsPerMask(DataWidth),
     .NumPrinceRoundsHalf(NumPrinceRoundsHalf)
@@ -695,12 +557,11 @@ module sram_ctrl
     .addr_i           (sram_addr),
     .wdata_i          (sram_wdata),
     .wmask_i          (sram_wmask),
-    .rdata_o          (sram_rdata_scr),
-    .rvalid_o         (sram_rvalid_scr),
-    .rerror_o         (sram_rerror_scr),
-    .raddr_o          (sram_rerror_addr_scr),
+    .rdata_o          (sram_rdata),
+    .rvalid_o         (sram_rvalid),
+    .rerror_o         ( ),
+    .raddr_o          ( ),
     .cfg_i,
-    .cfg_rsp_o,
     .wr_collision_o   (sram_wr_collision),
     .write_pending_o  (sram_wpending),
     .alert_o          (sram_alert)
@@ -720,8 +581,6 @@ module sram_ctrl
   `ASSERT_KNOWN_IF(RamTlOutPayLoadKnown_A, ram_tl_o, ram_tl_o.d_valid)
   `ASSERT_KNOWN(AlertOutKnown_A,   alert_tx_o)
   `ASSERT_KNOWN(SramOtpKeyKnown_A, sram_otp_key_o)
-  `ASSERT_KNOWN(RaclErrorValidKnown_A, racl_error_o.valid)
-  `ASSERT_KNOWN(SramRerrorKnown_A, sram_rerror_o)
 
   // Alert assertions for redundant counters.
   `ASSERT_PRIM_COUNT_ERROR_TRIGGER_ALERT(CntCheck_A,
@@ -735,28 +594,22 @@ module sram_ctrl
 
   // Alert assertions for redundant counters.
   `ASSERT_PRIM_COUNT_ERROR_TRIGGER_ALERT(RspFifoWptrCheck_A,
-      u_tlul_adapter_sram_racl.tlul_adapter_sram.u_rspfifo.gen_normal_fifo.u_fifo_cnt
-        .gen_secure_ptrs.u_wptr,
+      u_tlul_adapter_sram.u_rspfifo.gen_normal_fifo.u_fifo_cnt.gen_secure_ptrs.u_wptr,
       alert_tx_o[0])
   `ASSERT_PRIM_COUNT_ERROR_TRIGGER_ALERT(RspFifoRptrCheck_A,
-      u_tlul_adapter_sram_racl.tlul_adapter_sram.u_rspfifo.gen_normal_fifo.u_fifo_cnt
-        .gen_secure_ptrs.u_rptr,
+      u_tlul_adapter_sram.u_rspfifo.gen_normal_fifo.u_fifo_cnt.gen_secure_ptrs.u_rptr,
       alert_tx_o[0])
   `ASSERT_PRIM_COUNT_ERROR_TRIGGER_ALERT(SramReqFifoWptrCheck_A,
-      u_tlul_adapter_sram_racl.tlul_adapter_sram.u_sramreqfifo.gen_normal_fifo.u_fifo_cnt
-        .gen_secure_ptrs.u_wptr,
+      u_tlul_adapter_sram.u_sramreqfifo.gen_normal_fifo.u_fifo_cnt.gen_secure_ptrs.u_wptr,
       alert_tx_o[0])
   `ASSERT_PRIM_COUNT_ERROR_TRIGGER_ALERT(SramReqFifoRptrCheck_A,
-      u_tlul_adapter_sram_racl.tlul_adapter_sram.u_sramreqfifo.gen_normal_fifo.u_fifo_cnt
-        .gen_secure_ptrs.u_rptr,
+      u_tlul_adapter_sram.u_sramreqfifo.gen_normal_fifo.u_fifo_cnt.gen_secure_ptrs.u_rptr,
       alert_tx_o[0])
   `ASSERT_PRIM_COUNT_ERROR_TRIGGER_ALERT(ReqFifoWptrCheck_A,
-      u_tlul_adapter_sram_racl.tlul_adapter_sram.u_reqfifo.gen_normal_fifo.u_fifo_cnt
-        .gen_secure_ptrs.u_wptr,
+      u_tlul_adapter_sram.u_reqfifo.gen_normal_fifo.u_fifo_cnt.gen_secure_ptrs.u_wptr,
       alert_tx_o[0])
   `ASSERT_PRIM_COUNT_ERROR_TRIGGER_ALERT(ReqFifoRptrCheck_A,
-      u_tlul_adapter_sram_racl.tlul_adapter_sram.u_reqfifo.gen_normal_fifo.u_fifo_cnt
-        .gen_secure_ptrs.u_rptr,
+      u_tlul_adapter_sram.u_reqfifo.gen_normal_fifo.u_fifo_cnt.gen_secure_ptrs.u_rptr,
       alert_tx_o[0])
 
   // `tlul_gnt` doesn't factor in `sram_gnt` for timing reasons. This assertions checks that

@@ -60,11 +60,6 @@ class kmac_scoreboard extends cip_base_scoreboard #(
   bit entropy_fast_process;
   bit entropy_ready;
 
-  // The scoreboard overwrites the value configured by software with the value of the application
-  // interface. Keep a separate copy of the CSR value to restore it after application interface
-  // transactions finish.
-  sha3_pkg::keccak_strength_e strength_csr;
-
   // Set this bit when entropy_ready is 1 and entropy_mode is EntropyModeEdn,
   // to indicate that we are now waiting on the EDN to return valid entropy
   bit in_edn_fetch = 0;
@@ -153,16 +148,16 @@ class kmac_scoreboard extends cip_base_scoreboard #(
                                 ({KMAC_FIFO_DEPTH{1'b1}} << KmacStatusFifoDepthLSB);
 
   // TLM fifos
-  uvm_tlm_analysis_fifo #(kmac_app_item) kmac_app_rsp_fifo[NUM_APP_INTF];
+  uvm_tlm_analysis_fifo #(kmac_app_item) kmac_app_rsp_fifo[kmac_pkg::NumAppIntf];
   uvm_tlm_analysis_fifo #(push_pull_agent_pkg::push_pull_item #(
     .HostDataWidth(kmac_app_agent_pkg::KMAC_REQ_DATA_WIDTH)))
-    kmac_app_req_fifo[NUM_APP_INTF];
+    kmac_app_req_fifo[kmac_pkg::NumAppIntf];
 
   `uvm_component_new
 
   function void build_phase(uvm_phase phase);
     super.build_phase(phase);
-    for (int i = 0; i < NUM_APP_INTF; i++) begin
+    for (int i = 0; i < kmac_pkg::NumAppIntf; i++) begin
       kmac_app_req_fifo[i] = new($sformatf("kmac_app_req_fifo[%0d]", i), this);
       kmac_app_rsp_fifo[i] = new($sformatf("kmac_app_rsp_fifo[%0d]", i), this);
     end
@@ -361,8 +356,6 @@ class kmac_scoreboard extends cip_base_scoreboard #(
             end
 
             @(posedge sha3_idle);
-            // Restore the strength value provided by software via CSR interface.
-            strength = strength_csr;
           end
           ,
           wait(cfg.under_reset || kmac_err.code == ErrKeyNotValid ||
@@ -575,30 +568,24 @@ class kmac_scoreboard extends cip_base_scoreboard #(
                 `DV_CHECK_FATAL(in_kmac_app == 1,
                     "in_kmac_app is not set, scoreboard has not picked up KMAC_APP request")
 
-                // We expect an app interface error if app_mode is AppKeymgr (meaning that we are
-                // in the mode where we are talking to the keymgr) and either there is no entropy
-                // to perform the masking that is enabled or the key has been invalidated.
-                app_intf_err = (app_mode == AppKeymgr &&
-                                ((cfg.enable_masking && !entropy_ready) || cfg.key_invalidated));
-
-                // Check app interface errors have been reported as expected.
-                `DV_CHECK_FATAL(kmac_app_rsp.rsp_error == app_intf_err)
-
-
-                // Check that digests have been zeroed if there was an interface error. If not,
-                // extract the digests and (if configured) check they are correct.
-                if (app_intf_err) begin
+                // Check app interface errors.
+                if (app_mode == AppKeymgr && cfg.enable_masking && !entropy_ready) begin
+                  app_intf_err = 1;
                   `DV_CHECK_FATAL(kmac_app_rsp.rsp_digest_share0 == 0,
                     "APP interface error, expect output to be all 0s")
                   `DV_CHECK_FATAL(kmac_app_rsp.rsp_digest_share1 == 0,
                     "APP interface error, expect output to be all 0s")
                 end else begin
+
                   // assign digest values
                   kmac_app_digest_share0 = kmac_app_rsp.rsp_digest_share0;
                   kmac_app_digest_share1 = kmac_app_rsp.rsp_digest_share1;
 
                   if (do_check_digest) check_digest();
                 end
+
+                `DV_CHECK_FATAL(kmac_app_rsp.rsp_error == app_intf_err)
+
 
                 in_kmac_app = 0;
                 sha3_squeeze = 0;
@@ -758,7 +745,6 @@ class kmac_scoreboard extends cip_base_scoreboard #(
           hash_mode = sha3_pkg::sha3_mode_e'(item.a_data[KmacModeMSB:KmacModeLSB]);
 
           strength = sha3_pkg::keccak_strength_e'(item.a_data[KmacStrengthMSB:KmacStrengthLSB]);
-          strength_csr = strength;
 
           entropy_mode = entropy_mode_e'(item.a_data[KmacEntropyModeMSB:KmacEntropyModeLSB]);
 
@@ -1729,8 +1715,8 @@ class kmac_scoreboard extends cip_base_scoreboard #(
     byte fname_arr[];
     byte custom_str_arr[];
 
-    if (en_kmac_app && APP_CFG[app_mode].PrefixMode) begin
-      prefix_bytes = {<< byte {APP_CFG[app_mode].Prefix}};
+    if (en_kmac_app && kmac_pkg::AppCfg[app_mode].PrefixMode) begin
+      prefix_bytes = {<< byte {kmac_pkg::AppCfg[app_mode].Prefix}};
     end else begin
       prefix_bytes = {<< 32 {prefix}};
       prefix_bytes = {<< byte {prefix_bytes}};

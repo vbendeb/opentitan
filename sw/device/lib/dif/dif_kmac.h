@@ -402,6 +402,8 @@ typedef enum dif_kmac_error {
 
   kDifErrorSoftwareHashingWithoutEntropyReady = 9,
 
+  kDifErrorShadowRegisterUpdate = 0xC0,
+
   kDifErrorFatalError = 0xC1,
 
   kDifErrorPackerIntegrity = 0xC2,

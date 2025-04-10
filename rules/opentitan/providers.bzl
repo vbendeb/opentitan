@@ -4,13 +4,6 @@
 
 # Providers and helper functions associated with all execution environments.
 
-OpenTitanBinaryInfo = provider(
-    doc = "A provider that describes the output of a opentitan binary",
-    fields = {
-        "exec_env": "Mapping from providers to the execution environment for which it was built",
-    },
-)
-
 Cw310BinaryInfo = provider(
     doc = "CW310 Binary Info",
 )
@@ -46,6 +39,18 @@ ALL_BINARY_PROVIDERS = [
     SimDvBinaryInfo,
     SimVerilatorBinaryInfo,
     SimQemuBinaryInfo,
+]
+
+PROVIDER_FIELDS = [
+    "elf",
+    "binary",
+    "default",
+    "rom",
+    "signed_bin",
+    "disassembly",
+    "logs",
+    "mapfile",
+    "vmem",
 ]
 
 def get_binary_files(attrs, field = "binary", providers = ALL_BINARY_PROVIDERS):
