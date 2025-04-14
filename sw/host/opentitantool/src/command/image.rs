@@ -273,7 +273,10 @@ impl CommandDispatch for ManifestUpdateCommand {
             .iter()
             .filter(|entry_spec| entry_spec.is_signed())
             .map(|e| e.id())
-            .chain(vec![ManifestExtId::spx_key.into()])
+            .chain(vec![
+                ManifestExtId::spx_key.into(),
+                ManifestExtId::isfb.into(),
+            ])
             .collect::<HashSet<u32>>();
         image.update_signed_region(&signed_ids)?;
 
