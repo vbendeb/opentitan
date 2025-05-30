@@ -10,10 +10,15 @@
 #include "sw/device/lib/dif/dif_gpio.h"
 #include "sw/device/lib/dif/dif_otp_ctrl.h"
 #include "sw/device/lib/dif/dif_pinmux.h"
+#include "sw/device/lib/runtime/print.h"
 #include "sw/device/lib/testing/flash_ctrl_testutils.h"
+#include "sw/device/lib/testing/json/provisioning_data.h"
 #include "sw/device/lib/testing/pinmux_testutils.h"
 #include "sw/device/lib/testing/test_framework/check.h"
+#include "sw/device/lib/testing/test_framework/ottf_console.h"
 #include "sw/device/lib/testing/test_framework/ottf_test_config.h"
+#include "sw/device/lib/testing/test_framework/status.h"
+#include "sw/device/lib/testing/test_framework/ujson_ottf.h"
 #include "sw/device/silicon_creator/manuf/base/flash_info_permissions.h"
 #include "sw/device/silicon_creator/manuf/base/ft_device_id.h"
 #include "sw/device/silicon_creator/manuf/lib/flash_info_fields.h"
@@ -24,17 +29,33 @@
 #include "ast_regs.h"  // Generated.
 #include "hw/top_earlgrey/sw/autogen/top_earlgrey.h"
 
-OTTF_DEFINE_TEST_CONFIG();
-
 static dif_flash_ctrl_state_t flash_ctrl_state;
 static dif_gpio_t gpio;
 static dif_otp_ctrl_t otp_ctrl;
 static dif_pinmux_t pinmux;
 
+static manuf_ft_individualize_data_t in_data;
+
 // ATE Indicator GPIOs.
 static const dif_gpio_pin_t kGpioPinTestStart = 0;
 static const dif_gpio_pin_t kGpioPinTestDone = 1;
 static const dif_gpio_pin_t kGpioPinTestError = 2;
+static const dif_gpio_pin_t kGpioPinSpiConsoleTxReady = 3;
+static const dif_gpio_pin_t kGpioPinSpiConsoleRxReady = 4;
+
+#ifndef ATE
+OTTF_DEFINE_TEST_CONFIG(.console.type = kOttfConsoleSpiDevice,
+                        .console.base_addr = TOP_EARLGREY_SPI_DEVICE_BASE_ADDR,
+                        .console.test_may_clobber = false,
+                        .silence_console_prints = true,
+                        .console_tx_indicator.enable = true,
+                        .console_tx_indicator.spi_console_tx_ready_mio =
+                            kTopEarlgreyPinmuxMioOutIoa5,
+                        .console_tx_indicator.spi_console_tx_ready_gpio =
+                            kGpioPinSpiConsoleTxReady);
+#else
+OTTF_DEFINE_TEST_CONFIG();
+#endif
 
 /**
  * Initializes all DIF handles used in this SRAM program.
@@ -55,6 +76,14 @@ static status_t peripheral_handles_init(void) {
  * Configure the ATE GPIO indicator pins.
  */
 static status_t configure_ate_gpio_indicators(void) {
+  // IOA6 / GPIO4 is for SPI console RX ready signal.
+  TRY(dif_pinmux_output_select(
+      &pinmux, kTopEarlgreyPinmuxMioOutIoa6,
+      kTopEarlgreyPinmuxOutselGpioGpio0 + kGpioPinSpiConsoleRxReady));
+  // IOA5 / GPIO3 is for SPI console TX ready signal.
+  TRY(dif_pinmux_output_select(
+      &pinmux, kTopEarlgreyPinmuxMioOutIoa5,
+      kTopEarlgreyPinmuxOutselGpioGpio0 + kGpioPinSpiConsoleTxReady));
   // IOA0 / GPIO2 is for error reporting.
   TRY(dif_pinmux_output_select(
       &pinmux, kTopEarlgreyPinmuxMioOutIoa0,
@@ -68,7 +97,7 @@ static status_t configure_ate_gpio_indicators(void) {
       &pinmux, kTopEarlgreyPinmuxMioOutIoa4,
       kTopEarlgreyPinmuxOutselGpioGpio0 + kGpioPinTestStart));
   TRY(dif_gpio_output_set_enabled_all(&gpio,
-                                      0x7));        // Enable first three GPIOs.
+                                      0x1f));       // Enable first 5 GPIOs.
   TRY(dif_gpio_write_all(&gpio, /*write_val=*/0));  // Intialize all to 0.
   return OK_STATUS();
 }
@@ -117,13 +146,24 @@ static status_t patch_ast_config_value(void) {
  * Note: CreatorSwCfg and OwnerSwCfg partitions are not locked yet, as not
  * all fields can be programmed until the personalization stage.
  */
-static status_t provision(void) {
+static status_t provision(ujson_t *uj) {
   // Patch AST config if requested.
   TRY(patch_ast_config_value());
 
   // Perform OTP writes.
+#ifndef ATE
+  // Get host data.
+  base_printf("Waiting for FT SRAM provisioning data ...");
+  TRY(dif_gpio_write(&gpio, kGpioPinSpiConsoleRxReady, true));
+  TRY(ujson_deserialize_manuf_ft_individualize_data_t(uj, &in_data));
+  TRY(dif_gpio_write(&gpio, kGpioPinSpiConsoleRxReady, false));
+  TRY(manuf_individualize_device_hw_cfg(&flash_ctrl_state, &otp_ctrl,
+                                        kFlashInfoPage0Permissions,
+                                        in_data.ft_device_id));
+#else
   TRY(manuf_individualize_device_hw_cfg(
       &flash_ctrl_state, &otp_ctrl, kFlashInfoPage0Permissions, kFtDeviceId));
+#endif
   TRY(manuf_individualize_device_rot_creator_auth_codesign(&otp_ctrl));
   TRY(manuf_individualize_device_rot_creator_auth_state(&otp_ctrl));
   TRY(manuf_individualize_device_owner_sw_cfg(&otp_ctrl));
@@ -135,10 +175,15 @@ static status_t provision(void) {
 bool test_main(void) {
   CHECK_STATUS_OK(peripheral_handles_init());
   CHECK_STATUS_OK(configure_ate_gpio_indicators());
+  ujson_t uj;
+#ifndef ATE
+  ottf_console_init();
+  uj = ujson_ottf_console();
+#endif
 
   // Perform provisioning operations.
   CHECK_DIF_OK(dif_gpio_write(&gpio, kGpioPinTestStart, true));
-  status_t result = provision();
+  status_t result = provision(&uj);
   if (!status_ok(result)) {
     CHECK_DIF_OK(dif_gpio_write(&gpio, kGpioPinTestError, true));
   } else {

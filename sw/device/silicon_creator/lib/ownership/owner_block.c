@@ -43,6 +43,18 @@ enum {
   kProtectSlots = 8,
 };
 
+hardened_bool_t owner_block_owner_key_equal(void) {
+  hardened_bool_t result =
+      hardened_memeq(owner_page[0].owner_key.raw, owner_page[1].owner_key.raw,
+                     ARRAYSIZE(owner_page[0].owner_key.raw));
+  result ^= owner_page[0].ownership_key_alg;
+  result ^= owner_page[1].ownership_key_alg;
+  if (launder32(result) != kHardenedBoolTrue) {
+    return kHardenedBoolFalse;
+  }
+  return result;
+}
+
 hardened_bool_t owner_block_newversion_mode(void) {
   if (owner_page_valid[0] == kOwnerPageStatusSealed &&
       (owner_page[0].update_mode == kOwnershipUpdateModeNewVersion ||
@@ -66,15 +78,15 @@ hardened_bool_t owner_block_page1_valid_for_transfer(boot_data_t *bootdata) {
       case kOwnershipStateUnlockedSelf:
         // In UnlockedSelf, the owner key must be the same.  If not,
         // skip parsing of Owner Page 1.
-        if (hardened_memeq(
-                owner_page[0].owner_key.raw, owner_page[1].owner_key.raw,
-                ARRAYSIZE(owner_page[0].owner_key.raw)) == kHardenedBoolTrue) {
+        if (owner_block_owner_key_equal() == kHardenedBoolTrue) {
           return kHardenedBoolTrue;
         }
         break;
       case kOwnershipStateUnlockedEndorsed:
         // In UnlockedEndorsed, the owner key must match the key endorsed by the
         // next_owner field in bootdata.  If not, skip parsing owner page 1.
+        //
+        // FIXME: Mix in the key algorithm identifier.
         hmac_sha256(owner_page[1].owner_key.raw,
                     sizeof(owner_page[1].owner_key.raw), &digest);
         if (hardened_memeq(bootdata->next_owner, digest.digest,
@@ -486,6 +498,66 @@ rom_error_t owner_block_info_apply(const owner_flash_info_config_t *info) {
           .read = bitfield_field32_read(val, FLASH_CONFIG_READ),
           .write = bitfield_field32_read(val, FLASH_CONFIG_PROGRAM),
           .erase = bitfield_field32_read(val, FLASH_CONFIG_ERASE),
+      };
+      flash_ctrl_info_perms_set(&page, perm);
+    }
+  }
+  return kErrorOk;
+}
+
+rom_error_t owner_block_info_lockdown(const owner_flash_info_config_t *info) {
+  if ((hardened_bool_t)info == kHardenedBoolFalse)
+    return kErrorOk;
+  size_t len = (info->header.length - sizeof(owner_flash_info_config_t)) /
+               sizeof(owner_info_page_t);
+  const owner_info_page_t *config = info->config;
+  uint32_t crypt = 0;
+  for (size_t i = 0; i < len; ++i, ++config, crypt += 0x11111111) {
+    if (is_owner_page(config->bank, config->page) == kHardenedBoolTrue) {
+      flash_ctrl_info_page_t page;
+      HARDENED_RETURN_IF_ERROR(flash_ctrl_info_type0_params_build(
+          config->bank, config->page, &page));
+      uint32_t val = config->access ^ crypt;
+      if (bitfield_field32_read(val, FLASH_CONFIG_LOCK) !=
+          kMultiBitBool4False) {
+        flash_ctrl_info_cfg_lock(&page);
+        SEC_MMIO_WRITE_INCREMENT(kFlashCtrlSecMmioInfoCfgLock);
+      }
+    }
+  }
+  return kErrorOk;
+}
+
+rom_error_t owner_block_info_isfb_erase_enable(
+    boot_data_t *bootdata, const owner_config_t *owner_config) {
+  if (bootdata->ownership_state != kOwnershipStateLockedOwner)
+    return kErrorOk;
+  // Check whether the ISFB configuration exists.
+  if ((hardened_bool_t)owner_config->isfb == kHardenedBoolFalse)
+    return kErrorOk;
+  // Check whether the FLASH INFO configuration exists.
+  if ((hardened_bool_t)owner_config->info == kHardenedBoolFalse)
+    return kErrorOk;
+
+  const owner_flash_info_config_t *info = owner_config->info;
+  size_t len = (info->header.length - sizeof(owner_flash_info_config_t)) /
+               sizeof(owner_info_page_t);
+
+  const owner_info_page_t *config = info->config;
+  uint32_t crypt = 0;
+  for (size_t i = 0; i < len; ++i, ++config, crypt += 0x11111111) {
+    if (is_owner_page(config->bank, config->page) == kHardenedBoolTrue &&
+        config->bank == owner_config->isfb->bank &&
+        config->page == owner_config->isfb->page) {
+      flash_ctrl_info_page_t page;
+      HARDENED_RETURN_IF_ERROR(flash_ctrl_info_type0_params_build(
+          config->bank, config->page, &page));
+
+      uint32_t val = config->access ^ crypt;
+      flash_ctrl_perms_t perm = {
+          .read = bitfield_field32_read(val, FLASH_CONFIG_READ),
+          .write = bitfield_field32_read(val, FLASH_CONFIG_PROGRAM),
+          .erase = kMultiBitBool4True,
       };
       flash_ctrl_info_perms_set(&page, perm);
     }

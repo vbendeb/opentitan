@@ -90,9 +90,15 @@ rom_error_t rescue_protocol(boot_data_t *bootdata, boot_log_t *boot_log,
   spi_device_cmd_t cmd;
   uint32_t length;
   while (true) {
-    rom_error_t result = spi_device_cmd_get(&cmd);
-    if (result != kErrorOk) {
-      break;
+    RETURN_IF_ERROR(rescue_inactivity(&ctx.state));
+    rom_error_t result = spi_device_cmd_get(&cmd, /*blocking=*/false);
+    switch (result) {
+      case kErrorOk:
+        break;
+      case kErrorNoData:
+        continue;
+      default:
+        return result;
     }
     switch (cmd.opcode) {
       case kSpiDeviceOpcodePageProgram: {
@@ -122,11 +128,10 @@ rom_error_t rescue_protocol(boot_data_t *bootdata, boot_log_t *boot_log,
       } break;
 
       case kSpiDeviceOpcodeReset:
-        rstmgr_reset();
+        rstmgr_reboot();
         break;
       default:
         dfu_transport_result(&ctx, kErrorUsbBadSetup);
     }
   }
-  return kErrorOk;
 }

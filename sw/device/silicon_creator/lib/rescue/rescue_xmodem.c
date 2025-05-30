@@ -65,7 +65,7 @@ static rom_error_t handle_send_modes(rescue_state_t *state) {
   if (error == kErrorRescueSendStart && state->staged_len > 0) {
     error = xmodem_send(iohandle, state->data, state->staged_len);
     state->staged_len = 0;
-    validate_mode(kRescueModeFirmware, state);
+    validate_mode(state->default_mode, state);
   }
   return error;
 }
@@ -84,9 +84,7 @@ static rom_error_t protocol(rescue_state_t *state) {
   uint8_t command;
   uint32_t next_mode = 0;
 
-  // TODO: remove automatic reboots.
-  state->reboot = false;
-  validate_mode(kRescueModeFirmware, state);
+  validate_mode(state->default_mode, state);
 
   xmodem_recv_start(iohandle);
   while (true) {
@@ -94,13 +92,19 @@ static rom_error_t protocol(rescue_state_t *state) {
     result = xmodem_recv_frame(
         iohandle, state->frame, state->data + state->offset,
         sizeof(state->data) - state->offset, &rxlen, &command);
+
+    HARDENED_RETURN_IF_ERROR(rescue_inactivity(state));
     if (state->frame == 1 && result == kErrorXModemTimeoutStart) {
-      xmodem_recv_start(iohandle);
+      if (state->mode != kRescueModeNoOp) {
+        xmodem_recv_start(iohandle);
+      }
       continue;
     }
+
     switch (result) {
       case kErrorOk:
-        // Packet ok.
+        // Packet ok. Cancel the inactivity deadline.
+        state->inactivity_deadline = 0;
         state->offset += rxlen;
         HARDENED_RETURN_IF_ERROR(handle_recv_modes(state));
         xmodem_ack(iohandle, true);
@@ -115,13 +119,10 @@ static rom_error_t protocol(rescue_state_t *state) {
           HARDENED_RETURN_IF_ERROR(handle_recv_modes(state));
         }
         xmodem_ack(iohandle, true);
-        if (!state->reboot) {
-          state->frame = 1;
-          state->offset = 0;
-          state->flash_offset = 0;
-          continue;
-        }
-        return kErrorRescueReboot;
+        state->frame = 1;
+        state->offset = 0;
+        state->flash_offset = 0;
+        continue;
       case kErrorXModemCrc:
         xmodem_ack(iohandle, false);
         continue;
@@ -130,6 +131,8 @@ static rom_error_t protocol(rescue_state_t *state) {
       case kErrorXModemUnknown:
         if (state->frame == 1) {
           if (command == '\r') {
+            // Mode change request.  Cancel the inactivity deadline.
+            state->inactivity_deadline = 0;
             validate_mode(next_mode, state);
             next_mode = 0;
           } else {
@@ -151,7 +154,7 @@ rom_error_t rescue_protocol(boot_data_t *bootdata, boot_log_t *boot_log,
   rescue_state_init(&rescue_state, bootdata, boot_log, config);
   rom_error_t result = protocol(&rescue_state);
   if (result == kErrorRescueReboot) {
-    rstmgr_reset();
+    rstmgr_reboot();
   }
   return result;
 }

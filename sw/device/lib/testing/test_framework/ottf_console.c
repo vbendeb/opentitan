@@ -9,6 +9,8 @@
 
 #include "sw/device/lib/base/mmio.h"
 #include "sw/device/lib/base/status.h"
+#include "sw/device/lib/dif/dif_gpio.h"
+#include "sw/device/lib/dif/dif_pinmux.h"
 #include "sw/device/lib/dif/dif_rv_plic.h"
 #include "sw/device/lib/dif/dif_spi_device.h"
 #include "sw/device/lib/dif/dif_uart.h"
@@ -47,6 +49,8 @@ enum {
 };
 
 // Potential DIF handles for OTTF console communication.
+static dif_gpio_t gpio;
+static dif_pinmux_t pinmux;
 static dif_spi_device_handle_t ottf_console_spi_device;
 static dif_uart_t ottf_console_uart;
 
@@ -59,6 +63,10 @@ static status_t (*getc)(void *);
 // the interrupt service handler and user code.
 static volatile ottf_console_flow_control_t flow_control_state;
 static volatile uint32_t flow_control_irqs;
+
+// Staging buffer for the SPI console implementation.
+static char spi_buf[kSpiDeviceMaxFramePayloadSizeBytes];
+static size_t spi_buf_end;
 
 void *ottf_console_get(void) {
   switch (kOttfTestConfig.console.type) {
@@ -98,10 +106,19 @@ static status_t spi_device_getc(void *io) {
   return OK_STATUS(info.data[index++]);
 }
 
-static void spi_device_wait_for_sync(dif_spi_device_handle_t *spi_device) {
-  const uint8_t kBootMagicPattern[4] = {0x02, 0xb0, 0xfe, 0xca};
+static void spi_device_clear_flash_buffer(dif_spi_device_handle_t *spi_device) {
   const uint8_t kEmptyPattern[4] = {0};
+  for (size_t i = 0; i < SPI_DEVICE_PARAM_SRAM_READ_BUFFER_DEPTH; i++) {
+    CHECK_DIF_OK(dif_spi_device_write_flash_buffer(
+        spi_device, kDifSpiDeviceFlashBufferTypeEFlash,
+        i * ARRAYSIZE(kEmptyPattern), ARRAYSIZE(kEmptyPattern), kEmptyPattern));
+  }
+  CHECK_DIF_OK(dif_spi_device_set_flash_status_registers(spi_device, 0x00));
+}
 
+static void spi_device_wait_for_sync(dif_spi_device_handle_t *spi_device) {
+  // Write the boot synchronization data to the flash buffer.
+  const uint8_t kBootMagicPattern[4] = {0x02, 0xb0, 0xfe, 0xca};
   for (size_t i = 0; i < SPI_DEVICE_PARAM_SRAM_READ_BUFFER_DEPTH; i++) {
     CHECK_DIF_OK(dif_spi_device_write_flash_buffer(
         spi_device, kDifSpiDeviceFlashBufferTypeEFlash,
@@ -109,15 +126,12 @@ static void spi_device_wait_for_sync(dif_spi_device_handle_t *spi_device) {
         kBootMagicPattern));
   }
 
+  // Wait for host to read out the boot synchronization data.
   upload_info_t info = {0};
   CHECK_STATUS_OK(spi_device_testutils_wait_for_upload(spi_device, &info));
-  // Clear the boot magic in the read buffer.
-  for (size_t i = 0; i < SPI_DEVICE_PARAM_SRAM_READ_BUFFER_DEPTH; i++) {
-    CHECK_DIF_OK(dif_spi_device_write_flash_buffer(
-        spi_device, kDifSpiDeviceFlashBufferTypeEFlash,
-        i * ARRAYSIZE(kEmptyPattern), ARRAYSIZE(kEmptyPattern), kEmptyPattern));
-  }
-  CHECK_DIF_OK(dif_spi_device_set_flash_status_registers(spi_device, 0x00));
+
+  // Clear the boot magic data in the flash buffer that the host echoed back.
+  spi_device_clear_flash_buffer(spi_device);
 }
 
 void ottf_console_init(void) {
@@ -140,6 +154,8 @@ void ottf_console_init(void) {
       ottf_console_configure_spi_device(base_addr);
       sink = get_spi_device_sink();
       getc = spi_device_getc;
+      spi_buf_end = 0;
+      memset(spi_buf, 0, kSpiDeviceMaxFramePayloadSizeBytes);
       break;
     default:
       CHECK(false, "unsupported OTTF console interface.");
@@ -171,6 +187,7 @@ void ottf_console_configure_uart(uintptr_t base_addr) {
 }
 
 void ottf_console_configure_spi_device(uintptr_t base_addr) {
+  // Configure spi_device SPI flash emulation.
   CHECK_DIF_OK(dif_spi_device_init_handle(mmio_region_from_addr(base_addr),
                                           &ottf_console_spi_device));
   CHECK_DIF_OK(dif_spi_device_configure(
@@ -251,7 +268,29 @@ void ottf_console_configure_spi_device(uintptr_t base_addr) {
     CHECK_DIF_OK(dif_spi_device_set_flash_command_slot(
         &ottf_console_spi_device, slot, kDifToggleEnabled, write_commands[i]));
   }
-  spi_device_wait_for_sync(&ottf_console_spi_device);
+
+  // Setup TX GPIO if requested.
+  if (kOttfTestConfig.console_tx_indicator.enable) {
+    CHECK_DIF_OK(dif_gpio_init(
+        mmio_region_from_addr(TOP_EARLGREY_GPIO_BASE_ADDR), &gpio));
+    CHECK_DIF_OK(dif_pinmux_init(
+        mmio_region_from_addr(TOP_EARLGREY_PINMUX_AON_BASE_ADDR), &pinmux));
+    CHECK_DIF_OK(dif_pinmux_output_select(
+        &pinmux, kOttfTestConfig.console_tx_indicator.spi_console_tx_ready_mio,
+        kTopEarlgreyPinmuxOutselGpioGpio0 +
+            kOttfTestConfig.console_tx_indicator.spi_console_tx_ready_gpio));
+    CHECK_DIF_OK(dif_gpio_write(
+        &gpio, kOttfTestConfig.console_tx_indicator.spi_console_tx_ready_gpio,
+        false));
+    CHECK_DIF_OK(dif_gpio_output_set_enabled(
+        &gpio, kOttfTestConfig.console_tx_indicator.spi_console_tx_ready_gpio,
+        true));
+    base_spi_device_set_gpio_tx_indicator(
+        &gpio, kOttfTestConfig.console_tx_indicator.spi_console_tx_ready_gpio);
+    spi_device_clear_flash_buffer(&ottf_console_spi_device);
+  } else {
+    spi_device_wait_for_sync(&ottf_console_spi_device);
+  }
   base_spi_device_stdout(&ottf_console_spi_device);
 }
 
@@ -386,12 +425,54 @@ size_t ottf_console_spi_device_read(size_t buf_size, uint8_t *const buf) {
   return received_data_len;
 }
 
-status_t ottf_console_putbuf(void *io, const char *buf, size_t len) {
+status_t ottf_console_flushbuf(void *io) {
+  size_t written_len = 0;
+  if (kOttfTestConfig.console.putbuf_buffered && spi_buf_end > 0) {
+    written_len = sink(io, spi_buf, spi_buf_end);
+    if (spi_buf_end != written_len) {
+      return DATA_LOSS((int32_t)(spi_buf_end - written_len));
+    }
+    spi_buf_end = 0;
+  }
+  return OK_STATUS((int32_t)written_len);
+}
+
+static status_t ottf_buffered_putbuf(void *io, const char *buf, size_t len) {
+  if (len > sizeof(spi_buf)) {
+    // Flush and skip the staging buffer if the payload is already the max size.
+    TRY(ottf_console_flushbuf(io));
+    size_t written_len = sink(io, buf, len);
+    if (len != written_len) {
+      return DATA_LOSS((int32_t)(len - written_len));
+    }
+  } else if ((spi_buf_end + len) <= sizeof(spi_buf)) {
+    // There is room for the data in the staging buffer, copy it over.
+    memcpy(&spi_buf[spi_buf_end], buf, len);
+    spi_buf_end += len;
+  } else {
+    // The staging buffer is almost full; flush it before staging more data.
+    TRY(ottf_console_flushbuf(io));
+    memcpy(&spi_buf[spi_buf_end], buf, len);
+    spi_buf_end += len;
+  }
+  return OK_STATUS((int32_t)len);
+}
+
+static status_t ottf_non_buffered_putbuf(void *io, const char *buf,
+                                         size_t len) {
   size_t written_len = sink(io, buf, len);
   if (len != written_len) {
     return DATA_LOSS((int32_t)(len - written_len));
   }
   return OK_STATUS((int32_t)len);
+}
+
+status_t ottf_console_putbuf(void *io, const char *buf, size_t len) {
+  if (kOttfTestConfig.console.putbuf_buffered) {
+    return ottf_buffered_putbuf(io, buf, len);
+  } else {
+    return ottf_non_buffered_putbuf(io, buf, len);
+  }
 }
 
 status_t ottf_console_getc(void *io) { return getc(io); }

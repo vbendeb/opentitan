@@ -14,6 +14,10 @@ load(
     "opentitan_binary",
     "opentitan_test",
 )
+load(
+    "//sw/device/silicon_creator/rom_ext/e2e:defs.bzl",
+    "DEVICE_ID",
+)
 
 package(default_visibility = ["//visibility:public"])
 
@@ -46,6 +50,8 @@ _RESCUE_ROMEXT_RESULTS = {
 _CONFIGS = {
     "xmodem": {
         "rom_ext": "//sw/device/silicon_creator/rom_ext:rom_ext_dice_x509_slot_a",
+        # This alternate rom_ext has enter-on-fail and a timeout enabled.
+        "alt_rom_ext": "//sw/device/silicon_creator/rom_ext:rom_ext_xmodem_timeout",
         "params": "",
         "setup": "",
         "tags": [],
@@ -54,7 +60,7 @@ _CONFIGS = {
         "rom_ext": "//sw/device/silicon_creator/rom_ext:rom_ext_usbdfu",
         "params": "-p usb-dfu -t strap -v 3",
         "setup": "",
-        "tags": ["broken"],
+        "tags": [],
     },
     "spidfu": {
         "rom_ext": "//sw/device/silicon_creator/rom_ext:rom_ext_spidfu",
@@ -102,6 +108,7 @@ _CONFIGS = {
             binaries = {
                 ":boot_test_{}".format(name): "payload",
             },
+            changes_otp = True,
             params = config["params"],
             rom_ext = config["rom_ext"],
             setup = config["setup"],
@@ -160,6 +167,7 @@ genrule(
                 ":boot_test_{}".format(name): "payload",
                 ":bad_rom_ext": "bad_rom_ext",
             },
+            changes_otp = True,
             exit_failure = _RESCUE_ROMEXT_RESULTS[name == rxslot]["failure"],
             exit_success = _RESCUE_ROMEXT_RESULTS[name == rxslot]["success"].format(slot = name),
             image_name = "/tmp/rescue_rom_ext_{}.img".format(name),
@@ -198,6 +206,7 @@ genrule(
                 ":boot_test_slot_a": "slot_a",
                 ":boot_test_slot_b": "slot_b",
             },
+            changes_otp = True,
             params = config["params"],
             rom_ext = config["rom_ext"],
             setup = config["setup"],
@@ -216,7 +225,6 @@ genrule(
                 --exec="gpio apply RESET"
                 --exec="gpio remove RESET"
                 --exec="console --non-interactive --exit-success='bl0_slot = AA__\r\n' --exit-failure='{exit_failure}'"
-                --exec="fpga clear-bitstream"
                 no-op
             """,
         ),
@@ -236,6 +244,7 @@ genrule(
                 ":boot_test_slot_a": "slot_a",
                 ":boot_test_slot_b": "slot_b",
             },
+            changes_otp = True,
             params = config["params"],
             rom_ext = config["rom_ext"],
             setup = config["setup"],
@@ -258,7 +267,6 @@ genrule(
                 --exec="rescue {params} boot-svc set-next-bl0-slot --primary=SlotA --get-response=false"
                 --exec="no-op --info='##### Check for firmware execution in slot A'"
                 --exec="console --non-interactive --exit-success='bl0_slot = AA__\r\n' --exit-failure='{exit_failure}'"
-                --exec="fpga clear-bitstream"
                 no-op
             """,
         ),
@@ -276,6 +284,7 @@ opentitan_test(
         binaries = {
             ":boot_test_slot_a": "payload",
         },
+        changes_otp = True,
         test_cmd = """
             --exec="transport init"
             --exec="fpga load-bitstream {bitstream}"
@@ -283,7 +292,7 @@ opentitan_test(
             # First make sure the ROM_EXT is faulting because there is no firmware
             --exec="console --non-interactive --exit-success='BFV:' --exit-failure='PASS|FAIL'"
             # Load firmware via rescue
-            --exec="rescue firmware --rate=230400 {payload:signed_bin}"
+            --exec="rescue firmware --rate=115200 {payload:signed_bin}"
             # Check for firmware execution
             --exec="console --baudrate=115200 --non-interactive --exit-success='{exit_success}' --exit-failure='{exit_failure}'"
             no-op
@@ -306,6 +315,7 @@ opentitan_test(
         binaries = {
             ":boot_test_slot_a": "payload",
         },
+        changes_otp = True,
         rom_ext = "//sw/device/silicon_creator/rom_ext/e2e/rescue/testdata:rom_ext_rescue_protocol_0",
         test_cmd = """
             --exec="transport init"
@@ -321,3 +331,231 @@ opentitan_test(
         """,
     ),
 )
+
+opentitan_test(
+    name = "rescue_inactivity_timeout",
+    srcs = [
+        "//sw/device/silicon_creator/rom_ext/e2e/verified_boot:boot_test",
+    ],
+    exec_env = {
+        "//hw/top_earlgrey:fpga_hyper310_rom_ext": None,
+        "//hw/top_earlgrey:fpga_cw340_rom_ext": None,
+    },
+    fpga = fpga_params(
+        changes_otp = True,
+        rom_ext = "//sw/device/silicon_creator/rom_ext:rom_ext_xmodem_timeout",
+        test_cmd = """
+            --exec="transport init"
+            --exec="fpga clear-bitstream"
+            --exec="fpga load-bitstream {bitstream}"
+            --exec="bootstrap --clear-uart=true {firmware}"
+            # Trigger rescue and do nothing.  We expect the inactivity timer to
+            # cause rescue to exit and then boot the firmware.
+            --exec="rescue no-op"
+            # Check for firmware execution
+            --exec="console --non-interactive --exit-success='{exit_success}' --exit-failure='{exit_failure}'"
+            no-op
+        """,
+    ),
+    deps = [
+        "//sw/device/lib/base:status",
+        "//sw/device/lib/testing/test_framework:ottf_main",
+        "//sw/device/silicon_creator/lib:boot_log",
+        "//sw/device/silicon_creator/lib/drivers:retention_sram",
+    ],
+)
+
+opentitan_test(
+    # This test ensures that the ROM_EXT clears power-on-reset before rebooting
+    # so that the ROM wont re-scrable RET-RAM and destroy the 'skip_once' request.
+    #
+    # This test also ensures that the ROM_EXT disables the watchdog when entering
+    # rescue mode, as the normal watchdog timeout would cause the chip to reset
+    # after one second of idling in rescue.
+    #
+    # If the ROM_EXT were to fail to clear power-on-reset or to disable the
+    # watchdog, this device would boot-loop and this test would fail.
+    name = "rescue_inactivity_timeout_preserved_reset_reason",
+    srcs = [
+        "//sw/device/silicon_creator/rom_ext/e2e/verified_boot:boot_test",
+    ],
+    exec_env = {
+        "//hw/top_earlgrey:fpga_hyper310_rom_ext": None,
+    },
+    fpga = fpga_params(
+        changes_otp = True,
+        # We configure OTP to preserve the reset reason and set the watchdog timeout
+        # to one second.
+        otp = "//sw/device/silicon_creator/rom_ext/e2e:otp_img_secret2_locked_preserve_reset_prod",
+        # We use the spidfu rom_ext because we can trigger with a GPIO and we
+        # want to simulate the trigger being jammed.
+        rom_ext = "//sw/device/silicon_creator/rom_ext:rom_ext_spidfu",
+        test_cmd = """
+            --exec="transport init"
+            --exec="fpga clear-bitstream"
+            --exec="fpga load-bitstream {bitstream}"
+            --exec="bootstrap --clear-uart=true {firmware}"
+            # Set the trigger with gpio command to simulate the trigger being jammed.
+            --exec="gpio set --mode PushPull --value true Ioa2"
+            # Check for firmware execution.  We'll enter rescue, timeout,
+            # then reboot and execute firmware.
+            --exec="console --non-interactive --exit-success='{exit_success}' --exit-failure='{exit_failure}'"
+            no-op
+        """,
+    ),
+    deps = [
+        "//sw/device/lib/base:status",
+        "//sw/device/lib/testing/test_framework:ottf_main",
+        "//sw/device/silicon_creator/lib:boot_log",
+        "//sw/device/silicon_creator/lib/drivers:retention_sram",
+    ],
+)
+
+# Check that xmodem rescue is functional when the `RESQ` mode is disabled.
+opentitan_test(
+    name = "xmodem_restricted_commands",
+    srcs = [
+        "//sw/device/silicon_creator/rom_ext/e2e/verified_boot:boot_test",
+    ],
+    exec_env = {
+        "//hw/top_earlgrey:fpga_hyper310_rom_ext": None,
+        "//hw/top_earlgrey:fpga_cw340_rom_ext": None,
+    },
+    fpga = fpga_params(
+        changes_otp = True,
+        exit_failure = "ok: ",
+        exit_success = "error: mode not allowed",
+        rom_ext = "//sw/device/silicon_creator/rom_ext:rom_ext_xmodem_restricted_commands",
+        test_cmd = """
+            --exec="transport init"
+            --exec="fpga clear-bitstream"
+            --exec="fpga load-bitstream {bitstream}"
+            --exec="bootstrap --clear-uart=true {firmware}"
+            # Trigger rescue and make sure we can get the device ID.
+            --exec="rescue get-device-id --reboot=false"
+            # Try the `RESQ` mode and make sure we get an error message.
+            --exec="console --non-interactive --send='RESQ\r' --exit-success='{exit_success}' --exit-failure='{exit_failure}'"
+            no-op
+        """,
+    ),
+    deps = [
+        "//sw/device/lib/base:status",
+        "//sw/device/lib/testing/test_framework:ottf_main",
+        "//sw/device/silicon_creator/lib:boot_log",
+        "//sw/device/silicon_creator/lib/drivers:retention_sram",
+    ],
+)
+
+# Check that DFU rescue is functional when the `RESQ` mode is disabled.
+# TODO: Add a test to try to perform a firmware rescue and ensure that it fails.
+opentitan_test(
+    name = "spidfu_restricted_commands",
+    srcs = [
+        "//sw/device/silicon_creator/rom_ext/e2e/verified_boot:boot_test",
+    ],
+    exec_env = {
+        "//hw/top_earlgrey:fpga_hyper310_rom_ext": None,
+        "//hw/top_earlgrey:fpga_cw340_rom_ext": None,
+    },
+    fpga = fpga_params(
+        changes_otp = True,
+        params = "-p spi-dfu -t gpio -v +Ioa2",
+        rom_ext = "//sw/device/silicon_creator/rom_ext:rom_ext_spidfu_restricted_commands",
+        setup = "--exec=\"gpio set --mode OpenDrain Ioa2\"",
+        test_cmd = """
+            --exec="transport init"
+            --exec="fpga clear-bitstream"
+            --exec="fpga load-bitstream {bitstream}"
+            {setup}
+            --exec="bootstrap --clear-uart=true {firmware}"
+            # Trigger rescue and make sure we can get the device ID.
+            --exec="rescue {params} get-device-id --reboot=false"
+            no-op
+        """,
+    ),
+    deps = [
+        "//sw/device/lib/base:status",
+        "//sw/device/lib/testing/test_framework:ottf_main",
+        "//sw/device/silicon_creator/lib:boot_log",
+        "//sw/device/silicon_creator/lib/drivers:retention_sram",
+    ],
+)
+
+[
+    opentitan_test(
+        name = "rescue_enter_on_fail_{}".format(name),
+        exec_env = {
+            "//hw/top_earlgrey:fpga_hyper310_rom_ext": None,
+            "//hw/top_earlgrey:fpga_cw340_rom_ext": None,
+        },
+        fpga = fpga_params(
+            assemble = "",
+            changes_otp = True,
+            exit_success = "BFV:05525304\r\n",
+            rom_ext = config.get(
+                "alt_rom_ext",
+                config["rom_ext"],
+            ),
+            setup = config["setup"],
+            tags = config["tags"],
+            test_cmd = """
+                --exec="transport init"
+                --exec="fpga clear-bitstream"
+                --exec="fpga load-bitstream {bitstream}"
+                {setup}
+                # Load only the ROM_EXT so the boot will fail because of no firmware.
+                --exec="bootstrap --clear-uart=true {rom_ext}"
+                # Check that the final boot-fault is "kErrorRescueInactivity".
+                --exec="console --non-interactive --exit-success='{exit_success}' --timeout=10s"
+                no-op
+            """,
+        ),
+    )
+    for name, config in _CONFIGS.items()
+]
+
+[
+    opentitan_test(
+        name = "rescue_get_boot_log_{}".format(protocol),
+        exec_env = {
+            "//hw/top_earlgrey:fpga_hyper310_rom_ext": None,
+            "//hw/top_earlgrey:fpga_cw340_rom_ext": None,
+        },
+        fpga = fpga_params(
+            assemble = "",
+            params = config["params"],
+            rom_ext = config["rom_ext"],
+            test_cmd = """
+            --clear-bitstream
+            --bootstrap={rom_ext}
+            rescue {params} --action=get-boot-log
+            """,
+            test_harness = "//sw/host/tests/rescue:rescue_test",
+        ),
+    )
+    for protocol, config in _CONFIGS.items()
+]
+
+[
+    opentitan_test(
+        name = "rescue_get_device_id_{}".format(protocol),
+        exec_env = {
+            "//hw/top_earlgrey:fpga_hyper310_rom_ext": None,
+            "//hw/top_earlgrey:fpga_cw340_rom_ext": None,
+        },
+        fpga = fpga_params(
+            assemble = "",
+            device_id = DEVICE_ID,
+            params = config["params"],
+            rom_ext = config["rom_ext"],
+            test_cmd = """
+            --clear-bitstream
+            --bootstrap={rom_ext}
+            --device-id={device_id}
+            rescue {params} --action=get-device-id
+            """,
+            test_harness = "//sw/host/tests/rescue:rescue_test",
+        ),
+    )
+    for protocol, config in _CONFIGS.items()
+]
