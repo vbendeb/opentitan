@@ -8,7 +8,7 @@ load(
 )
 load("//rules:autogen.bzl", "autogen_chip_info")
 load("//rules:cross_platform.bzl", "dual_cc_device_library_of", "dual_cc_library", "dual_inputs")
-load("//rules:opentitan.bzl", "OPENTITAN_CPU")
+load("//rules/opentitan:defs.bzl", "OPENTITAN_CPU")
 load(
     "//rules/opentitan:defs.bzl",
     "EARLGREY_TEST_ENVS",
@@ -251,13 +251,28 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "dbg_print_unittest_variant",
+    srcs = ["dbg_print.c"],
+    hdrs = ["dbg_print.h"],
+    local_defines = ["DBG_PRINT_UNIT_TEST_"],
+    deps = [
+        ":epmp_defs",
+        ":error",
+        "//sw/device/lib/base:bitfield",
+        "//sw/device/lib/base:csr",
+        "//sw/device/lib/base:macros",
+        "//sw/device/silicon_creator/lib/drivers:uart",
+    ],
+)
+
 cc_test(
     name = "dbg_print_unittest",
-    srcs = ["dbg_print_unittest.cc"],
+    srcs = [
+        "dbg_print_unittest.cc",
+    ],
     deps = [
-        ":dbg_print",
-        ":error",
-        "//sw/device/silicon_creator/lib/drivers:uart",
+        ":dbg_print_unittest_variant",
         "@googletest//:gtest_main",
     ],
 )
@@ -495,6 +510,7 @@ opentitan_test(
         EARLGREY_TEST_ENVS,
         {
             "//hw/top_earlgrey:fpga_cw310_sival": None,
+            "//hw/top_earlgrey:fpga_cw340_sival": None,
             # See #21706, expects keymgr state 0 so not working after ROM_EXT.
             "//hw/top_earlgrey:fpga_cw310_sival_rom_ext": "broken",
         },
@@ -508,6 +524,7 @@ opentitan_test(
         "//hw/top_earlgrey/sw/autogen:top_earlgrey",
         "//sw/device/lib/crypto/drivers:entropy",
         "//sw/device/lib/testing:keymgr_testutils",
+        "//sw/device/lib/testing/test_framework:ottf_alerts",
         "//sw/device/lib/testing/test_framework:ottf_main",
         "//sw/device/silicon_creator/manuf/lib:flash_info_fields",
     ],

@@ -27,6 +27,7 @@ pub mod spx;
 pub mod status_cmd;
 pub mod tpm;
 pub mod transport;
+pub mod uart;
 pub mod update_usr_access;
 pub mod version;
 pub mod xmodem;
@@ -37,8 +38,8 @@ use clap::Args;
 use std::any::Any;
 use std::time::Duration;
 
-use opentitanlib::app::command::CommandDispatch;
 use opentitanlib::app::TransportWrapper;
+use opentitanlib::app::command::CommandDispatch;
 
 #[derive(Debug, Args)]
 /// No Operation.

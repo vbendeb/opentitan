@@ -8,6 +8,7 @@ load(
     "cw310_params",
     "fpga_params",
     "opentitan_test",
+    "qemu_params",
 )
 load(
     "//rules:const.bzl",
@@ -16,7 +17,7 @@ load(
     "hex_digits",
 )
 load(
-    "//rules:opentitan.bzl",
+    "//rules/opentitan:keyutils.bzl",
     "ECDSA_SPX_KEY_STRUCTS",
     "filter_key_structs_for_lc_state",
 )
@@ -218,6 +219,7 @@ KEY_VALIDITY_TESTS = [
         ecdsa_key = {key.ecdsa.label: key.ecdsa.name},
         exec_env = {
             "//hw/top_earlgrey:fpga_cw310_rom_with_fake_keys": None,
+            "//hw/top_earlgrey:sim_qemu_rom_with_fake_keys": None,
         },
         fpga = fpga_params(
             exit_failure = test["exit_failure"][lc_state],
@@ -227,6 +229,14 @@ KEY_VALIDITY_TESTS = [
                 lc_state,
             ),
             tags = maybe_skip_in_ci(lc_state_val),
+        ),
+        qemu = qemu_params(
+            exit_failure = test["exit_failure"][lc_state],
+            exit_success = test["exit_success"][lc_state],
+            otp = ":otp_img_sigverify_key_validity_{}_{}".format(
+                test["name"],
+                lc_state,
+            ),
         ),
         spx_key = {key.spx.label: key.spx.name},
         deps = [

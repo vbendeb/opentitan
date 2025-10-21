@@ -2,7 +2,7 @@
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 
-use anyhow::{bail, ensure, Result};
+use anyhow::{Result, bail, ensure};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -10,15 +10,15 @@ use std::io::Cursor;
 use std::mem::size_of;
 use std::rc::Rc;
 use std::time::Duration;
-use zerocopy::{FromBytes, FromZeroes};
+use zerocopy::FromBytes;
 
 use crate::io::gpio::{
     BitbangEntry, ClockNature, DacBangEntry, Edge, GpioBitbangOperation, GpioBitbanging,
     GpioDacBangOperation, GpioError, GpioMonitoring, GpioPin, MonitoringEvent,
     MonitoringReadResponse, MonitoringStartResponse, PinMode, PullMode,
 };
-use crate::transport::hyperdebug::{BulkInterface, Inner};
 use crate::transport::TransportError;
+use crate::transport::hyperdebug::{BulkInterface, Inner};
 
 pub struct HyperdebugGpioPin {
     inner: Rc<Inner>,
@@ -168,7 +168,7 @@ const USB_MAX_SIZE: usize = 64;
 ///
 /// The source for the HyperDebug firmware generating these responses is here:
 /// https://chromium.googlesource.com/chromiumos/platform/ec/+/refs/heads/main/board/hyperdebug/gpio.c
-#[derive(FromBytes, FromZeroes, Debug)]
+#[derive(FromBytes, Debug)]
 #[repr(C)]
 struct RspGpioMonitoringHeader {
     /// Size of the header as sent by HyperDebug (excluding one byte CMSIS-DAP header), will be at
@@ -316,7 +316,7 @@ impl GpioMonitoring for HyperdebugGpioMonitoring {
                 )
             );
             let resp: RspGpioMonitoringHeader =
-                FromBytes::read_from_prefix(&databytes[1..]).unwrap();
+                FromBytes::read_from_prefix(&databytes[1..]).unwrap().0;
             ensure!(
                 resp.struct_size as usize >= size_of::<RspGpioMonitoringHeader>(),
                 TransportError::CommunicationError(
@@ -1007,7 +1007,7 @@ fn encode_waveform(waveform: &[BitbangEntry], num_pins: usize) -> Result<Vec<u8>
 /// open drain or pure input pins).
 fn decode_waveform(
     waveform: &mut [BitbangEntry],
-    encoded_response: &Vec<u8>,
+    encoded_response: &[u8],
     num_pins: usize,
 ) -> Result<()> {
     ensure!(

@@ -101,6 +101,8 @@ typedef struct RescueState {
   uint8_t data[2048];
 } rescue_state_t;
 
+extern const uint32_t rescue_type;
+
 /**
  * Handle rescue modes that involve sending data to the host.
  *
@@ -186,8 +188,10 @@ void rescue_skip_next_boot(void);
  * Detect rescue entry.
  *
  * @param config The ownership rescue config (if any).
+ * @param reset_reasons The reset reaons value from the rstmgr.
  * @return kHardenedBoolTrue if we should enter rescue mode.
  */
-hardened_bool_t rescue_detect_entry(const owner_rescue_config_t *config);
+hardened_bool_t rescue_detect_entry(const owner_rescue_config_t *config,
+                                    uint32_t reset_reasons);
 
 #endif  // OPENTITAN_SW_DEVICE_SILICON_CREATOR_LIB_RESCUE_RESCUE_H_

@@ -29,6 +29,9 @@ inputs:
     description: Configure Bazel to use remote cache
     required: true
     default: true
+  working-directory:
+    description: Working directory
+    default: ${{ github.workspace }}
 
 runs:
   using: composite
@@ -38,30 +41,31 @@ runs:
         sudo apt update
         grep '^[^#]' apt-requirements.txt | xargs sudo apt install -y
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
 
     - uses: astral-sh/setup-uv@v3
       with:
         version: '0.4.20'
         enable-cache: true
         cache-dependency-glob: |
-          pyproject.toml
-          python-requirements.txt
+          ${{ inputs.working-directory }}/pyproject.toml
+          ${{ inputs.working-directory }}/python-requirements.txt
 
     - name: Install Python
       shell: bash
       run: |
-        uv python install 3.8
+        uv python install 3.9
         # Create a virtual environment for UV
         uv venv ~/.local/share/venv
         echo "$HOME/.local/share/venv/bin" >> "$GITHUB_PATH"
         echo "VIRTUAL_ENV=$HOME/.local/share/venv" >> "$GITHUB_ENV"
+      working-directory: ${{ inputs.working-directory }}
 
     - name: Install Python dependencies
       shell: bash
       run: |
         uv pip install -r python-requirements.txt --require-hashes
-        # We installed uv from setup-uv action, so uninstall from venv to prevent conflict
-        uv pip uninstall uv
+      working-directory: ${{ inputs.working-directory }}
 
     - name: Install Verilator
       run: |
@@ -71,6 +75,7 @@ runs:
         curl -sSfL "$VERILATOR_URL" | sudo tar -C "${{ inputs.verilator-path }}" -xvzf -
         echo "${{ inputs.verilator-path }}/v${{ inputs.verilator-version }}/bin" >> "$GITHUB_PATH"
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
 
     - name: Install Verible
       run: |
@@ -82,13 +87,14 @@ runs:
         sudo chmod 755 "${{ inputs.verible-path }}/bin"
         echo "${{ inputs.verible-path }}/bin" >> "$GITHUB_PATH"
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
 
     # Log into Google Cloud using service account JSON.
     # This can't be Workload Identity Federation because Bazel performance using WIF is terrible.
     # This needs access to secrets and thus doesn't work for pull request.
     - uses: google-github-actions/auth@v2
       id: google_auth
-      if: github.event_name != 'pull_request'
+      if: github.event_name != 'pull_request' && inputs.service_account_json != ''
       with:
         credentials_json: '${{ inputs.service_account_json }}'
 
@@ -96,7 +102,7 @@ runs:
     # it. This influences with a few scripts that assume clean workspace, and introduce security risk
     # that it may be exposed when uploading to buckets.
     - name: Move Google credentials out from workspace
-      if: github.event_name != 'pull_request'
+      if: github.event_name != 'pull_request' && inputs.service_account_json != ''
       run: |
         SOURCE=${{ steps.google_auth.outputs.credentials_file_path }}
         TARGET=${{ runner.temp }}/$(basename "$SOURCE")
@@ -107,7 +113,7 @@ runs:
       shell: bash
 
     - uses: google-github-actions/setup-gcloud@v2
-      if: github.event_name != 'pull_request'
+      if: github.event_name != 'pull_request' && inputs.service_account_json != ''
 
     - name: Configure ~/.bazelrc
       if: inputs.configure-bazel == 'true'
@@ -118,7 +124,7 @@ runs:
         # See #14695 for more information.
         echo "build --remote_default_exec_properties=OSVersion=\"$(lsb_release -ds)\"" >> ~/.bazelrc
 
-        if ${{ github.event_name != 'pull_request' }}; then
+        if ${{ github.event_name != 'pull_request' && inputs.service_account_json != '' }}; then
           echo "Will upload to the cache." >&2
           echo "build --google_default_credentials" >> ~/.bazelrc
         else
@@ -126,6 +132,7 @@ runs:
           echo "build --remote_upload_local_results=false" >> ~/.bazelrc
         fi
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
 
     - name: Install merge-junit
       run: |
@@ -148,3 +155,4 @@ runs:
         echo $MERGE_JUNIT_PATH >> "$GITHUB_PATH"
         rm "/tmp/${MERGE_JUNIT_TAR}"
       shell: bash
+      working-directory: ${{ inputs.working-directory }}

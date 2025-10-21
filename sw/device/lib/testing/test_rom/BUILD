@@ -27,11 +27,13 @@ ld_library(
 
 opentitan_binary(
     name = "test_rom",
+    collect_code_coverage = 0,
     exec_env = [
         "//hw/top_earlgrey:fpga_cw310",
         "//hw/top_earlgrey:fpga_cw305",
         "//hw/top_earlgrey:fpga_cw340",
         "//hw/top_earlgrey:sim_dv_base",
+        "//hw/top_earlgrey:sim_qemu_base",
         "//hw/top_earlgrey:sim_verilator_base",
     ],
     kind = "rom",

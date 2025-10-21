@@ -25,12 +25,12 @@ _POSITIONS = {
     "slot_a": {
         "linker_script": "//sw/device/lib/testing/test_framework:ottf_ld_silicon_owner_slot_a",
         "slot": "SlotA",
-        "rom_ext_offset": "0",
+        "rom_ext_offset": "{rom_ext_slot_a}",
     },
     "slot_b": {
         "linker_script": "//sw/device/lib/testing/test_framework:ottf_ld_silicon_owner_slot_b",
         "slot": "SlotB",
-        "rom_ext_offset": "0x80000",
+        "rom_ext_offset": "{rom_ext_slot_b}",
     },
 }
 
@@ -83,6 +83,7 @@ _CONFIGS = {
         ],
         exec_env = [
             "//hw/top_earlgrey:fpga_hyper310_rom_ext",
+            "//hw/top_earlgrey:fpga_cw340_rom_ext",
         ],
         linker_script = position["linker_script"],
         deps = [
@@ -102,6 +103,7 @@ _CONFIGS = {
         name = "rescue_firmware_{}_{}".format(name, protocol),
         exec_env = {
             "//hw/top_earlgrey:fpga_hyper310_rom_ext": None,
+            "//hw/top_earlgrey:fpga_cw340_rom_ext": None,
         },
         fpga = fpga_params(
             assemble = "",
@@ -160,8 +162,10 @@ genrule(
         name = "rescue_rom_ext_{}_update_{}".format(rxslot, name),
         exec_env = {
             "//hw/top_earlgrey:fpga_hyper310_rom_ext": None,
+            "//hw/top_earlgrey:fpga_cw340_rom_ext": None,
         },
         fpga = fpga_params(
+            timeout = "long",
             assemble = "{rom_ext}@{rom_ext_offset}",
             binaries = {
                 ":boot_test_{}".format(name): "payload",
@@ -181,7 +185,7 @@ genrule(
                 # First make sure the ROM_EXT is faulting because there is no firmware
                 --exec="console --non-interactive --exit-success='BFV:' --exit-failure='PASS|FAIL'"
                 # Construct a firmware image with the bad ROM_EXT
-                --exec="image assemble --size=131072 --mirror=false --output={image_name} {bad_rom_ext}@0 {payload}@0x10000"
+                --exec="image assemble --size=524288 --mirror=false --output={image_name} {bad_rom_ext}@{rom_ext_slot_a} {payload}@{owner_slot_a}"
                 # Load firmware via rescue, including the bad ROM_EXT
                 --exec="rescue firmware --raw --slot={slot} {image_name}"
                 # Check for firmware execution
@@ -199,9 +203,10 @@ genrule(
         name = "next_slot_{}".format(protocol),
         exec_env = {
             "//hw/top_earlgrey:fpga_hyper310_rom_ext": None,
+            "//hw/top_earlgrey:fpga_cw340_rom_ext": None,
         },
         fpga = fpga_params(
-            assemble = "{rom_ext}@0 {slot_a:signed_bin}@0x10000 {slot_b:signed_bin}@0x90000",
+            assemble = "{rom_ext}@{rom_ext_slot_a} {slot_a:signed_bin}@{owner_slot_a} {slot_b:signed_bin}@{owner_slot_b}",
             binaries = {
                 ":boot_test_slot_a": "slot_a",
                 ":boot_test_slot_b": "slot_b",
@@ -237,9 +242,10 @@ genrule(
         name = "primary_slot_{}".format(protocol),
         exec_env = {
             "//hw/top_earlgrey:fpga_hyper310_rom_ext": None,
+            "//hw/top_earlgrey:fpga_cw340_rom_ext": None,
         },
         fpga = fpga_params(
-            assemble = "{rom_ext}@0 {slot_a:signed_bin}@0x10000 {slot_b:signed_bin}@0x90000",
+            assemble = "{rom_ext}@{rom_ext_slot_a} {slot_a:signed_bin}@{owner_slot_a} {slot_b:signed_bin}@{owner_slot_b}",
             binaries = {
                 ":boot_test_slot_a": "slot_a",
                 ":boot_test_slot_b": "slot_b",
@@ -274,31 +280,77 @@ genrule(
     for protocol, config in _CONFIGS.items()
 ]
 
-opentitan_test(
-    name = "rescue_rate_test",
-    exec_env = {
-        "//hw/top_earlgrey:fpga_hyper310_rom_ext": None,
-    },
-    fpga = fpga_params(
-        assemble = "",
-        binaries = {
-            ":boot_test_slot_a": "payload",
+[
+    opentitan_test(
+        name = "rescue_rate_{}_test".format(rate),
+        exec_env = {
+            "//hw/top_earlgrey:fpga_hyper310_rom_ext": None,
+            "//hw/top_earlgrey:fpga_cw340_rom_ext": None,
         },
-        changes_otp = True,
-        test_cmd = """
-            --exec="transport init"
-            --exec="fpga load-bitstream {bitstream}"
-            --exec="bootstrap --clear-uart=true {rom_ext}"
-            # First make sure the ROM_EXT is faulting because there is no firmware
-            --exec="console --non-interactive --exit-success='BFV:' --exit-failure='PASS|FAIL'"
-            # Load firmware via rescue
-            --exec="rescue firmware --rate=115200 {payload:signed_bin}"
-            # Check for firmware execution
-            --exec="console --baudrate=115200 --non-interactive --exit-success='{exit_success}' --exit-failure='{exit_failure}'"
-            no-op
-        """,
-    ),
-)
+        fpga = fpga_params(
+            assemble = "",
+            binaries = {
+                ":boot_test_slot_a": "payload",
+            },
+            changes_otp = True,
+            rate = rate,
+            test_cmd = """
+                --exec="transport init"
+                --exec="fpga load-bitstream {bitstream}"
+                --exec="bootstrap --clear-uart=true {rom_ext}"
+                # First make sure the ROM_EXT is faulting because there is no firmware
+                --exec="console --non-interactive --exit-success='BFV:' --exit-failure='PASS|FAIL'"
+                # Load firmware via rescue
+                --exec="rescue firmware --rate={rate} {payload:signed_bin}"
+                # Check for firmware execution
+                --exec="console --baudrate=115200 --non-interactive --exit-success='{exit_success}' --exit-failure='{exit_failure}'"
+                no-op
+            """,
+        ),
+    )
+    # FPGA CW310 and CW340 only support the baudrate up to 230K.
+    for rate in [
+        "115200",
+        "230400",
+    ]
+]
+
+[
+    opentitan_test(
+        name = "rescue_unsupported_rate_{}_test".format(rate),
+        exec_env = {
+            "//hw/top_earlgrey:fpga_hyper310_rom_ext": None,
+            "//hw/top_earlgrey:fpga_cw340_rom_ext": None,
+        },
+        fpga = fpga_params(
+            assemble = "",
+            binaries = {
+                ":boot_test_slot_a": "payload",
+            },
+            changes_otp = True,
+            rate = rate,
+            test_cmd = """
+                --exec="transport init"
+                --exec="fpga load-bitstream {bitstream}"
+                --exec="bootstrap --clear-uart=true {rom_ext}"
+                # Trigger rescue.
+                --exec="rescue no-op"
+                --exec="console --non-interactive --send='BAUD\r{rate}\r' --exit-success='unsupported baudrate' --exit-failure='BFV:.*\r\n'"
+                # Try the `REBO` mode and make sure we reboot without crash.
+                --exec="console --non-interactive --send='REBO\r' --exit-success='ROM:' --exit-failure='BFV:.*\r\n'"
+                no-op
+            """,
+        ),
+    )
+    # FPGA CW310 and CW340 only support the baudrate up to 230K.
+    for rate in [
+        "460K",
+        "921K",
+        "1M33",
+        "1M50",
+        "INVALID",
+    ]
+]
 
 # TODO(lowRISC#26481): Eliminate this test when we no longer care about
 # supporting version 0 of the rescue protocol.
@@ -309,6 +361,7 @@ opentitan_test(
     name = "rescue_firmware_protocol_0",
     exec_env = {
         "//hw/top_earlgrey:fpga_hyper310_rom_ext": None,
+        "//hw/top_earlgrey:fpga_cw340_rom_ext": None,
     },
     fpga = fpga_params(
         assemble = "",
@@ -381,6 +434,7 @@ opentitan_test(
     ],
     exec_env = {
         "//hw/top_earlgrey:fpga_hyper310_rom_ext": None,
+        "//hw/top_earlgrey:fpga_cw340_rom_ext": None,
     },
     fpga = fpga_params(
         changes_otp = True,
@@ -435,6 +489,8 @@ opentitan_test(
             --exec="rescue get-device-id --reboot=false"
             # Try the `RESQ` mode and make sure we get an error message.
             --exec="console --non-interactive --send='RESQ\r' --exit-success='{exit_success}' --exit-failure='{exit_failure}'"
+            # Try the `REBO` mode and make sure we reboot without crash.
+            --exec="console --non-interactive --send='REBO\r' --exit-success='ROM:' --exit-failure='BFV:.*\r\n'"
             no-op
         """,
     ),
@@ -523,6 +579,7 @@ opentitan_test(
         },
         fpga = fpga_params(
             assemble = "",
+            changes_otp = True,
             params = config["params"],
             rom_ext = config["rom_ext"],
             test_cmd = """
@@ -545,6 +602,7 @@ opentitan_test(
         },
         fpga = fpga_params(
             assemble = "",
+            changes_otp = True,
             device_id = DEVICE_ID,
             params = config["params"],
             rom_ext = config["rom_ext"],
@@ -559,3 +617,323 @@ opentitan_test(
     )
     for protocol, config in _CONFIGS.items()
 ]
+
+[
+    opentitan_test(
+        name = "rescue_get_owner_page_{}".format(protocol),
+        exec_env = {
+            "//hw/top_earlgrey:fpga_hyper310_rom_ext": None,
+            "//hw/top_earlgrey:fpga_cw340_rom_ext": None,
+        },
+        fpga = fpga_params(
+            assemble = "{romext}@{rom_ext_slot_a} {firmware}@{owner_slot_a}",
+            binaries = {
+                config["rom_ext"]: "romext",
+                "//sw/device/silicon_creator/rom_ext/e2e/attestation:print_certs": "firmware",
+            },
+            changes_otp = True,
+            params = config["params"],
+            test_cmd = """
+            --clear-bitstream
+            --bootstrap={firmware}
+            rescue {params} --action=get-owner-page
+            """,
+            test_harness = "//sw/host/tests/rescue:rescue_test",
+        ),
+    )
+    for protocol, config in _CONFIGS.items()
+]
+
+opentitan_test(
+    name = "rescue_disability_xmodem",
+    exec_env = {
+        "//hw/top_earlgrey:fpga_hyper310_rom_ext": None,
+        "//hw/top_earlgrey:fpga_cw340_rom_ext": None,
+    },
+    fpga = fpga_params(
+        assemble = "{romext}@{rom_ext_slot_a} {firmware}@{owner_slot_a}",
+        binaries = {
+            "//sw/device/silicon_creator/rom_ext:rom_ext_xmodem_rescue_disability": "romext",
+            "//sw/device/silicon_creator/rom_ext/e2e/attestation:print_certs": "firmware",
+        },
+        changes_otp = True,
+        test_cmd = """
+        --clear-bitstream
+        --bootstrap={firmware}
+        rescue --action=disability
+        """,
+        test_harness = "//sw/host/tests/rescue:rescue_test",
+    ),
+)
+
+opentitan_test(
+    name = "rescue_disability_spidfu",
+    exec_env = {
+        "//hw/top_earlgrey:fpga_hyper310_rom_ext": None,
+        "//hw/top_earlgrey:fpga_cw340_rom_ext": None,
+    },
+    fpga = fpga_params(
+        assemble = "{romext}@{rom_ext_slot_a} {firmware}@{owner_slot_a}",
+        binaries = {
+            "//sw/device/silicon_creator/rom_ext:rom_ext_spidfu_rescue_disability": "romext",
+            "//sw/device/silicon_creator/rom_ext/e2e/attestation:print_certs": "firmware",
+        },
+        changes_otp = True,
+        params = "-p spi-dfu -t gpio -v +Ioa2",
+        test_cmd = """
+        --clear-bitstream
+        --bootstrap={firmware}
+        rescue {params} --action=disability
+        """,
+        test_harness = "//sw/host/tests/rescue:rescue_test",
+    ),
+)
+
+opentitan_test(
+    name = "rescue_user_error",
+    exec_env = {
+        "//hw/top_earlgrey:fpga_hyper310_rom_ext": None,
+        "//hw/top_earlgrey:fpga_cw340_rom_ext": None,
+    },
+    fpga = fpga_params(
+        assemble = "",
+        rom_ext = "//sw/device/silicon_creator/rom_ext:rom_ext_dice_x509_slot_a",
+        test_cmd = """
+            --exec="transport init"
+            --exec="fpga clear-bitstream"
+            --exec="fpga load-bitstream {bitstream}"
+            --exec="bootstrap --clear-uart=true {rom_ext}"
+            # Trigger rescue and make sure we can get the device ID.
+            --exec="rescue get-device-id --reboot=false"
+            # Send Invalid rescue command.
+            --exec="console --non-interactive --send='XYZ\r' --exit-success='error: unrecognized mode'"
+            # Try the `REBO` mode and make sure we reboot without crash.
+            --exec="console --non-interactive --send='REBO\r' --exit-success='ROM:' --exit-failure='BFV:.*\r\n'"
+            no-op
+        """,
+    ),
+)
+
+opentitan_test(
+    name = "rescue_config_module_mismatch",
+    exec_env = {
+        "//hw/top_earlgrey:fpga_hyper310_rom_ext": None,
+        "//hw/top_earlgrey:fpga_cw340_rom_ext": None,
+    },
+    fpga = fpga_params(
+        assemble = "{romext}@{rom_ext_slot_a} {firmware}@{owner_slot_a}",
+        binaries = {
+            "//sw/device/silicon_creator/rom_ext:rom_ext_rescue_config_module_mismatch": "romext",
+            ":boot_test_slot_a": "firmware",
+        },
+        test_cmd = """
+            --exec="transport init"
+            --exec="fpga clear-bitstream"
+            --exec="fpga load-bitstream {bitstream}"
+            --exec="bootstrap --clear-uart=true {firmware}"
+            --exec="console --non-interactive --exit-success='warning: rescue' --exit-failure='{exit_failure}'"
+            # Trigger rescue and make sure we can get the device ID even if the protocol specified in the rescue
+            # config doesn't match the ROM_EXT implementation.
+            --exec="rescue get-device-id --reboot=false"
+            # Try the `REBO` mode and make sure we reboot without crash.
+            --exec="console --non-interactive --send='REBO\r' --exit-success='Finished' --exit-failure='BFV:.*\r\n'"
+            no-op
+        """,
+    ),
+)
+
+opentitan_test(
+    name = "spidfu_rescue_boot_svc_req_disability",
+    exec_env = {
+        "//hw/top_earlgrey:fpga_hyper310_rom_ext": None,
+        "//hw/top_earlgrey:fpga_cw340_rom_ext": None,
+    },
+    fpga = fpga_params(
+        assemble = "{romext}@{rom_ext_slot_a} {firmware}@{owner_slot_a}",
+        binaries = {
+            "//sw/device/silicon_creator/rom_ext:rom_ext_spidfu_rescue_boot_svc_req_disability": "romext",
+            "//sw/device/silicon_creator/rom_ext/e2e/attestation:print_certs": "firmware",
+        },
+        params = "-p spi-dfu -t gpio -v +Ioa2",
+        test_cmd = """
+        --clear-bitstream
+        --bootstrap={firmware}
+        rescue {params} --action=disability
+        """,
+        test_harness = "//sw/host/tests/rescue:rescue_test",
+    ),
+)
+
+opentitan_test(
+    name = "xmodem_rescue_error_handling_test",
+    exec_env = {
+        "//hw/top_earlgrey:fpga_hyper310_rom_ext": None,
+        "//hw/top_earlgrey:fpga_cw340_rom_ext": None,
+    },
+    fpga = fpga_params(
+        assemble = "{romext}@{rom_ext_slot_a} {firmware}@{owner_slot_a}",
+        binaries = {
+            "//sw/device/silicon_creator/rom_ext:rom_ext_dice_x509_slot_a": "romext",
+            ":boot_test_slot_a": "firmware",
+        },
+        test_cmd = """
+        --clear-bitstream
+        --bootstrap={firmware}
+        """,
+        test_harness = "//sw/host/tests/rescue:xmodem_rescue_error_handling",
+    ),
+)
+
+opentitan_test(
+    name = "spidfu_dfu_state_transitions",
+    exec_env = {
+        "//hw/top_earlgrey:fpga_hyper310_rom_ext": None,
+        "//hw/top_earlgrey:fpga_cw340_rom_ext": None,
+    },
+    fpga = fpga_params(
+        assemble = "{romext}@{rom_ext_slot_a} {firmware}@{owner_slot_a}",
+        binaries = {
+            "//sw/device/silicon_creator/rom_ext:rom_ext_spidfu_flash_limit_zero": "romext",
+            ":boot_test_slot_a": "firmware",
+        },
+        params = "-p spi-dfu -t gpio -v +Ioa2",
+        test_cmd = """
+        --clear-bitstream
+        --bootstrap={firmware}
+        rescue {params} --action=spi-dfu-state-transitions
+        """,
+        test_harness = "//sw/host/tests/rescue:dfu_rescue_error_handling",
+    ),
+)
+
+opentitan_test(
+    name = "spidfu_invalid_dfu_requests",
+    exec_env = {
+        "//hw/top_earlgrey:fpga_hyper310_rom_ext": None,
+        "//hw/top_earlgrey:fpga_cw340_rom_ext": None,
+    },
+    fpga = fpga_params(
+        assemble = "{romext}@{rom_ext_slot_a} {firmware}@{owner_slot_a}",
+        binaries = {
+            "//sw/device/silicon_creator/rom_ext:rom_ext_spidfu": "romext",
+            ":boot_test_slot_a": "firmware",
+        },
+        params = "-p spi-dfu -t gpio -v +Ioa2",
+        test_cmd = """
+        --clear-bitstream
+        --bootstrap={firmware}
+        rescue {params} --action=invalid-spi-dfu-requests
+        """,
+        test_harness = "//sw/host/tests/rescue:dfu_rescue_error_handling",
+    ),
+)
+
+opentitan_test(
+    name = "spidfu_invalid_flash_transaction",
+    exec_env = {
+        "//hw/top_earlgrey:fpga_hyper310_rom_ext": None,
+        "//hw/top_earlgrey:fpga_cw340_rom_ext": None,
+    },
+    fpga = fpga_params(
+        assemble = "{romext}@{rom_ext_slot_a} {firmware}@{owner_slot_a}",
+        binaries = {
+            "//sw/device/silicon_creator/rom_ext:rom_ext_spidfu": "romext",
+            ":boot_test_slot_a": "firmware",
+        },
+        params = "-p spi-dfu -t gpio -v +Ioa2",
+        test_cmd = """
+        --clear-bitstream
+        --bootstrap={firmware}
+        rescue {params} --action=invalid-spi-flash-transaction
+        """,
+        test_harness = "//sw/host/tests/rescue:dfu_rescue_error_handling",
+    ),
+)
+
+opentitan_test(
+    name = "usbdfu_out_chunk_too_big",
+    exec_env = {
+        "//hw/top_earlgrey:fpga_hyper310_rom_ext": None,
+        "//hw/top_earlgrey:fpga_cw340_rom_ext": None,
+    },
+    fpga = fpga_params(
+        assemble = "{romext}@{rom_ext_slot_a} {firmware}@{owner_slot_a}",
+        binaries = {
+            "//sw/device/silicon_creator/rom_ext:rom_ext_usbdfu": "romext",
+            ":boot_test_slot_a": "firmware",
+        },
+        params = "-p usb-dfu -t strap -v 3",
+        test_cmd = """
+        --clear-bitstream
+        --bootstrap={firmware}
+        rescue {params} --action=usb-dfu-out-chunk-too-big
+        """,
+        test_harness = "//sw/host/tests/rescue:dfu_rescue_error_handling",
+    ),
+)
+
+# Check that when we are not configured to rescue on watchdog timeout that
+# a watchdog timeout event simply boots the firmware normally.
+opentitan_test(
+    name = "rescue_watchdog_disabled_test",
+    srcs = [
+        "watchdog_test.c",
+    ],
+    exec_env = {
+        "//hw/top_earlgrey:fpga_hyper310_rom_ext": None,
+        "//hw/top_earlgrey:fpga_cw340_rom_ext": None,
+    },
+    fpga = fpga_params(
+        changes_otp = True,
+        exit_failure = "(FAIL|BFV:|mode: RESQ).*",
+        rom_ext = "//sw/device/silicon_creator/rom_ext:rom_ext_dice_x509_slot_a",
+        test_cmd = """
+            --exec="transport init"
+            --exec="fpga clear-bitstream"
+            --exec="fpga load-bitstream {bitstream}"
+            --exec="bootstrap --clear-uart=true {firmware}"
+            --exec="console --non-interactive --exit-success='{exit_success}' --exit-failure='{exit_failure}'"
+            no-op
+        """,
+    ),
+    deps = [
+        "//sw/device/lib/base:status",
+        "//sw/device/lib/testing/test_framework:ottf_main",
+        "//sw/device/silicon_creator/lib/drivers:retention_sram",
+        "//sw/device/silicon_creator/lib/drivers:rstmgr",
+        "//sw/device/silicon_creator/lib/drivers:watchdog",
+    ],
+)
+
+# Check that when we are configured to rescue on watchdog timeout that
+# a watchdog timeout event triggers rescue mode.
+opentitan_test(
+    name = "rescue_watchdog_enabled_test",
+    srcs = [
+        "watchdog_test.c",
+    ],
+    exec_env = {
+        "//hw/top_earlgrey:fpga_hyper310_rom_ext": None,
+        "//hw/top_earlgrey:fpga_cw340_rom_ext": None,
+    },
+    fpga = fpga_params(
+        changes_otp = True,
+        exit_success = "mode: RESQ",
+        rom_ext = "//sw/device/silicon_creator/rom_ext:rom_ext_xmodem_enter_on_watchdog",
+        test_cmd = """
+            --exec="transport init"
+            --exec="fpga clear-bitstream"
+            --exec="fpga load-bitstream {bitstream}"
+            --exec="bootstrap --clear-uart=true {firmware}"
+            --exec="console --non-interactive --exit-success='{exit_success}' --exit-failure='{exit_failure}'"
+            no-op
+        """,
+    ),
+    deps = [
+        "//sw/device/lib/base:status",
+        "//sw/device/lib/testing/test_framework:ottf_main",
+        "//sw/device/silicon_creator/lib/drivers:retention_sram",
+        "//sw/device/silicon_creator/lib/drivers:rstmgr",
+        "//sw/device/silicon_creator/lib/drivers:watchdog",
+    ],
+)

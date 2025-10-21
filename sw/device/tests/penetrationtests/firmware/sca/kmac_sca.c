@@ -13,6 +13,7 @@
 #include "sw/device/lib/ujson/ujson.h"
 #include "sw/device/sca/lib/prng.h"
 #include "sw/device/tests/penetrationtests/firmware/lib/pentest_lib.h"
+#include "sw/device/tests/penetrationtests/json/commands.h"
 #include "sw/device/tests/penetrationtests/json/kmac_sca_commands.h"
 
 #include "hw/top_earlgrey/sw/autogen/top_earlgrey.h"
@@ -452,12 +453,11 @@ status_t handle_kmac_pentest_init(ujson_t *uj) {
     fpga_mode = true;
   }
 
-  penetrationtest_cpuctrl_t uj_cpuctrl;
-  TRY(ujson_deserialize_penetrationtest_cpuctrl_t(uj, &uj_cpuctrl));
+  penetrationtest_cpuctrl_t uj_cpuctrl_data;
+  TRY(ujson_deserialize_penetrationtest_cpuctrl_t(uj, &uj_cpuctrl_data));
+  penetrationtest_sensor_config_t uj_sensor_data;
+  TRY(ujson_deserialize_penetrationtest_sensor_config_t(uj, &uj_sensor_data));
 
-  // Setup the trigger.
-  pentest_init(kPentestTriggerSourceKmac,
-               kPentestPeripheralIoDiv4 | kPentestPeripheralKmac);
   TRY(dif_kmac_init(mmio_region_from_addr(TOP_EARLGREY_KMAC_BASE_ADDR), &kmac));
 
   dif_kmac_config_t config = (dif_kmac_config_t){
@@ -477,15 +477,30 @@ status_t handle_kmac_pentest_init(ujson_t *uj) {
   // Configure the CPU for the pentest.
   penetrationtest_device_info_t uj_output;
   TRY(pentest_configure_cpu(
-      uj_cpuctrl.icache_disable, uj_cpuctrl.dummy_instr_disable,
-      uj_cpuctrl.enable_jittery_clock, uj_cpuctrl.enable_sram_readback,
-      &uj_output.clock_jitter_locked, &uj_output.clock_jitter_en,
-      &uj_output.sram_main_readback_locked, &uj_output.sram_ret_readback_locked,
-      &uj_output.sram_main_readback_en, &uj_output.sram_ret_readback_en));
+      uj_cpuctrl_data.enable_icache, &uj_output.icache_en,
+      uj_cpuctrl_data.enable_dummy_instr, &uj_output.dummy_instr_en,
+      uj_cpuctrl_data.dummy_instr_count, uj_cpuctrl_data.enable_jittery_clock,
+      uj_cpuctrl_data.enable_sram_readback, &uj_output.clock_jitter_locked,
+      &uj_output.clock_jitter_en, &uj_output.sram_main_readback_locked,
+      &uj_output.sram_ret_readback_locked, &uj_output.sram_main_readback_en,
+      &uj_output.sram_ret_readback_en, uj_cpuctrl_data.enable_data_ind_timing,
+      &uj_output.data_ind_timing_en));
+
+  // Setup the trigger.
+  pentest_init(kPentestTriggerSourceKmac,
+               kPentestPeripheralIoDiv4 | kPentestPeripheralKmac,
+               uj_sensor_data.sensor_ctrl_enable,
+               uj_sensor_data.sensor_ctrl_en_fatal);
+
+  // Read rom digest.
+  TRY(pentest_read_rom_digest(uj_output.rom_digest));
 
   // Read device ID and return to host.
   TRY(pentest_read_device_id(uj_output.device_id));
   RESP_OK(ujson_serialize_penetrationtest_device_info_t, uj, &uj_output);
+
+  // Read different SKU config fields and return to host.
+  TRY(pentest_send_sku_config(uj));
 
   return OK_STATUS();
 }
@@ -661,20 +676,17 @@ status_t handle_kmac_sca_fixed_key_set(ujson_t *uj) {
  * @param uj The received uJSON data.
  */
 status_t handle_kmac_sca_batch(ujson_t *uj) {
-  cryptotest_kmac_sca_data_t uj_data;
-  TRY(ujson_deserialize_cryptotest_kmac_sca_data_t(uj, &uj_data));
+  penetrationtest_num_enc_t uj_data;
+  TRY(ujson_deserialize_penetrationtest_num_enc_t(uj, &uj_data));
 
-  uint32_t num_encryptions = 0;
   uint32_t out[kDigestLength];
   uint32_t batch_digest[kDigestLength];
-
-  num_encryptions = read_32(uj_data.data);
 
   for (uint32_t j = 0; j < kDigestLength; ++j) {
     batch_digest[j] = 0;
   }
 
-  for (uint32_t i = 0; i < num_encryptions; ++i) {
+  for (uint32_t i = 0; i < uj_data.num_enc; ++i) {
     if (run_fixed) {
       memcpy(kmac_batch_keys[i], key_fixed, kKeyLength);
     } else {
@@ -684,9 +696,10 @@ status_t handle_kmac_sca_batch(ujson_t *uj) {
     run_fixed = batch_messages[i][0] & 0x1;
   }
 
-  for (uint32_t i = 0; i < num_encryptions; ++i) {
+  for (uint32_t i = 0; i < uj_data.num_enc; ++i) {
     kmac_reset();
     memcpy(kmac_key.share0, kmac_batch_keys[i], kKeyLength);
+    memset(kmac_key.share1, 0, kKeyLength);
 
     pentest_set_trigger_high();
     if (sha3_ujson_absorb(batch_messages[i], kMessageLength) != kmacScaOk) {
@@ -710,6 +723,58 @@ status_t handle_kmac_sca_batch(ujson_t *uj) {
   cryptotest_kmac_sca_batch_digest_t uj_output;
   memcpy(uj_output.batch_digest, (uint8_t *)batch_digest, kDigestLength * 4);
   RESP_OK(ujson_serialize_cryptotest_kmac_sca_batch_digest_t, uj, &uj_output);
+
+  return OK_STATUS();
+}
+
+/**
+ * Batch command handler with daisy chaining.
+ *
+ * Start batch mode.
+ *
+ * The uJSON data contains:
+ *  - data: The number of encryptions.
+ *
+ * @param uj The received uJSON data.
+ */
+status_t handle_kmac_sca_batch_daisy_chain(ujson_t *uj) {
+  penetrationtest_num_enc_t uj_data;
+  TRY(ujson_deserialize_penetrationtest_num_enc_t(uj, &uj_data));
+  cryptotest_kmac_sca_msg_t uj_message;
+  TRY(ujson_deserialize_cryptotest_kmac_sca_msg_t(uj, &uj_message));
+  cryptotest_kmac_sca_key_t uj_key;
+  TRY(ujson_deserialize_cryptotest_kmac_sca_key_t(uj, &uj_key));
+
+  uint32_t out[kDigestLength];
+
+  uint8_t message_buf[KMACSCA_CMD_MAX_MSG_BYTES];
+  // Pad with zero.
+  memset(message_buf, 0, KMACSCA_CMD_MAX_MSG_BYTES);
+  memcpy(message_buf, uj_message.msg, uj_message.msg_length);
+
+  for (uint32_t i = 0; i < uj_data.num_enc; ++i) {
+    kmac_reset();
+    memcpy(kmac_key.share0, uj_key.key, kKeyLength);
+
+    pentest_set_trigger_high();
+    if (sha3_ujson_absorb(message_buf, KMACSCA_CMD_MAX_MSG_BYTES) !=
+        kmacScaOk) {
+      return ABORTED();
+    }
+    pentest_set_trigger_low();
+
+    kmac_msg_done();
+    if (kmac_get_digest(out, kDigestLength) != kmacScaOk) {
+      return ABORTED();
+    }
+
+    // Copy the output to the input.
+    memcpy(message_buf, (uint8_t *)out, KMACSCA_CMD_MAX_MSG_BYTES);
+  }
+  // Send the last digest to the host for verification.
+  cryptotest_kmac_sca_digest_t uj_output;
+  memcpy(uj_output.digest, (uint8_t *)out, kDigestLength * 2);
+  RESP_OK(ujson_serialize_cryptotest_kmac_sca_digest_t, uj, &uj_output);
 
   return OK_STATUS();
 }
@@ -751,6 +816,8 @@ status_t handle_kmac_sca(ujson_t *uj) {
       return handle_kmac_sca_single_absorb(uj);
     case kKmacScaSubcommandBatch:
       return handle_kmac_sca_batch(uj);
+    case kKmacScaSubcommandBatchDaisy:
+      return handle_kmac_sca_batch_daisy_chain(uj);
     case kKmacScaSubcommandFixedKeySet:
       return handle_kmac_sca_fixed_key_set(uj);
     case kKmacScaSubcommandSeedLfsr:

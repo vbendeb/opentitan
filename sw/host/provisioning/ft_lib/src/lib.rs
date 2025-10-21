@@ -9,17 +9,17 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use arrayvec::ArrayVec;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
 
 use bindgen::sram_program::SRAM_MAGIC_SP_EXECUTION_DONE;
 use cert_lib::{
-    parse_and_endorse_x509_cert, validate_cert_chain, validate_cwt_dice_chain, CaConfig, CaKey,
-    EndorsedCert,
+    CaConfig, CaKey, EndorsedCert, parse_and_endorse_x509_cert, validate_cert_chain,
+    validate_cwt_dice_chain,
 };
-use ft_ext_lib::ft_ext;
-use opentitanlib::app::TransportWrapper;
+use ft_ext_lib::{ft_inject_certs_ext, ft_post_boot_ext};
+use opentitanlib::app::{TransportWrapper, UartRx};
 use opentitanlib::console::spi::SpiConsoleDevice;
 use opentitanlib::dif::lc_ctrl::{DifLcCtrlState, LcCtrlReg};
 use opentitanlib::io::jtag::{JtagParams, JtagTap, RiscvGpr, RiscvReg};
@@ -30,8 +30,8 @@ use opentitanlib::test_utils::load_sram_program::{
 };
 use opentitanlib::test_utils::rpc::{ConsoleRecv, ConsoleSend};
 use opentitanlib::uart::console::UartConsole;
-use ot_certs::x509::parse_certificate;
 use ot_certs::CertFormat;
+use ot_certs::x509::parse_certificate;
 use perso_tlv_lib::perso_tlv_get_field;
 use perso_tlv_lib::{CertHeader, CertHeaderType, ObjHeader, ObjHeaderType, ObjType};
 use ujson_lib::provisioning_data::{
@@ -44,12 +44,11 @@ use util_lib::response::*;
 pub fn test_unlock(
     transport: &TransportWrapper,
     jtag_params: &JtagParams,
-    reset_delay: Duration,
     test_unlock_token: &ArrayVec<u32, 4>,
 ) -> Result<()> {
     // Connect to LC TAP.
     transport.pin_strapping("PINMUX_TAP_LC")?.apply()?;
-    transport.reset_target(reset_delay, true)?;
+    transport.reset(UartRx::Clear)?;
     let mut jtag = jtag_params.create(transport)?.connect(JtagTap::LcTap)?;
 
     // Check that LC state is currently `TEST_LOCKED0`.
@@ -65,7 +64,6 @@ pub fn test_unlock(
         Some(test_unlock_token.clone().into_inner().unwrap()),
         /*use_external_clk=*/
         false, // AST will be calibrated by now, so no need for ext_clk.
-        reset_delay,
         /*reset_tap_straps=*/ Some(JtagTap::LcTap),
     )?;
 
@@ -85,7 +83,6 @@ pub fn test_unlock(
 pub fn run_sram_ft_individualize(
     transport: &TransportWrapper,
     jtag_params: &JtagParams,
-    reset_delay: Duration,
     sram_program: &SramProgramParams,
     ft_individualize_data_in: &ManufFtIndividualizeData,
     spi_console: &SpiConsoleDevice,
@@ -97,7 +94,7 @@ pub fn run_sram_ft_individualize(
 
     // Set CPU TAP straps, reset, and connect to the JTAG interface.
     transport.pin_strapping("PINMUX_TAP_RISCV")?.apply()?;
-    transport.reset_target(reset_delay, true)?;
+    transport.reset(UartRx::Clear)?;
     let mut jtag = jtag_params.create(transport)?.connect(JtagTap::RiscvTap)?;
 
     // Reset and halt the CPU to ensure we are in a known state, and clear out any ROM messages
@@ -152,7 +149,6 @@ pub fn run_sram_ft_individualize(
 pub fn test_exit(
     transport: &TransportWrapper,
     jtag_params: &JtagParams,
-    reset_delay: Duration,
     test_exit_token: &ArrayVec<u32, 4>,
     target_mission_mode_lc_state: DifLcCtrlState,
 ) -> Result<()> {
@@ -196,7 +192,6 @@ pub fn test_exit(
         Some(test_exit_token.clone().into_inner().unwrap()),
         /*use_external_clk=*/
         false, // AST will be calibrated by now, so no need for ext_clk.
-        reset_delay,
         /*reset_tap_straps=*/ None,
     )?;
 
@@ -223,7 +218,11 @@ fn send_rma_unlock_token_hash(
     )?;
     ujson_payloads.dut_in.insert(
         "FT_PERSO_RMA_TOKEN_HASH".to_string(),
-        rma_token_hash.send_with_padding(spi_console, LC_TOKEN_HASH_SERIALIZED_MAX_SIZE)?,
+        rma_token_hash.send_with_padding_and_crc(
+            spi_console,
+            LC_TOKEN_HASH_SERIALIZED_MAX_SIZE,
+            /*quiet=*/ true,
+        )?,
     );
     Ok(())
 }
@@ -378,6 +377,7 @@ fn provision_certificates(
     let mut device_was_hmac: Vec<u8> = Vec::new();
     let mut device_id: Vec<u8> = Vec::new();
     let mut host_was_hmac = Hmac::<Sha256>::new_from_slice(wafer_auth_secret.as_slice())?;
+    let mut generic_seed_id: usize = 0;
 
     // Extract CAs.
     let dice_ca_cert = &ca_cfgs["dice"].certificate;
@@ -418,6 +418,28 @@ fn provision_certificates(
                 start += dev_seed_size;
                 response.seeds.number += r.len();
                 response.seeds.seed.extend(r);
+                continue;
+            }
+            ObjType::GenericSeed => {
+                let generic_seed_size = header.obj_size - obj_header_size;
+                let generic_seed = &perso_blob.body[start..start + generic_seed_size];
+                log::info!(
+                    "Generic Seed #{}: {}",
+                    generic_seed_id,
+                    hex::encode(generic_seed)
+                );
+                start += generic_seed_size;
+                generic_seed_id += 1;
+                continue;
+            }
+            ObjType::PersoSha256Hash => {
+                let hash_size = header.obj_size - obj_header_size;
+                let hash = &perso_blob.body[start..start + hash_size];
+                log::info!(
+                    "Personalization firmware SHA256 hash: {}",
+                    hex::encode(hash)
+                );
+                start += hash_size;
                 continue;
             }
         }
@@ -465,7 +487,11 @@ fn provision_certificates(
                     (CertFormat::X509, &mut dice_cert_chain)
                 }
                 ObjType::EndorsedCwtCert => (CertFormat::Cwt, &mut dice_cert_chain_cwt),
-                ObjType::WasTbsHmac | ObjType::DeviceId | ObjType::DevSeed => unreachable!(),
+                ObjType::WasTbsHmac
+                | ObjType::DeviceId
+                | ObjType::DevSeed
+                | ObjType::GenericSeed
+                | ObjType::PersoSha256Hash => unreachable!(),
             };
 
             let ec = EndorsedCert {
@@ -493,6 +519,7 @@ fn provision_certificates(
 
     // Execute extension hook.
     let t0 = Instant::now();
+    endorsed_cert_concat = ft_inject_certs_ext(endorsed_cert_concat, &mut num_host_endorsed_certs)?;
     response.stats.log_elapsed_time("perso-ft-ext", t0);
 
     // Authenticate WAS HMAC.
@@ -612,8 +639,6 @@ pub fn run_ft_personalize(
     spi_console.reset_frame_counter();
     response.stats.log_elapsed_time("second-bootstrap", t0);
 
-    let _ = UartConsole::wait_for(spi_console, r"Personalization Firmware Hash:", timeout)?;
-
     // Send RMA unlock token digest to device.
     let second_t0 = Instant::now();
     let t0 = second_t0;
@@ -647,12 +672,11 @@ pub fn run_ft_personalize(
 
 pub fn check_slot_b_boot_up(
     transport: &TransportWrapper,
-    init: &InitializeTest,
     timeout: Duration,
     response: &mut PersonalizeResponse,
     owner_fw_success_string: Option<String>,
 ) -> Result<()> {
-    transport.reset_target(init.bootstrap.options.reset_delay, true)?;
+    transport.reset(UartRx::Clear)?;
     let uart_console = transport.uart("console")?;
 
     // The ROM_EXT used to print "Starting ROM_EXT 0.1", but we cleaned up the
@@ -689,7 +713,7 @@ pub fn check_slot_b_boot_up(
     let error_code_msg = r"BFV:.*\r\n";
 
     // Optional text requried by certain SKUs.
-    let owner_ext_string = ft_ext(response)?;
+    let owner_ext_string = ft_post_boot_ext(response)?;
 
     // Compile the full regex anchor including possible error messages and
     // expected owner FW messages.

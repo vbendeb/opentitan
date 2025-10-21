@@ -2,7 +2,7 @@
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use serde::Deserialize;
 use std::fs;
 use std::path::Path;
@@ -83,14 +83,14 @@ impl LcSecded {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testdata;
+    use crate::util::testdata;
     use anyhow::Result;
     use deser_hjson::from_str;
     use std::fs::read_to_string;
 
     #[test]
     fn test_lc_state_deserialize() -> Result<()> {
-        let _: LcState = from_str(&read_to_string(testdata!("lc_ctrl_state.hjson"))?)?;
+        let _: LcState = from_str(&read_to_string(testdata("otp/lc_ctrl_state.hjson"))?)?;
         Ok(())
     }
 

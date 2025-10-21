@@ -2,21 +2,21 @@
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 
-use anyhow::{bail, ensure, Result};
+use anyhow::{Result, bail, ensure};
 use rusb::{Direction, Recipient, RequestType};
 use std::cell::Cell;
 use std::mem::size_of;
 use std::rc::Rc;
 use std::time::Duration;
-use zerocopy::{AsBytes, FromBytes, FromZeroes};
+use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 use crate::io::eeprom;
 use crate::io::gpio::GpioPin;
 use crate::io::spi::{
     AssertChipSelect, MaxSizes, SpiError, Target, TargetChipDeassert, Transfer, TransferMode,
 };
-use crate::transport::hyperdebug::{BulkInterface, Inner};
 use crate::transport::TransportError;
+use crate::transport::hyperdebug::{BulkInterface, Inner};
 
 pub struct HyperdebugSpiTarget {
     inner: Rc<Inner>,
@@ -111,7 +111,7 @@ fn status_code_description(status_code: u16) -> String {
     .to_string()
 }
 
-#[derive(AsBytes, FromBytes, FromZeroes, Debug, Default)]
+#[derive(Immutable, IntoBytes, FromBytes, Debug, Default)]
 #[repr(C)]
 struct RspUsbSpiConfig {
     packet_id: u16,
@@ -120,7 +120,7 @@ struct RspUsbSpiConfig {
     feature_bitmap: u16,
 }
 
-#[derive(AsBytes, FromBytes, FromZeroes, Debug)]
+#[derive(Immutable, IntoBytes, FromBytes, Debug)]
 #[repr(C)]
 struct CmdTransferStart {
     packet_id: u16,
@@ -139,7 +139,7 @@ impl CmdTransferStart {
     }
 }
 
-#[derive(AsBytes, FromBytes, FromZeroes, Debug)]
+#[derive(Immutable, IntoBytes, FromBytes, Debug)]
 #[repr(C)]
 struct CmdEepromTransferStart {
     packet_id: u16,
@@ -158,7 +158,7 @@ impl CmdEepromTransferStart {
     }
 }
 
-#[derive(AsBytes, FromBytes, FromZeroes, Debug)]
+#[derive(Immutable, IntoBytes, FromBytes, Debug)]
 #[repr(C)]
 struct CmdTransferContinue {
     packet_id: u16,
@@ -175,7 +175,7 @@ impl CmdTransferContinue {
     }
 }
 
-#[derive(AsBytes, FromBytes, FromZeroes, Debug)]
+#[derive(Immutable, IntoBytes, FromBytes, Debug)]
 #[repr(C)]
 struct RspTransferStart {
     packet_id: u16,
@@ -192,7 +192,7 @@ impl RspTransferStart {
     }
 }
 
-#[derive(AsBytes, FromBytes, FromZeroes, Debug)]
+#[derive(Immutable, IntoBytes, FromBytes, Debug)]
 #[repr(C)]
 struct RspTransferContinue {
     packet_id: u16,
@@ -209,7 +209,7 @@ impl RspTransferContinue {
     }
 }
 
-#[derive(AsBytes, FromBytes, FromZeroes, Debug)]
+#[derive(Immutable, IntoBytes, FromBytes, Debug)]
 #[repr(C)]
 struct CmdChipSelect {
     packet_id: u16,
@@ -224,7 +224,7 @@ impl CmdChipSelect {
     }
 }
 
-#[derive(AsBytes, FromBytes, FromZeroes, Debug, Default)]
+#[derive(Immutable, IntoBytes, FromBytes, Debug, Default)]
 #[repr(C)]
 struct RspChipSelect {
     packet_id: u16,
@@ -273,7 +273,7 @@ impl HyperdebugSpiTarget {
             &USB_SPI_PKT_ID_CMD_GET_USB_SPI_CONFIG.to_le_bytes(),
         )?;
         let mut resp: RspUsbSpiConfig = Default::default();
-        let rc = usb_handle.read_bulk(spi_interface.in_endpoint, resp.as_bytes_mut())?;
+        let rc = usb_handle.read_bulk(spi_interface.in_endpoint, resp.as_mut_bytes())?;
         ensure!(
             rc == size_of::<RspUsbSpiConfig>(),
             TransportError::CommunicationError(
@@ -340,7 +340,7 @@ impl HyperdebugSpiTarget {
     /// Receive data for a single SPI operation, using one or more USB packets.
     fn receive(&self, rbuf: &mut [u8]) -> Result<()> {
         let mut resp = RspTransferStart::new();
-        let bytecount = self.usb_read_bulk_timeout(resp.as_bytes_mut(), TRANSFER_START_TIMEOUT)?;
+        let bytecount = self.usb_read_bulk_timeout(resp.as_mut_bytes(), TRANSFER_START_TIMEOUT)?;
         ensure!(
             bytecount >= 4,
             TransportError::CommunicationError("Short reponse to TRANSFER_START".to_string())
@@ -364,7 +364,7 @@ impl HyperdebugSpiTarget {
         let mut index = databytes;
         while index < rbuf.len() {
             let mut resp = RspTransferContinue::new();
-            let bytecount = self.usb_read_bulk(resp.as_bytes_mut())?;
+            let bytecount = self.usb_read_bulk(resp.as_mut_bytes())?;
             ensure!(
                 bytecount > 4,
                 TransportError::CommunicationError(
@@ -393,7 +393,7 @@ impl HyperdebugSpiTarget {
 
     fn receive_first_streaming(&self) -> Result<()> {
         let mut resp = RspTransferStart::new();
-        let bytecount = self.usb_read_bulk(resp.as_bytes_mut())?;
+        let bytecount = self.usb_read_bulk(resp.as_mut_bytes())?;
         ensure!(
             bytecount >= 4,
             TransportError::CommunicationError("Short reponse to TRANSFER_START".to_string())
@@ -606,7 +606,7 @@ impl HyperdebugSpiTarget {
         self.usb_write_bulk(req.as_bytes())?;
 
         let mut resp = RspChipSelect::new();
-        let bytecount = self.usb_read_bulk(resp.as_bytes_mut())?;
+        let bytecount = self.usb_read_bulk(resp.as_mut_bytes())?;
         ensure!(
             bytecount >= 4,
             TransportError::CommunicationError("Unrecognized reponse to CHIP_SELECT".to_string())
@@ -712,6 +712,14 @@ impl Target for HyperdebugSpiTarget {
 
     fn get_max_transfer_sizes(&self) -> Result<MaxSizes> {
         Ok(self.max_sizes)
+    }
+
+    fn get_flashrom_programmer(&self) -> Result<String> {
+        Ok(format!(
+            "raiden_debug_spi:serial={},target={}",
+            self.inner.usb_device.borrow().get_serial_number(),
+            self.target_idx
+        ))
     }
 
     fn run_transaction(&self, transaction: &mut [Transfer]) -> Result<()> {
@@ -842,8 +850,12 @@ impl Target for HyperdebugSpiTarget {
         let mut stream_state = StreamState::NoPending;
         loop {
             match transactions {
-                [eeprom::Transaction::Command(pre_cmd), eeprom::Transaction::Write(cmd, wbuf), eeprom::Transaction::WaitForBusyClear, rest @ ..] =>
-                {
+                [
+                    eeprom::Transaction::Command(pre_cmd),
+                    eeprom::Transaction::Write(cmd, wbuf),
+                    eeprom::Transaction::WaitForBusyClear,
+                    rest @ ..,
+                ] => {
                     if pre_cmd.get_opcode().len() == 1 {
                         stream_state = self.eeprom_transmit(
                             Some(pre_cmd), /* write_enable */
@@ -872,13 +884,16 @@ impl Target for HyperdebugSpiTarget {
                         self.eeprom_transmit(None, cmd, &[], &mut [], false, stream_state)?;
                     transactions = rest;
                 }
-                [eeprom::Transaction::Read(cmd, ref mut rbuf), rest @ ..] => {
+                [eeprom::Transaction::Read(cmd, rbuf), rest @ ..] => {
                     stream_state =
                         self.eeprom_transmit(None, cmd, &[], rbuf, false, stream_state)?;
                     transactions = rest;
                 }
-                [eeprom::Transaction::Write(cmd, wbuf), eeprom::Transaction::WaitForBusyClear, rest @ ..] =>
-                {
+                [
+                    eeprom::Transaction::Write(cmd, wbuf),
+                    eeprom::Transaction::WaitForBusyClear,
+                    rest @ ..,
+                ] => {
                     stream_state = self.eeprom_transmit(
                         None, /* write_enable */
                         cmd,

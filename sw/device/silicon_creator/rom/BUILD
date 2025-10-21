@@ -7,8 +7,14 @@ load("@rules_pkg//pkg:mappings.bzl", "pkg_files")
 load("//rules:cross_platform.bzl", "dual_cc_library", "dual_inputs")
 load("//rules:files.bzl", "output_groups")
 load("//rules:linker.bzl", "ld_library")
-load("//rules:opentitan_test.bzl", "manual_test")
-load("//rules/opentitan:defs.bzl", "OPENTITAN_CPU", "fpga_params", "opentitan_binary", "opentitan_test")
+load(
+    "//rules/opentitan:defs.bzl",
+    "OPENTITAN_CPU",
+    "fpga_params",
+    "opentitan_binary",
+    "opentitan_manual_test",
+    "opentitan_test",
+)
 load("//rules/opentitan:legacy.bzl", "legacy_rom_targets")
 
 package(default_visibility = ["//visibility:public"])
@@ -193,6 +199,7 @@ cc_library(
 
 opentitan_binary(
     name = "mask_rom",
+    collect_code_coverage = 0,
     exec_env = [
         "//hw/top_earlgrey:fpga_cw310",
         "//hw/top_earlgrey:fpga_cw340",
@@ -460,7 +467,7 @@ pkg_files(
     prefix = "earlgrey/rom",
 )
 
-manual_test(
+opentitan_manual_test(
     name = "manual_test",
     tags = [
         "manual",
@@ -534,9 +541,9 @@ opentitan_test(
     name = "stack_utilization_test",
     cw310 = fpga_params(
         binaries = {
-            "//sw/device/silicon_creator/rom/e2e:empty_test_slot_a_fake_ecdsa_prod_key_0_fpga_cw310_rom_with_fake_keys_signed_bin": "good_a",
-            "//sw/device/silicon_creator/rom/e2e:empty_test_slot_b_fake_ecdsa_prod_key_0_fpga_cw310_rom_with_fake_keys_signed_bin": "good_b",
-            "//sw/device/silicon_creator/rom/e2e:empty_test_slot_a_fake_ecdsa_prod_key_0_corrupted_fpga_cw310_rom_with_fake_keys_signed_bin": "bad_a",
+            "//sw/device/silicon_creator/rom/e2e:empty_test_slot_a_prod_key_0_fpga_cw310_rom_with_fake_keys_signed_bin": "good_a",
+            "//sw/device/silicon_creator/rom/e2e:empty_test_slot_b_prod_key_0_fpga_cw310_rom_with_fake_keys_signed_bin": "good_b",
+            "//sw/device/silicon_creator/rom/e2e:empty_test_slot_a_prod_key_0_corrupted_fpga_cw310_rom_with_fake_keys_signed_bin": "bad_a",
             ":empty_flash": "empty",
         },
         stack_usage = "STK:[0-9A-Fa-f/]+\r\n",
@@ -561,7 +568,7 @@ opentitan_test(
             --exec="console --non-interactive --exit-success='PASS.*\r\n' --exit-failure='{exit_failure}'"
 
             --exec="no-op --info '### Measuring stack utilization for bootstrap slot B'"
-            --exec="bootstrap --mirror=false --clear-uart=true --leave-in-bootstrap {good_b}@0x80000"
+            --exec="bootstrap --mirror=false --clear-uart=true --leave-in-bootstrap {good_b}@{rom_ext_slot_b}"
             --exec="console --non-interactive --exit-success='{stack_usage}' --exit-failure='{exit_failure}'"
 
             --exec="gpio remove ROM_BOOTSTRAP"

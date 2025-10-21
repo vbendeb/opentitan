@@ -2,21 +2,10 @@
 # Licensed under the Apache License, Version 2.0, see LICENSE for details.
 # SPDX-License-Identifier: Apache-2.0
 
-load(
-    "@bazel_skylib//lib:dicts.bzl",
-    "dicts",
-)
-load(
-    "//rules:const.bzl",
-    "CONST",
-    "hex_digits",
-)
-load(
-    "//rules:opentitan.bzl",
-    "ECDSA_ONLY_KEY_STRUCTS",
-    "bin_to_vmem",
-    "scramble_flash_vmem",
-)
+load("@bazel_skylib//lib:dicts.bzl", "dicts")
+load("//rules:const.bzl", "CONST", "hex_digits")
+load("//rules/opentitan:legacy.bzl", "scramble_flash_vmem", "vmem_file")
+load("//rules/opentitan:keyutils.bzl", "ECDSA_ONLY_KEY_STRUCTS")
 load(
     "//rules:otp.bzl",
     "OTP_SIGVERIFY_FAKE_KEYS",
@@ -24,14 +13,8 @@ load(
     "otp_json",
     "otp_partition",
 )
-load(
-    "//rules:rom_e2e.bzl",
-    "maybe_skip_in_ci",
-)
-load(
-    "//rules:splice.bzl",
-    "bitstream_splice",
-)
+load("//rules:rom_e2e.bzl", "maybe_skip_in_ci")
+load("//rules:splice.bzl", "bitstream_splice")
 load(
     "//sw/device/silicon_creator/rom/e2e:defs.bzl",
     "MSG_PASS",
@@ -119,6 +102,7 @@ opentitan_test(
         exec_env = [
             "//hw/top_earlgrey:fpga_cw310",
             "//hw/top_earlgrey:sim_dv",
+            "//hw/top_earlgrey:sim_qemu_base",
             "//hw/top_earlgrey:sim_verilator",
         ],
         linker_script = "//sw/device/lib/testing/test_framework:ottf_ld_silicon_creator_slot_{}".format(slot),
@@ -156,6 +140,7 @@ opentitan_test(
         exec_env = [
             "//hw/top_earlgrey:fpga_cw310",
             "//hw/top_earlgrey:sim_dv",
+            "//hw/top_earlgrey:sim_qemu_base",
             "//hw/top_earlgrey:sim_verilator",
         ],
         linker_script = "//sw/device/lib/testing/test_framework:ottf_ld_silicon_creator_slot_{}".format(slot),
@@ -179,6 +164,7 @@ opentitan_test(
         exec_env = {
             "//hw/top_earlgrey:fpga_cw310_rom_with_fake_keys": None,
             "//hw/top_earlgrey:sim_dv": None,
+            "//hw/top_earlgrey:sim_qemu_rom_with_fake_keys": None,
             "//hw/top_earlgrey:sim_verilator": None,
         },
         linker_script = "//sw/device/lib/testing/test_framework:ottf_ld_silicon_creator_slot_{}".format(slot),
@@ -200,7 +186,7 @@ opentitan_test(
 # The following filegroup is required to allow dvsim to build the
 # empty_test_slot_* targets as the `sim_dv` execution environment is expected
 # as a suffix in the target label. For example:
-#  `//sw/device/silicon_creator/rom/e2e:empty_test_slot_a_fake_ecdsa_prod_key_0_sim_dv`
+#  `//sw/device/silicon_creator/rom/e2e:empty_test_slot_a_prod_key_0_sim_dv`
 [
     filegroup(
         name = "empty_test_slot_{}_{}_sim_dv".format(slot, key),
@@ -223,6 +209,7 @@ opentitan_test(
     for key in SIGVERIFY_LC_KEYS
     for group in [
         "fpga_cw310_rom_with_fake_keys",
+        "sim_qemu_rom_with_fake_keys",
         "sim_dv",
     ]
 ]
@@ -244,17 +231,18 @@ opentitan_test(
     for key in SIGVERIFY_LC_KEYS
     for group in [
         "fpga_cw310_rom_with_fake_keys",
+        "sim_qemu_rom_with_fake_keys",
         "sim_dv",
     ]
 ]
 
-# The below three rule sets (bin_to_vmem, scramble_flash_vmem, and filegroup)
+# The below three rule sets (vmem_file, scramble_flash_vmem, and filegroup)
 # are needed to run `sigverify_always` tests in DV.
 [
-    bin_to_vmem(
+    vmem_file(
         name = "empty_test_slot_{}_{}_corrupted_sim_dv_vmem64_signed".format(slot, key),
         testonly = True,
-        bin = ":empty_test_slot_{}_{}_corrupted_sim_dv_signed_bin".format(slot, key),
+        src = ":empty_test_slot_{}_{}_corrupted_sim_dv_signed_bin".format(slot, key),
         word_size = 64,  # Backdoor-load VMEM image uses 64-bit words
     )
     for slot in SLOTS
@@ -265,7 +253,7 @@ opentitan_test(
     scramble_flash_vmem(
         name = "empty_test_slot_{}_{}_corrupted_sim_dv_scr_vmem64_signed".format(slot, key),
         testonly = True,
-        vmem = ":empty_test_slot_{}_{}_corrupted_sim_dv_vmem64_signed".format(slot, key),
+        src = ":empty_test_slot_{}_{}_corrupted_sim_dv_vmem64_signed".format(slot, key),
     )
     for slot in SLOTS
     for key in SIGVERIFY_LC_KEYS
@@ -296,6 +284,7 @@ opentitan_test(
     srcs = ["rom_e2e_flash_ctrl_init_test.c"],
     exec_env = {
         "//hw/top_earlgrey:fpga_cw310_rom_with_fake_keys": None,
+        "//hw/top_earlgrey:sim_qemu_rom_with_fake_keys": None,
     },
     deps = [
         "//sw/device/lib/testing/test_framework:ottf_main",
@@ -310,7 +299,7 @@ opentitan_test(
     dv = dv_params(
         rom = "//sw/device/silicon_creator/rom:mask_rom",
     ),
-    ecdsa_key = {"//sw/device/silicon_creator/rom/keys/fake/ecdsa:prod_key_0_ecdsa_p256": "prod_key_0"},
+    ecdsa_key = {"//sw/device/silicon_creator/rom/keys/fake/ecdsa:ecdsa_keyset": "prod_key_0"},
     exec_env = {
         "//hw/top_earlgrey:sim_dv": None,
         "//hw/top_earlgrey:fpga_cw310_rom_with_fake_keys": None,
@@ -341,7 +330,7 @@ opentitan_test(
     dv = dv_params(
         rom = "//sw/device/silicon_creator/rom:mask_rom",
     ),
-    ecdsa_key = {"//sw/device/silicon_creator/rom/keys/fake/ecdsa:prod_key_0_ecdsa_p256": "prod_key_0"},
+    ecdsa_key = {"//sw/device/silicon_creator/rom/keys/fake/ecdsa:ecdsa_keyset": "prod_key_0"},
     exec_env = {
         "//hw/top_earlgrey:fpga_cw310_sival": None,
         "//hw/top_earlgrey:fpga_cw340_sival": None,
@@ -366,7 +355,7 @@ opentitan_test(
     dv = dv_params(
         rom = "//sw/device/silicon_creator/rom:mask_rom",
     ),
-    ecdsa_key = {"//sw/device/silicon_creator/rom/keys/fake/ecdsa:prod_key_0_ecdsa_p256": "prod_key_0"},
+    ecdsa_key = {"//sw/device/silicon_creator/rom/keys/fake/ecdsa:ecdsa_keyset": "prod_key_0"},
     exec_env = {
         "//hw/top_earlgrey:sim_dv": None,
         "//hw/top_earlgrey:sim_verilator": None,
@@ -438,7 +427,7 @@ opentitan_test(
     name = "sigverify_key_auth",
     srcs = [":empty_test"],
     ecdsa_key = {
-        "//sw/device/silicon_creator/rom/keys/unauthorized/ecdsa:unauthorized_key_0_ecdsa_p256": "unauthorized_key_0",
+        "//sw/device/silicon_creator/rom/keys/unauthorized/ecdsa:ecdsa_keyset": "unauthorized_key_0",
     },
     exec_env = {
         "//hw/top_earlgrey:fpga_cw310_rom_with_fake_keys": None,

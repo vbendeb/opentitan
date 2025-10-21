@@ -13,7 +13,12 @@ extern "C" {
 
 #define COMMAND(_, value) \
     value(_, AesSca) \
+    value(_, AlertInfo) \
     value(_, CryptoFi) \
+    value(_, CryptoLibFiAsym) \
+    value(_, CryptoLibFiSym) \
+    value(_, CryptoLibScaSym) \
+    value(_, CryptoLibScaAsym) \
     value(_, EdnSca) \
     value(_, ExtClkScaFi) \
     value(_, HmacSca) \
@@ -28,8 +33,13 @@ extern "C" {
     value(_, RngFi) \
     value(_, RomFi) \
     value(_, Sha3Sca) \
-    value(_, TriggerSca)
+    value(_, TriggerSca) \
+    value(_, AlertFi)
 UJSON_SERDE_ENUM(PenetrationtestCommand, penetrationtest_cmd_t, COMMAND);
+
+#define PENTEST_NUM_ENC(field, string) \
+    field(num_enc, uint32_t)
+UJSON_SERDE_STRUCT(PenetrationtestCommandNumEnc, penetrationtest_num_enc_t, PENTEST_NUM_ENC);
 
 // clang-format on
 

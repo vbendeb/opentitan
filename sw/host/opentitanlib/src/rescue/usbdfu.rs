@@ -2,11 +2,11 @@
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use std::cell::{Cell, Ref, RefCell};
 use std::time::Duration;
 
-use crate::app::TransportWrapper;
+use crate::app::{TransportWrapper, UartRx};
 use crate::rescue::dfu::*;
 use crate::rescue::{EntryMode, Rescue, RescueError, RescueMode, RescueParams};
 use crate::util::usb::UsbBackend;
@@ -49,9 +49,7 @@ impl Rescue for UsbDfu {
         self.params.set_trigger(transport, true)?;
 
         match mode {
-            EntryMode::Reset => {
-                transport.reset_target(self.reset_delay, /*clear_uart=*/ false)?
-            }
+            EntryMode::Reset => transport.reset_with_delay(UartRx::Keep, self.reset_delay)?,
             EntryMode::Reboot => self.reboot()?,
             EntryMode::None => {}
         }

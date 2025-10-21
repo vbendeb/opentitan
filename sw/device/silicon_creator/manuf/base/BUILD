@@ -24,10 +24,6 @@ load(
     "SLOTS",
 )
 load(
-    "//sw/device/silicon_creator/rom_ext:defs.bzl",
-    "ROM_EXT_VERSION",
-)
-load(
     "//sw/device/silicon_creator/rom_ext/e2e:defs.bzl",
     "OWNER_SLOTS",
 )
@@ -135,6 +131,7 @@ opentitan_test(
         "//hw/top_earlgrey:fpga_cw340_rom_with_fake_keys": None,
     },
     fpga = fpga_params(
+        timeout = "long",
         binaries = {
             ":sram_cp_provision": "sram_cp_provision",
             ":sram_cp_provision_functest": "sram_cp_provision_functest",
@@ -266,6 +263,15 @@ cc_library(
     ],
 )
 
+cc_test(
+    name = "perso_tlv_data_unittest",
+    srcs = ["perso_tlv_data_unittest.cc"],
+    deps = [
+        ":perso_tlv_data",
+        "@googletest//:gtest_main",
+    ],
+)
+
 # Need a separate library for the headers, because adding a dependency on
 #//sw/device/silicon_creator/lib/cert required by perso_tlv_data above causes
 # bindgen failures due to otbn (which is a cert dependency) requiring risc32
@@ -285,9 +291,10 @@ manifest(d = {
     "identifier": hex(CONST.ROM_EXT),
     "manuf_state_creator": hex(CONST.MANUF_STATE.PERSO_INITIAL),
     "visibility": ["//visibility:private"],
-    "version_major": ROM_EXT_VERSION.MAJOR,
-    "version_minor": ROM_EXT_VERSION.MINOR,
-    "security_version": ROM_EXT_VERSION.SECURITY,
+    "version_major": "0",
+    # Release: 2025-09-16-RC00
+    "version_minor": "2025091600",
+    "security_version": "0xFFFFFFFF",
 })
 
 [
@@ -295,7 +302,7 @@ manifest(d = {
         name = "ft_personalize_{}".format(sku),
         testonly = True,
         srcs = ["ft_personalize.c"],
-        ecdsa_key = {"//sw/device/silicon_creator/rom/keys/fake/ecdsa:prod_key_0_ecdsa_p256": "prod_key_0"},
+        ecdsa_key = {"//sw/device/silicon_creator/rom/keys/fake/ecdsa:ecdsa_keyset": "prod_key_0"},
         exec_env = {
             "//hw/top_earlgrey:fpga_hyper310_rom_with_fake_keys": None,
             "//hw/top_earlgrey:fpga_cw340_rom_with_fake_keys": None,
@@ -303,7 +310,7 @@ manifest(d = {
         },
         linker_script = "//sw/device/lib/testing/test_framework:ottf_ld_silicon_creator_slot_a",
         manifest = ":manifest_perso",
-        spx_key = {"//sw/device/silicon_creator/rom/keys/fake/spx:prod_key_0_spx": "prod_key_0"},
+        spx_key = {"//sw/device/silicon_creator/rom/keys/fake/spx:spx_keyset": "prod_key_0"},
         deps = [
             ":flash_info_permissions",
             ":perso_tlv_data",
@@ -335,6 +342,7 @@ manifest(d = {
             "//sw/device/silicon_creator/lib/cert",
             "//sw/device/silicon_creator/lib/cert:cdi_0_template_library",
             "//sw/device/silicon_creator/lib/cert:cdi_1_template_library",
+            "//sw/device/silicon_creator/lib/cert:dice_chain",
             "//sw/device/silicon_creator/lib/cert:uds_template_library",
             "//sw/device/silicon_creator/lib/drivers:flash_ctrl",
             "//sw/device/silicon_creator/lib/drivers:hmac",

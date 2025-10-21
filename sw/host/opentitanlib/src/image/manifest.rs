@@ -17,7 +17,7 @@ use byteorder::{LittleEndian, WriteBytesExt};
 use serde::{Deserialize, Serialize};
 use serde_annotate::Annotate;
 use std::io::Write;
-use zerocopy::{AsBytes, FromBytes, FromZeroes};
+use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
 // Currently, these definitions must be updated manually but they can be
 // generated using the following commands (requires bindgen):
@@ -45,11 +45,13 @@ pub const MANIFEST_EXT_ID_SPX_SIGNATURE: u32 = 0xad77f84a;
 pub const MANIFEST_EXT_ID_SECVER_WRITE: u32 = 0x3f086a41;
 pub const MANIFEST_EXT_ID_ISFB: u32 = 0x42465349;
 pub const MANIFEST_EXT_ID_ISFB_ERASE: u32 = 0x45465349;
+pub const MANIFEST_EXT_ID_IMAGE_TYPE: u32 = 0x494d4754;
 pub const MANIFEST_EXT_NAME_SPX_KEY: u32 = 0x30545845;
 pub const MANIFEST_EXT_NAME_SPX_SIGNATURE: u32 = 0x31545845;
 pub const MANIFEST_EXT_NAME_SECVER_WRITE: u32 = 0x56434553;
 pub const MANIFEST_EXT_NAME_ISFB: u32 = 0x42465349;
 pub const MANIFEST_EXT_NAME_ISFB_ERASE: u32 = 0x45465349;
+pub const MANIFEST_EXT_NAME_IMAGE_TYPE: u32 = 0x494d4754;
 pub const CHIP_ROM_EXT_IDENTIFIER: u32 = 0x4552544f;
 pub const CHIP_BL0_IDENTIFIER: u32 = 0x3042544f;
 pub const CHIP_ROM_EXT_SIZE_MIN: u32 = 8788;
@@ -66,7 +68,7 @@ with_unknown! {
 
 /// Manifest for boot stage images stored in flash.
 #[repr(C)]
-#[derive(AsBytes, FromBytes, FromZeroes, Debug, Default)]
+#[derive(KnownLayout, Immutable, IntoBytes, FromBytes, Debug, Default)]
 pub struct Manifest {
     pub signature: SigverifyBuffer,
     pub usage_constraints: ManifestUsageConstraints,
@@ -90,7 +92,7 @@ pub struct Manifest {
 
 /// A type that holds 2 16-bit values for manifest major and minor format versions.
 #[repr(C)]
-#[derive(AsBytes, FromBytes, FromZeroes, Debug, Default, Copy, Clone)]
+#[derive(Immutable, IntoBytes, FromBytes, Debug, Default, Copy, Clone)]
 pub struct ManifestVersion {
     pub minor: u16,
     pub major: u16,
@@ -98,7 +100,7 @@ pub struct ManifestVersion {
 
 /// A type that holds 1964 32-bit words for SPHINCS+ signatures.
 #[repr(C)]
-#[derive(AsBytes, FromBytes, FromZeroes, Debug, Copy, Clone)]
+#[derive(Immutable, IntoBytes, FromBytes, Debug, Copy, Clone)]
 pub struct SigverifySpxSignature {
     pub data: [u32; 1964usize],
 }
@@ -113,7 +115,7 @@ impl Default for SigverifySpxSignature {
 
 /// Extension header.
 #[repr(C)]
-#[derive(AsBytes, FromBytes, FromZeroes, Debug, Default, Serialize, Deserialize)]
+#[derive(Immutable, IntoBytes, FromBytes, Debug, Default, Serialize, Deserialize)]
 pub struct ManifestExtHeader {
     pub identifier: u32,
     pub name: u32,
@@ -128,7 +130,7 @@ impl ManifestExtHeader {
 
 /// SPHINCS+ signature manifest extension.
 #[repr(C)]
-#[derive(AsBytes, FromBytes, FromZeroes, Debug, Default)]
+#[derive(Immutable, IntoBytes, FromBytes, Debug, Default)]
 pub struct ManifestExtSpxSignature {
     pub header: ManifestExtHeader,
     pub signature: SigverifySpxSignature,
@@ -136,14 +138,14 @@ pub struct ManifestExtSpxSignature {
 
 /// A type that holds 8 32-bit words for SPHINCS+ public keys.
 #[repr(C)]
-#[derive(AsBytes, FromBytes, FromZeroes, Debug, Default, Copy, Clone)]
+#[derive(Immutable, IntoBytes, FromBytes, Debug, Default, Copy, Clone)]
 pub struct SigverifySpxKey {
     pub data: [u32; 8usize],
 }
 
 /// SPHINCS+ public key manifest extension.
 #[repr(C)]
-#[derive(AsBytes, FromBytes, FromZeroes, Debug, Default)]
+#[derive(Immutable, IntoBytes, FromBytes, Debug, Default)]
 pub struct ManifestExtSpxKey {
     pub header: ManifestExtHeader,
     pub key: SigverifySpxKey,
@@ -151,7 +153,7 @@ pub struct ManifestExtSpxKey {
 
 /// A type that holds 96 32-bit words for RSA-3072.
 #[repr(C)]
-#[derive(AsBytes, FromBytes, FromZeroes, Debug)]
+#[derive(Immutable, IntoBytes, FromBytes, Debug)]
 pub struct SigverifyBuffer {
     pub data: [u32; 96usize],
 }
@@ -164,7 +166,7 @@ impl Default for SigverifyBuffer {
 
 /// SecVer Write manifest extension
 #[repr(C)]
-#[derive(AsBytes, FromBytes, FromZeroes, Debug, Default)]
+#[derive(Immutable, IntoBytes, FromBytes, Debug, Default)]
 pub struct ManifestExtSecVerWrite {
     pub header: ManifestExtHeader,
     pub write: u32,
@@ -206,22 +208,29 @@ impl ManifestExtIsfb {
 }
 
 #[repr(C)]
-#[derive(AsBytes, FromBytes, FromZeroes, Debug, Default)]
+#[derive(Immutable, IntoBytes, FromBytes, Debug, Default)]
 pub struct ManifestExtIsfbErasePolicy {
     pub header: ManifestExtHeader,
     pub erase_allowed: u32,
 }
 
+#[repr(C)]
+#[derive(Immutable, IntoBytes, FromBytes, Debug, Default)]
+pub struct ManifestExtImageType {
+    pub header: ManifestExtHeader,
+    pub image_type: u32,
+}
+
 /// A type that holds the 256-bit device identifier.
 #[repr(C)]
-#[derive(AsBytes, FromBytes, FromZeroes, Debug, Default)]
+#[derive(Immutable, IntoBytes, FromBytes, Debug, Default)]
 pub struct LifecycleDeviceId {
     pub device_id: [u32; 8usize],
 }
 
 /// Manifest usage constraints.
 #[repr(C)]
-#[derive(AsBytes, FromBytes, FromZeroes, Debug)]
+#[derive(Immutable, IntoBytes, FromBytes, Debug)]
 pub struct ManifestUsageConstraints {
     pub selector_bits: u32,
     pub device_id: LifecycleDeviceId,
@@ -246,27 +255,27 @@ impl Default for ManifestUsageConstraints {
 
 /// Manifest timestamp
 #[repr(C)]
-#[derive(AsBytes, FromBytes, FromZeroes, Debug, Default)]
+#[derive(Immutable, IntoBytes, FromBytes, Debug, Default)]
 pub struct Timestamp {
     pub timestamp_low: u32,
     pub timestamp_high: u32,
 }
 
 #[repr(C)]
-#[derive(AsBytes, FromBytes, FromZeroes, Debug, Default)]
+#[derive(Immutable, IntoBytes, FromBytes, Debug, Default)]
 pub struct KeymgrBindingValue {
     pub data: [u32; 8usize],
 }
 
 #[repr(C)]
-#[derive(AsBytes, FromBytes, FromZeroes, Debug, Default, Copy, Clone)]
+#[derive(KnownLayout, Immutable, IntoBytes, FromBytes, Debug, Default, Copy, Clone)]
 pub struct ManifestExtTableEntry {
     pub identifier: u32,
     pub offset: u32,
 }
 
 #[repr(C)]
-#[derive(AsBytes, FromBytes, FromZeroes, Debug, Default, Copy, Clone)]
+#[derive(KnownLayout, Immutable, IntoBytes, FromBytes, Debug, Default, Copy, Clone)]
 pub struct ManifestExtTable {
     pub entries: [ManifestExtTableEntry; CHIP_MANIFEST_EXT_TABLE_COUNT],
 }

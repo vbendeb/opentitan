@@ -2,12 +2,12 @@
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 
-use anyhow::{bail, ensure, Result};
+use anyhow::{Result, bail, ensure};
 use std::cell::Cell;
 use std::cmp;
 use std::rc::Rc;
 use std::time::Duration;
-use zerocopy::{AsBytes, FromBytes, FromZeroes};
+use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 use crate::io::i2c::{self, Bus, DeviceStatus, DeviceTransfer, I2cError, ReadStatus, Transfer};
 use crate::transport::hyperdebug::{BulkInterface, Inner};
@@ -35,9 +35,9 @@ const USB_MAX_SIZE: usize = 64;
 
 /// Wire format of USB packet to request a short I2C transaction
 /// (receiving at most 127 bytes).
-#[derive(AsBytes, FromBytes, FromZeroes, Debug)]
+#[derive(Immutable, IntoBytes, FromBytes, Debug)]
 #[allow(dead_code)] // Fields not explicitly read anywhere
-#[repr(packed)]
+#[repr(C, packed)]
 struct CmdTransferShort {
     encapsulation_header: u8,
     port: u8,
@@ -49,9 +49,9 @@ struct CmdTransferShort {
 
 /// Wire format of USB packet to request a long I2C transaction
 /// (receiving up to 32767 bytes).
-#[derive(AsBytes, FromBytes, FromZeroes, Debug)]
+#[derive(Immutable, IntoBytes, FromBytes, Debug)]
 #[allow(dead_code)] // Fields not explicitly read anywhere
-#[repr(packed)]
+#[repr(C, packed)]
 struct CmdTransferLong {
     encapsulation_header: u8,
     port: u8,
@@ -64,9 +64,9 @@ struct CmdTransferLong {
 }
 
 /// Wire format of USB packet containing I2C transaction response.
-#[derive(AsBytes, FromBytes, FromZeroes, Debug)]
+#[derive(Immutable, IntoBytes, FromBytes, Debug)]
 #[allow(dead_code)] // Reserved field not read anywhere
-#[repr(packed)]
+#[repr(C, packed)]
 struct RspTransfer {
     encapsulation_header: u8,
     status_code: u16,
@@ -84,9 +84,9 @@ impl RspTransfer {
     }
 }
 
-#[derive(AsBytes, FromBytes, FromZeroes, Debug)]
+#[derive(Immutable, IntoBytes, FromBytes, Debug)]
 #[allow(dead_code)] // Fields not explicitly read anywhere
-#[repr(packed)]
+#[repr(C, packed)]
 struct CmdGetDeviceStatus {
     encapsulation_header: u8,
     port: u8,
@@ -101,8 +101,8 @@ const I2C_DEVICE_CMD_PREPARE_READ_DATA: u8 = 0x01;
 // Bits for use in upper half of `CmdGetDeviceStatus.port`.
 const I2C_DEVICE_FLAG_STICKY: u8 = 0x80;
 
-#[derive(AsBytes, FromBytes, FromZeroes, Debug)]
-#[repr(packed)]
+#[derive(Immutable, IntoBytes, FromBytes, Debug)]
+#[repr(C, packed)]
 struct RspGetDeviceStatus {
     encapsulation_header: u8,
     struct_size: u16,
@@ -124,9 +124,9 @@ impl RspGetDeviceStatus {
     }
 }
 
-#[derive(AsBytes, FromBytes, FromZeroes, Debug)]
+#[derive(Immutable, IntoBytes, FromBytes, Debug)]
 #[allow(dead_code)] // Fields not explicitly read anywhere
-#[repr(packed)]
+#[repr(C, packed)]
 struct CmdPrepareReadData {
     encapsulation_header: u8,
     port: u8,
@@ -228,7 +228,7 @@ impl HyperdebugI2cBus {
         let mut bytecount = 0;
         while bytecount < 4 + encapsulation_header_size {
             let read_count = self.usb_read_bulk(
-                &mut resp.as_bytes_mut()[1 - encapsulation_header_size + bytecount..][..64],
+                &mut resp.as_mut_bytes()[1 - encapsulation_header_size + bytecount..][..64],
             )?;
             ensure!(
                 read_count > 0,
@@ -408,7 +408,7 @@ impl Bus for HyperdebugI2cBus {
         let mut bytecount = 0;
         while bytecount < 7 {
             let read_count = self.usb_read_bulk_timeout(
-                &mut resp.as_bytes_mut()[bytecount..][..64],
+                &mut resp.as_mut_bytes()[bytecount..][..64],
                 Duration::from_millis(req.timeout_ms as u64 + 500),
             )?;
             ensure!(

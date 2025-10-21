@@ -7,9 +7,10 @@
 #include "sw/device/lib/base/hardened.h"
 #include "sw/device/lib/base/macros.h"
 #include "sw/device/lib/base/memory.h"
+#include "sw/device/lib/crypto/drivers/hmac.h"
 #include "sw/device/lib/crypto/drivers/otbn.h"
+#include "sw/device/lib/crypto/drivers/rv_core_ibex.h"
 #include "sw/device/lib/crypto/impl/status.h"
-#include "sw/device/lib/crypto/include/hash.h"
 
 #include "hw/top_earlgrey/sw/autogen/top_earlgrey.h"
 
@@ -77,23 +78,13 @@ status_t rsa_3072_encode_sha256(const uint8_t *msg, size_t msgLen,
   result->data[kRsa3072NumWords - 1] = 0x0001ffff;
 
   // Hash message.
-  otcrypto_const_byte_buf_t msg_buf = {
-      .data = msg,
-      .len = msgLen,
-  };
-  uint32_t digest_buf[kSha256DigestWords];
-  otcrypto_hash_digest_t digest = {
-      .mode = kOtcryptoHashModeSha256,
-      .data = digest_buf,
-      .len = kSha256DigestWords,
-  };
-  TRY(otcrypto_hash(msg_buf, digest));
+  uint32_t digest[kHmacSha256DigestWords];
+  TRY(hmac_hash_sha256(msg, msgLen, digest));
 
   // Copy the message digest into the least significant end of the result,
   // reversing the order of bytes to get little-endian form.
   for (size_t i = 0; i < kHmacSha256DigestWords; i++) {
-    result->data[i] =
-        __builtin_bswap32(digest.data[kHmacSha256DigestWords - 1 - i]);
+    result->data[i] = __builtin_bswap32(digest[kHmacSha256DigestWords - 1 - i]);
   }
 
   // Set remainder of 0x00 || T section
@@ -147,16 +138,18 @@ status_t rsa_3072_compute_constants(const rsa_3072_public_key_t *public_key,
   HARDENED_TRY(otbn_execute());
 
   // Spin here waiting for OTBN to complete.
-  HARDENED_TRY(otbn_busy_wait_for_done());
+  HARDENED_TRY_WIPE_DMEM(otbn_busy_wait_for_done());
 
   // Read constant rr out of DMEM.
-  HARDENED_TRY(read_rsa_3072_int_from_otbn(kOtbnVarRsaRR, &result->rr));
+  HARDENED_TRY_WIPE_DMEM(
+      read_rsa_3072_int_from_otbn(kOtbnVarRsaRR, &result->rr));
 
   // Read constant m0_inv out of DMEM.
-  HARDENED_TRY(
+  HARDENED_TRY_WIPE_DMEM(
       otbn_dmem_read(kOtbnWideWordNumWords, kOtbnVarRsaM0Inv, result->m0_inv));
 
-  return OTCRYPTO_OK;
+  // Wipe DMEM.
+  return otbn_dmem_sec_wipe();
 }
 
 status_t rsa_3072_verify_start(const rsa_3072_int_t *signature,
@@ -206,11 +199,11 @@ status_t rsa_3072_verify_finalize(const rsa_3072_int_t *message,
   *result = kHardenedBoolFalse;
 
   // Spin here waiting for OTBN to complete.
-  HARDENED_TRY(otbn_busy_wait_for_done());
+  HARDENED_TRY_WIPE_DMEM(otbn_busy_wait_for_done());
 
   // Read recovered message out of OTBN dmem.
   rsa_3072_int_t recoveredMessage;
-  HARDENED_TRY(
+  HARDENED_TRY_WIPE_DMEM(
       read_rsa_3072_int_from_otbn(kOtbnVarRsaOutBuf, &recoveredMessage));
 
   // TODO: harden this memory comparison
@@ -222,7 +215,8 @@ status_t rsa_3072_verify_finalize(const rsa_3072_int_t *message,
     }
   }
 
-  return OTCRYPTO_OK;
+  // Wipe DMEM.
+  return otbn_dmem_sec_wipe();
 }
 
 status_t rsa_3072_verify(const rsa_3072_int_t *signature,

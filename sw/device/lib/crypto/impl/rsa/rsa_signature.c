@@ -10,7 +10,6 @@
 #include "sw/device/lib/crypto/drivers/entropy.h"
 #include "sw/device/lib/crypto/impl/rsa/rsa_modexp.h"
 #include "sw/device/lib/crypto/impl/rsa/rsa_padding.h"
-#include "sw/device/lib/crypto/include/hash.h"
 
 // Module ID for status codes.
 #define MODULE_ID MAKE_MODULE_ID('r', 's', 'v')
@@ -75,11 +74,13 @@ static status_t message_encode(const otcrypto_hash_digest_t message_digest,
   // Check that the digest length is OK.
   HARDENED_TRY(digest_check(message_digest));
 
-  switch (padding_mode) {
+  switch (launder32(padding_mode)) {
     case kRsaSignaturePaddingPkcs1v15:
+      HARDENED_CHECK_EQ(padding_mode, kRsaSignaturePaddingPkcs1v15);
       return rsa_padding_pkcs1v15_encode(message_digest, encoded_message_len,
                                          encoded_message);
     case kRsaSignaturePaddingPss: {
+      HARDENED_CHECK_EQ(padding_mode, kRsaSignaturePaddingPss);
       // Generate a random salt value whose length matches the digest length.
       uint32_t salt[message_digest.len];
       HARDENED_TRY(entropy_complex_check());
@@ -127,11 +128,13 @@ static status_t encoded_message_verify(
   // Check that the digest length is OK.
   HARDENED_TRY(digest_check(message_digest));
 
-  switch (padding_mode) {
+  switch (launder32(padding_mode)) {
     case kRsaSignaturePaddingPkcs1v15:
+      HARDENED_CHECK_EQ(padding_mode, kRsaSignaturePaddingPkcs1v15);
       return rsa_padding_pkcs1v15_verify(message_digest, encoded_message,
                                          encoded_message_len, result);
     case kRsaSignaturePaddingPss:
+      HARDENED_CHECK_EQ(padding_mode, kRsaSignaturePaddingPss);
       return rsa_padding_pss_verify(message_digest, encoded_message,
                                     encoded_message_len, result);
     default:

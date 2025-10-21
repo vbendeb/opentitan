@@ -2,7 +2,7 @@
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 
-use anyhow::{anyhow, ensure, Result};
+use anyhow::{Result, anyhow, ensure};
 use clap::{Args, Subcommand, ValueEnum};
 use serde_annotate::Annotate;
 use std::any::Any;
@@ -10,8 +10,8 @@ use std::fs::{File, OpenOptions};
 use std::io::Write;
 use std::path::PathBuf;
 
-use opentitanlib::app::command::CommandDispatch;
 use opentitanlib::app::TransportWrapper;
+use opentitanlib::app::command::CommandDispatch;
 use opentitanlib::chip::helper::{OwnershipActivateParams, OwnershipUnlockParams};
 use opentitanlib::crypto::ecdsa::{EcdsaPrivateKey, EcdsaPublicKey, EcdsaRawSignature};
 use opentitanlib::crypto::sha256::Sha256Digest;
@@ -93,7 +93,11 @@ impl CommandDispatch for OwnershipConfigCommand {
         }
 
         if let Some(output) = &self.output {
-            let mut f = OpenOptions::new().write(true).create(true).open(output)?;
+            let mut f = OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .open(output)?;
             config.write(&mut f)?;
             Ok(None)
         } else {
@@ -136,7 +140,10 @@ impl CommandDispatch for OwnershipUnlockCommand {
             unlock.write(&mut f)?;
         }
         if self.params.algorithm.is_detached() && signature.is_some() && self.detached.is_none() {
-            log::warn!("The algorithm {} requires a detached signature, but no detach signature file was specified.", self.params.algorithm);
+            log::warn!(
+                "The algorithm {} requires a detached signature, but no detach signature file was specified.",
+                self.params.algorithm
+            );
         }
         if let Some(detached) = &self.detached {
             ensure!(
@@ -190,7 +197,10 @@ impl CommandDispatch for OwnershipActivateCommand {
             activate.write(&mut f)?;
         }
         if self.params.algorithm.is_detached() && signature.is_some() && self.detached.is_none() {
-            log::warn!("The algorithm {} requires a detached signature, but no detach signature file was specified.", self.params.algorithm);
+            log::warn!(
+                "The algorithm {} requires a detached signature, but no detach signature file was specified.",
+                self.params.algorithm
+            );
         }
         if let Some(detached) = &self.detached {
             ensure!(
@@ -238,7 +248,7 @@ impl CommandDispatch for OwnershipVerifyCommand {
             _ => {
                 return Err(anyhow!(
                     "The only supported verification algorithm is ECDSA"
-                ))
+                ));
             }
         };
 

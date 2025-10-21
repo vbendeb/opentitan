@@ -2,7 +2,7 @@
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 
-use anyhow::{ensure, Context, Result};
+use anyhow::{Context, Result, ensure};
 use clap::{Args, Subcommand};
 use serde_annotate::Annotate;
 use std::any::Any;
@@ -12,8 +12,8 @@ use std::fs::File;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use opentitanlib::app::command::CommandDispatch;
 use opentitanlib::app::TransportWrapper;
+use opentitanlib::app::command::CommandDispatch;
 
 use opentitanlib::crypto::ecdsa::{
     EcdsaPrivateKey, EcdsaPublicKey, EcdsaRawPublicKey, EcdsaRawSignature,
@@ -153,6 +153,9 @@ pub struct ManifestUpdateCommand {
     /// Filename to write the output to instead of updating the input file.
     #[arg(short, long)]
     output: Option<PathBuf>,
+    /// Sign the image when private keys are are given.
+    #[arg(long, action = clap::ArgAction::Set, default_value = "true")]
+    private_keys_sign: bool,
 }
 
 fn load_rsa_key(key_file: &Path) -> Result<(RsaPublicKey, Option<RsaPrivateKey>)> {
@@ -281,6 +284,7 @@ impl CommandDispatch for ManifestUpdateCommand {
                 ManifestExtId::secver_write.into(),
                 ManifestExtId::isfb.into(),
                 ManifestExtId::isfb_erase.into(),
+                ManifestExtId::image_type.into(),
             ])
             .collect::<HashSet<u32>>();
         image.update_signed_region(&signed_ids)?;
@@ -288,32 +292,38 @@ impl CommandDispatch for ManifestUpdateCommand {
         // Remove any unused extensions in the table that do not reference extension data.
         image.drop_null_extensions()?;
 
-        // Online signing takes place if private keys are provided.
-        // Sign with RSA.
-        if let Some(key) = rsa_private_key {
-            image.update_rsa_signature(key.sign(&image.compute_digest()?)?)?;
-        }
-        // Sign with ECDSA.
-        if let Some(key) = ecdsa_private_key {
-            image.update_ecdsa_signature(key.sign(&image.compute_digest()?)?)?;
-        }
-        // Sign with SPX+.
-        if let Some(key) = spx_private_key {
-            let sig_bytes = match self.domain {
-                SpxDomain::None | SpxDomain::Pure => {
-                    image.map_signed_region(|buf| key.sign(self.domain, buf))??
-                }
-                SpxDomain::PreHashedSha256 => {
-                    let digest = image.compute_digest()?;
-                    let digest = if self.spx_hash_reversal_bug {
-                        digest.to_vec_rev()
-                    } else {
-                        digest.to_vec()
-                    };
-                    key.sign(self.domain, &digest)?
-                }
-            };
-            image.add_manifest_extension(ManifestExtEntry::new_spx_signature_entry(&sig_bytes)?)?;
+        // This private_keys_sign gaurd is intended to sign the image
+        // There are cases in which we need to not always sign the image
+        if self.private_keys_sign {
+            // Online signing takes place if private keys are provided.
+            // Sign with RSA.
+            if let Some(key) = rsa_private_key {
+                image.update_rsa_signature(key.sign(&image.compute_digest()?)?)?;
+            }
+            // Sign with ECDSA.
+            if let Some(key) = ecdsa_private_key {
+                image.update_ecdsa_signature(key.sign(&image.compute_digest()?)?)?;
+            }
+            // Sign with SPX+.
+            if let Some(key) = spx_private_key {
+                let sig_bytes = match self.domain {
+                    SpxDomain::None | SpxDomain::Pure => {
+                        image.map_signed_region(|buf| key.sign(self.domain, buf))??
+                    }
+                    SpxDomain::PreHashedSha256 => {
+                        let digest = image.compute_digest()?;
+                        let digest = if self.spx_hash_reversal_bug {
+                            digest.to_vec_rev()
+                        } else {
+                            digest.to_vec()
+                        };
+                        key.sign(self.domain, &digest)?
+                    }
+                };
+                image.add_manifest_extension(ManifestExtEntry::new_spx_signature_entry(
+                    &sig_bytes,
+                )?)?;
+            }
         }
 
         // Offline signing takes place if signatures are provided.
@@ -381,13 +391,14 @@ impl CommandDispatch for ManifestVerifyCommand {
 
         if self.spx {
             image.map_signed_region(|b| {
-                sigverify_params.spx_verify(b, self.domain).map_err(|x| {
-                    eprintln!(
-                        "SPX+ signature verification for domain '{}' failed",
-                        self.domain
-                    );
-                    x
-                })
+                sigverify_params
+                    .spx_verify(b, self.domain)
+                    .inspect_err(|_| {
+                        eprintln!(
+                            "SPX+ signature verification for domain '{}' failed",
+                            self.domain
+                        );
+                    })
             })??;
         }
 

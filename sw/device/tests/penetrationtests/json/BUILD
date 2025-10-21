@@ -10,7 +10,12 @@ cc_library(
     hdrs = ["commands.h"],
     deps = [
         ":aes_sca_commands",
+        ":alert_fi_commands",
         ":crypto_fi_commands",
+        ":cryptolib_fi_asym_commands",
+        ":cryptolib_fi_sym_commands",
+        ":cryptolib_sca_asym_commands",
+        ":cryptolib_sca_sym_commands",
         ":edn_sca_commands",
         ":extclk_sca_fi_commands",
         ":hmac_sca_commands",
@@ -39,6 +44,34 @@ cc_library(
     name = "crypto_fi_commands",
     srcs = ["crypto_fi_commands.c"],
     hdrs = ["crypto_fi_commands.h"],
+    deps = ["//sw/device/lib/ujson"],
+)
+
+cc_library(
+    name = "cryptolib_fi_sym_commands",
+    srcs = ["cryptolib_fi_sym_commands.c"],
+    hdrs = ["cryptolib_fi_sym_commands.h"],
+    deps = ["//sw/device/lib/ujson"],
+)
+
+cc_library(
+    name = "cryptolib_fi_asym_commands",
+    srcs = ["cryptolib_fi_asym_commands.c"],
+    hdrs = ["cryptolib_fi_asym_commands.h"],
+    deps = ["//sw/device/lib/ujson"],
+)
+
+cc_library(
+    name = "cryptolib_sca_sym_commands",
+    srcs = ["cryptolib_sca_sym_commands.c"],
+    hdrs = ["cryptolib_sca_sym_commands.h"],
+    deps = ["//sw/device/lib/ujson"],
+)
+
+cc_library(
+    name = "cryptolib_sca_asym_commands",
+    srcs = ["cryptolib_sca_asym_commands.c"],
+    hdrs = ["cryptolib_sca_asym_commands.h"],
     deps = ["//sw/device/lib/ujson"],
 )
 
@@ -130,6 +163,13 @@ cc_library(
     name = "rom_fi_commands",
     srcs = ["rom_fi_commands.c"],
     hdrs = ["rom_fi_commands.h"],
+    deps = ["//sw/device/lib/ujson"],
+)
+
+cc_library(
+    name = "alert_fi_commands",
+    srcs = ["alert_fi_commands.c"],
+    hdrs = ["alert_fi_commands.h"],
     deps = ["//sw/device/lib/ujson"],
 )
 

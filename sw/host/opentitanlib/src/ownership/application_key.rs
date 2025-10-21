@@ -9,8 +9,8 @@ use serde_annotate::Annotate;
 use std::convert::TryFrom;
 use std::io::{Read, Write};
 
-use super::misc::{KeyMaterial, OwnershipKeyAlg, TlvHeader, TlvTag};
 use super::GlobalFlags;
+use super::misc::{KeyMaterial, OwnershipKeyAlg, TlvHeader, TlvTag};
 use crate::with_unknown;
 
 with_unknown! {
@@ -23,7 +23,7 @@ with_unknown! {
 }
 
 /// The OwnerApplicationKey is used to verify the owner's firmware payload.
-#[derive(Debug, Serialize, Deserialize, Annotate)]
+#[derive(Debug, Serialize, Deserialize, Annotate, PartialEq)]
 pub struct OwnerApplicationKey {
     /// Header identifying this struct.
     #[serde(

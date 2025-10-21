@@ -2,22 +2,22 @@
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
-use zerocopy::AsBytes;
+use zerocopy::{Immutable, IntoBytes};
 
-use crate::app::TransportWrapper;
+use crate::app::{TransportWrapper, UartRx};
 use crate::chip::rom_error::RomError;
 use crate::io::spi::Target;
 use crate::rescue::dfu::*;
 use crate::rescue::{EntryMode, Rescue, RescueError, RescueMode, RescueParams};
-use crate::spiflash::sfdp::Sdfu;
 use crate::spiflash::SpiFlash;
+use crate::spiflash::sfdp::Sdfu;
 
 #[repr(C)]
-#[derive(Default, Debug, AsBytes)]
+#[derive(Default, Debug, Immutable, IntoBytes)]
 struct SetupData {
     request_type: u8,
     request: u8,
@@ -75,9 +75,7 @@ impl Rescue for SpiDfu {
         );
         self.params.set_trigger(transport, true)?;
         match mode {
-            EntryMode::Reset => {
-                transport.reset_target(self.reset_delay, /*clear_uart=*/ false)?
-            }
+            EntryMode::Reset => transport.reset_with_delay(UartRx::Keep, self.reset_delay)?,
             EntryMode::Reboot => {
                 self.reboot()?;
                 // Give the chip a chance to reset before attempting to re-read

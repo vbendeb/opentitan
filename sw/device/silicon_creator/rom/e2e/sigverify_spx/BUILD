@@ -9,17 +9,11 @@ load(
     "fpga_params",
     "opentitan_binary",
     "opentitan_test",
+    "qemu_params",
     "spx_key_for_lc_state",
 )
-load(
-    "//rules:const.bzl",
-    "CONST",
-    "get_lc_items",
-)
-load(
-    "//rules:opentitan.bzl",
-    "ECDSA_SPX_KEY_STRUCTS",
-)
+load("//rules:const.bzl", "CONST", "get_lc_items")
+load("//rules/opentitan:keyutils.bzl", "ECDSA_SPX_KEY_STRUCTS")
 load(
     "//rules:otp.bzl",
     "STD_OTP_OVERLAYS",
@@ -28,18 +22,9 @@ load(
     "otp_json",
     "otp_partition",
 )
-load(
-    "//rules:rom_e2e.bzl",
-    "maybe_skip_in_ci",
-)
-load(
-    "//rules:splice.bzl",
-    "bitstream_splice",
-)
-load(
-    "@bazel_skylib//lib:dicts.bzl",
-    "dicts",
-)
+load("//rules:rom_e2e.bzl", "maybe_skip_in_ci")
+load("//rules:splice.bzl", "bitstream_splice")
+load("@bazel_skylib//lib:dicts.bzl", "dicts")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -114,6 +99,7 @@ opentitan_binary(
     exec_env = [
         "//hw/top_earlgrey:fpga_cw310_rom_with_fake_keys",
         "//hw/top_earlgrey:sim_dv",
+        "//hw/top_earlgrey:sim_qemu_rom_with_fake_keys",
         "//hw/top_earlgrey:sim_verilator",
     ],
     kind = "flash",
@@ -195,6 +181,7 @@ opentitan_binary(
         ),
         exec_env = {
             "//hw/top_earlgrey:fpga_cw310_rom_with_fake_keys": None,
+            "//hw/top_earlgrey:sim_qemu_rom_with_fake_keys": None,
         },
         fpga = fpga_params(
             bitstream = ":bitstream_sigverify_spx_{}_{}".format(
@@ -203,6 +190,13 @@ opentitan_binary(
             ),
             exit_success = t["exit_success"][lc_state],
             tags = maybe_skip_in_ci(lc_state_val),
+        ),
+        qemu = qemu_params(
+            exit_success = t["exit_success"][lc_state],
+            otp = ":otp_img_sigverify_spx_{}_{}".format(
+                lc_state,
+                t["name"],
+            ),
         ),
         spx_key = spx_key_for_lc_state(
             ECDSA_SPX_KEY_STRUCTS,
@@ -238,16 +232,20 @@ opentitan_test(
     name = "sigverify_spx_prehashed_test",
     srcs = ["sigverify_spx_test.c"],
     ecdsa_key = {
-        "//sw/device/silicon_creator/rom/keys/fake/ecdsa:prod_key_1_ecdsa_p256": "prod_key_1",
+        "//sw/device/silicon_creator/rom/keys/fake/ecdsa:ecdsa_keyset": "prod_key_1",
     },
     exec_env = {
         "//hw/top_earlgrey:fpga_cw310_rom_with_fake_keys": None,
+        "//hw/top_earlgrey:sim_qemu_rom_with_fake_keys": None,
     },
     fpga = fpga_params(
-        bitstream = ":bitstream_sigverify_spx_prod_enabled_true",
+        otp = ":otp_img_sigverify_spx_prod_enabled_true",
+    ),
+    qemu = qemu_params(
+        otp = ":otp_img_sigverify_spx_prod_enabled_true",
     ),
     spx_key = {
-        "//sw/device/silicon_creator/rom/keys/fake/spx:prod_key_1_spx_key": "prod_key_1",
+        "//sw/device/silicon_creator/rom/keys/fake/spx:spx_keyset": "prod_key_1",
     },
     deps = [
         "//hw/ip/otp_ctrl/data:otp_ctrl_c_regs",

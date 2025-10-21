@@ -5,7 +5,7 @@
 load("@bazel_skylib//lib:dicts.bzl", "dicts")
 load("//rules:cross_platform.bzl", "dual_cc_library", "dual_inputs")
 load("//rules:linker.bzl", "ld_library")
-load("//rules:opentitan.bzl", "OPENTITAN_CPU")
+load("//rules/opentitan:defs.bzl", "OPENTITAN_CPU")
 load(
     "//rules/opentitan:defs.bzl",
     "EARLGREY_TEST_ENVS",
@@ -15,37 +15,6 @@ load(
 )
 
 package(default_visibility = ["//visibility:public"])
-
-cc_library(
-    name = "coverage_none",
-    srcs = ["coverage_none.c"],
-    hdrs = ["coverage.h"],
-)
-
-cc_library(
-    name = "coverage_llvm",
-    srcs = [
-        "coverage_llvm.c",
-    ],
-    hdrs = ["coverage.h"],
-    linkopts = ["-lgcc"],
-    deps = [
-        "//sw/device/lib/base:crc32",
-        "//sw/device/lib/base:memory",
-        "//sw/device/lib/runtime:log",
-        "//sw/device/lib/runtime:print",
-        "//third_party/llvm_compiler_rt",
-    ],
-)
-
-alias(
-    name = "coverage",
-    actual = select({
-        "//sw/device:measure_coverage_on_target": ":coverage_llvm",
-        "//conditions:default": ":coverage_none",
-    }),
-    visibility = ["//visibility:private"],
-)
 
 cc_library(
     name = "status",
@@ -85,6 +54,7 @@ ld_library(
     includes = ["ottf_common.ld"],
     deps = [
         "//sw/device:info_sections",
+        "//sw/device/lib/coverage:coverage_sections",
         "//sw/device/silicon_creator/lib/base:static_critical_sections",
     ],
 )
@@ -182,6 +152,7 @@ cc_library(
     target_compatible_with = [OPENTITAN_CPU],
     deps = [
         ":check",
+        ":ottf_test_config",
         "//hw/top_earlgrey/sw/autogen:top_earlgrey",
         "//sw/device/lib/base:csr",
         "//sw/device/lib/base:macros",
@@ -189,7 +160,14 @@ cc_library(
         "//sw/device/lib/runtime:hart",
         "//sw/device/lib/runtime:ibex",
         "//sw/device/lib/runtime:log",
-    ],
+    ] + select({
+        "//sw/device:is_english_breakfast": [],
+        "//conditions:default": [
+            ":ottf_alerts",
+            "//hw/top_earlgrey:alert_handler_c_regs",
+            "//sw/device/lib/dif:alert_handler",
+        ],
+    }),
 )
 
 # This target provides start files without providing the full OTTF, and can be
@@ -215,6 +193,8 @@ cc_library(
         "//hw/top_earlgrey/sw/autogen:top_earlgrey",
         "//sw/device/lib/base:csr",
         "//sw/device/lib/base:macros",
+        "//sw/device/lib/coverage:api_asm",
+        "//sw/device/lib/coverage:ottf_runtime",
         "//sw/device/lib/crt",
         "//sw/device/lib/dif:rstmgr",
         "//sw/device/lib/dif:rv_plic",
@@ -245,13 +225,31 @@ cc_library(
 )
 
 cc_library(
+    name = "ottf_alerts",
+    srcs = ["ottf_alerts.c"],
+    hdrs = ["ottf_alerts.h"],
+    target_compatible_with = [OPENTITAN_CPU],
+    deps = [
+        "//hw/top_earlgrey:alert_handler_c_regs",
+        "//hw/top_earlgrey/sw/autogen:top_earlgrey",
+        "//sw/device/lib/arch:boot_stage",
+        "//sw/device/lib/arch:device",
+        "//sw/device/lib/base:status",
+        "//sw/device/lib/dif:alert_handler",
+        "//sw/device/lib/dif:rv_plic",
+        "//sw/device/lib/runtime:irq",
+        "//sw/device/lib/testing:alert_handler_testutils",
+        "//sw/device/lib/testing:rv_plic_testutils",
+    ],
+)
+
+cc_library(
     name = "ottf_main",
     srcs = ["ottf_main.c"],
     hdrs = ["ottf_main.h"],
     target_compatible_with = [OPENTITAN_CPU],
     deps = [
         ":check",
-        ":coverage",
         ":freertos_port",
         ":ottf_console",
         ":ottf_start",
@@ -261,6 +259,8 @@ cc_library(
         "//sw/device/lib/base:macros",
         "//sw/device/lib/base:mmio",
         "//sw/device/lib/base:status",
+        "//sw/device/lib/coverage:api",
+        "//sw/device/lib/coverage:ottf_runtime",
         "//sw/device/lib/dif:rv_core_ibex",
         "//sw/device/lib/dif:uart",
         "//sw/device/lib/runtime:hart",
@@ -268,7 +268,10 @@ cc_library(
         "//sw/device/lib/testing:rand_testutils",
         "//third_party/freertos",
         "@manufacturer_test_hooks//:test_hooks",
-    ],
+    ] + select({
+        "//sw/device:is_english_breakfast": [],
+        "//conditions:default": [":ottf_alerts"],
+    }),
     # `:ottf` depends on `:ottf_start`, but `:ottf_start` gets its main function
     # from `:ottf`. Thus we need to include all of the objects in `:ottf`
     # unconditionally so that the linker can find the symbol later.
@@ -305,14 +308,20 @@ cc_library(
 dual_cc_library(
     name = "ottf_console",
     srcs = dual_inputs(
-        device = ["ottf_console.c"],
+        device = [
+            "ottf_console.c",
+            "ottf_console_uart.c",
+            "ottf_console_spi.c",
+        ],
     ),
-    hdrs = ["ottf_console.h"],
+    hdrs = [
+        "ottf_console.h",
+        "ottf_console_internal.h",
+    ],
     deps = dual_inputs(
         device = [
             ":check",
             ":ottf_isrs",
-            ":ottf_test_config",
             "//sw/device/lib/base:mmio",
             "//sw/device/lib/runtime:print",
             "//sw/device/lib/dif:rv_plic",
@@ -324,6 +333,7 @@ dual_cc_library(
             "//hw/top_earlgrey/sw/autogen:top_earlgrey",
         ],
         shared = [
+            ":ottf_test_config",
             "//sw/device/lib/base:status",
             "//sw/device/lib/dif:uart",
             "//sw/device/lib/dif:spi_device",

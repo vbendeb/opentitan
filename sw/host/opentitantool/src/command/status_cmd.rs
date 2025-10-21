@@ -2,16 +2,16 @@
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use clap::{Args, Subcommand};
 use std::any::Any;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
-use opentitanlib::app::command::CommandDispatch;
 use opentitanlib::app::TransportWrapper;
+use opentitanlib::app::command::CommandDispatch;
 use opentitanlib::util::parse_int::ParseInt;
-use opentitanlib::util::status::{load_elf, Status};
+use opentitanlib::util::status::{Status, load_elf};
 
 #[derive(Debug, Subcommand, CommandDispatch)]
 /// Commands for interacting with status.
@@ -40,6 +40,7 @@ struct ConsolidateRecord {
 }
 
 impl CommandDispatch for ListCommand {
+    #[allow(clippy::unwrap_or_default)] // or_default cannot be used due to type inference.
     fn run(
         &self,
         _context: &dyn Any,
@@ -103,7 +104,7 @@ impl CommandDispatch for LintCommand {
             for record in records.records {
                 mod_id_map
                     .entry(record.get_module_id()?)
-                    .or_insert_with(HashSet::new)
+                    .or_default()
                     .insert(ModuleIdProvenance {
                         filename: record.filename.into(),
                         overriden: record.module_id.is_some(),

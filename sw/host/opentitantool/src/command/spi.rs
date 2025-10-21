@@ -13,7 +13,7 @@ use std::time::Duration;
 
 use opentitanlib::app::command::CommandDispatch;
 use opentitanlib::app::{StagedProgressBar, TransportWrapper};
-use opentitanlib::io::eeprom::{AddressMode, Transaction, MODE_111};
+use opentitanlib::io::eeprom::{AddressMode, MODE_111, Transaction};
 use opentitanlib::io::spi::{SpiParams, Transfer};
 use opentitanlib::spiflash::{EraseMode, ReadMode, SpiFlash};
 use opentitanlib::tpm;
@@ -416,6 +416,31 @@ impl CommandDispatch for SpiRawTransceive {
     }
 }
 
+/// Produces output useful for separate invocation of `flashrom` connecting to a particular SPI
+/// bus alias.
+#[derive(Debug, Args)]
+pub struct SpiFlashromArgs {}
+
+#[derive(Debug, serde::Serialize)]
+pub struct SpiFlashromArgsResponse {
+    programmer: String,
+}
+
+impl CommandDispatch for SpiFlashromArgs {
+    fn run(
+        &self,
+        context: &dyn Any,
+        transport: &TransportWrapper,
+    ) -> Result<Option<Box<dyn erased_serde::Serialize>>> {
+        transport.capabilities()?.request(Capability::SPI).ok()?;
+        let context = context.downcast_ref::<SpiCommand>().unwrap();
+        let spi_bus = context.params.create(transport, "BOOTSTRAP")?;
+        Ok(Some(Box::new(SpiFlashromArgsResponse {
+            programmer: spi_bus.get_flashrom_programmer()?,
+        })))
+    }
+}
+
 /// Commands for interacting with a SPI EEPROM.
 #[derive(Debug, Subcommand, CommandDispatch)]
 pub enum InternalSpiCommand {
@@ -429,6 +454,7 @@ pub enum InternalSpiCommand {
     RawWriteRead(SpiRawWriteRead),
     RawTransceive(SpiRawTransceive),
     Tpm(SpiTpm),
+    FlashromArgs(SpiFlashromArgs),
 }
 
 #[derive(Debug, Args)]

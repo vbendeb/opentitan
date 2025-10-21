@@ -6,6 +6,7 @@
 
 #include "sw/device/lib/base/abs_mmio.h"
 #include "sw/device/lib/base/bitfield.h"
+#include "sw/device/lib/base/hardened_memory.h"
 #include "sw/device/lib/base/memory.h"
 #include "sw/device/lib/crypto/drivers/entropy.h"
 #include "sw/device/lib/crypto/impl/status.h"
@@ -72,9 +73,12 @@ static void keymgr_start(keymgr_diversification_t diversification) {
  * Wait for the key manager to finish an operation.
  *
  * Polls the key manager until it is no longer busy. If the operation completed
- * successfully or the key manager was already idle, returns OTCRYPTO_OK. If
- * there was an error during the operation, reads and clears the error code
- * and returns OTCRYPTO_RECOV_ERR; the operation can be retried afterwards.
+ * successfully, returns OTCRYPTO_OK. If there was an error during the
+ * operation, reads and clears the error code and returns OTCRYPTO_RECOV_ERR;
+ * the operation can be retried afterwards.
+ *
+ * This function assumes an operation has already been started by the caller.
+ * The function traps if the keymgr is already idle.
  *
  * @return OK or error.
  */
@@ -91,12 +95,12 @@ static status_t keymgr_wait_until_done(void) {
   // Clear OP_STATUS by writing back the value we read.
   abs_mmio_write32(kBaseAddr + KEYMGR_OP_STATUS_REG_OFFSET, reg);
 
-  // Check if the key manager reported errors. If it is already idle or
-  // completed an operation successfully, return an OK status. No other
-  // statuses (e.g. WIP) should be possible.
+  // Check if the key manager reported errors. If it completed an operation
+  // successfully, return an OK status. No other statuses (e.g. WIP) should
+  // be possible.
+  // The `IDLE` status is left unhandled because the keymgr should never be
+  // idle after an operation has been started by the caller.
   switch (status) {
-    case KEYMGR_OP_STATUS_STATUS_VALUE_IDLE:
-      return OTCRYPTO_OK;
     case KEYMGR_OP_STATUS_STATUS_VALUE_DONE_SUCCESS:
       return OTCRYPTO_OK;
     case KEYMGR_OP_STATUS_STATUS_VALUE_DONE_ERROR: {
@@ -149,18 +153,17 @@ status_t keymgr_generate_key_sw(keymgr_diversification_t diversification,
   keymgr_start(diversification);
   HARDENED_TRY(keymgr_wait_until_done());
 
-  // Collect output.
-  // TODO: for SCA hardening, randomize the order of these reads.
-  for (size_t i = 0; i < kKeymgrOutputShareNumWords; i++) {
-    key->share0[i] =
-        abs_mmio_read32(kBaseAddr + KEYMGR_SW_SHARE0_OUTPUT_0_REG_OFFSET +
-                        (i * sizeof(uint32_t)));
-  }
-  for (size_t i = 0; i < kKeymgrOutputShareNumWords; i++) {
-    key->share1[i] =
-        abs_mmio_read32(kBaseAddr + KEYMGR_SW_SHARE1_OUTPUT_0_REG_OFFSET +
-                        (i * sizeof(uint32_t)));
-  }
+  // Collect the output. To avoid side-channel lekage, first randomize the
+  // destination buffers using memshred. Then copy the key using a hardened
+  // memcpy.
+  uint32_t share0 = kBaseAddr + KEYMGR_SW_SHARE0_OUTPUT_0_REG_OFFSET;
+  uint32_t share1 = kBaseAddr + KEYMGR_SW_SHARE1_OUTPUT_0_REG_OFFSET;
+  HARDENED_TRY(hardened_memshred(key->share0, kKeymgrOutputShareNumWords));
+  HARDENED_TRY(hardened_memcpy(key->share0, (uint32_t *)share0,
+                               kKeymgrOutputShareNumWords));
+  HARDENED_TRY(hardened_memshred(key->share1, kKeymgrOutputShareNumWords));
+  HARDENED_TRY(hardened_memcpy(key->share1, (uint32_t *)share1,
+                               kKeymgrOutputShareNumWords));
 
   return OTCRYPTO_OK;
 }

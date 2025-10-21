@@ -2,7 +2,7 @@
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
@@ -136,7 +136,7 @@ impl Inner {
         let conn: &mut std::net::TcpStream = &mut self.conn.borrow_mut();
         let mut writer = BufWriter::new(conn);
         serde_json::to_writer(&mut writer, &Message::Req(req))?;
-        writer.write_all(&[b'\n'])?;
+        writer.write_all(b"\n")?;
         writer.flush()?;
         Ok(())
     }

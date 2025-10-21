@@ -2,7 +2,7 @@
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use clap::Parser;
 use regex::Regex;
 use std::fs;
@@ -46,6 +46,9 @@ fn device_tx_rx_test(
     let uart = transport.uart("console")?;
     let spi = transport.spi(&opts.spi)?;
 
+    /* Wait for sync message. */
+    let _ = UartConsole::wait_for(&*uart, SYNC_MSG, opts.timeout)?;
+
     let mut flash = SpiFlash {
         // Double the flash size so we can test 3b and 4b addresses.
         size: 32 * 1024 * 1024,
@@ -60,9 +63,10 @@ fn device_tx_rx_test(
     };
     flash.set_address_mode(&*spi, mode)?;
 
-    /* Wait sync message. */
-    let _ = UartConsole::wait_for(&*uart, SYNC_MSG, opts.timeout)?;
     flash.program(&*spi, address, data)?;
+
+    /* Wait for sync message. */
+    let _ = UartConsole::wait_for(&*uart, SYNC_MSG, opts.timeout)?;
 
     let mut buffer = vec![0xff; data.len()];
     flash.read(&*spi, address, &mut buffer)?;

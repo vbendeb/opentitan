@@ -12,6 +12,7 @@ load(
     "@lowrisc_opentitan//rules/opentitan:util.bzl",
     "assemble_for_test",
     "get_fallback",
+    "recursive_format",
 )
 load(
     "//rules/opentitan:exec_env.bzl",
@@ -123,12 +124,13 @@ def _test_dispatch(ctx, exec_env, firmware):
     # assemble the image.  Replace the firmware param with the newly assembled
     # image.
     if "assemble" in param:
-        assemble = param["assemble"].format(**action_param)
+        assemble = param.get("assemble")
+        assemble = recursive_format(assemble, action_param)
         assemble = ctx.expand_location(assemble, data_labels)
         image = assemble_for_test(
             ctx,
             name = ctx.attr.name,
-            spec = assemble.split(" "),
+            spec = assemble.strip().split(" "),
             data_files = data_files,
             opentitantool = exec_env._opentitantool,
         )
@@ -218,7 +220,6 @@ fpga_cw340 = rule(
 def fpga_params(
         tags = [],
         timeout = "short",
-        local = True,
         test_harness = None,
         binaries = {},
         rom = None,
@@ -236,7 +237,6 @@ def fpga_params(
     Args:
       tags: The test tags to apply to the test rule.
       timeout: The timeout to apply to the test rule.
-      local: Whether to set the `local` flag on this test.
       test_harness: Use an alternative test harness for this test.
       binaries: Dict of binary labels to substitution parameter names.
       rom: Use an alternate ROM for this test.
@@ -266,7 +266,6 @@ def fpga_params(
         # via the "_hacky_tags" macro in "rules/opentitan/defs.bzl".
         tags = ["exclusive"] + (["changes_otp"] if changes_otp else []) + tags,
         timeout = timeout,
-        local = local,
         test_harness = test_harness,
         binaries = binaries,
         rom = rom,

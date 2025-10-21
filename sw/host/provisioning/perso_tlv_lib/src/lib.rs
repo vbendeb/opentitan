@@ -2,7 +2,7 @@
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 
 // Types of objects which can come from the device in the perso blob.
 #[repr(C)]
@@ -14,6 +14,9 @@ pub enum ObjType {
     EndorsedCwtCert = perso_tlv_objects::perso_tlv_object_type_kPersoObjectTypeCwtCert as isize,
     WasTbsHmac = perso_tlv_objects::perso_tlv_object_type_kPersoObjectTypeWasTbsHmac as isize,
     DeviceId = perso_tlv_objects::perso_tlv_object_type_kPersoObjectTypeDeviceId as isize,
+    GenericSeed = perso_tlv_objects::perso_tlv_object_type_kPersoObjectTypeGenericSeed as isize,
+    PersoSha256Hash =
+        perso_tlv_objects::perso_tlv_object_type_kPersoObjectTypePersoSha256Hash as isize,
 }
 
 impl ObjType {
@@ -25,6 +28,8 @@ impl ObjType {
             3 => Ok(ObjType::EndorsedCwtCert),
             4 => Ok(ObjType::WasTbsHmac),
             5 => Ok(ObjType::DeviceId),
+            6 => Ok(ObjType::GenericSeed),
+            7 => Ok(ObjType::PersoSha256Hash),
             _ => bail!("incorrect input value of {value} for ObjType"),
         }
     }

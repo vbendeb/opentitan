@@ -3,13 +3,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::app::NoProgressBar;
-use crate::io::eeprom::{AddressMode, Mode, Transaction, MODE_111, MODE_112, MODE_114};
+use crate::io::eeprom::{AddressMode, MODE_111, MODE_112, MODE_114, Mode, Transaction};
 use crate::io::spi::Target;
 use crate::spiflash::sfdp::{
     BlockEraseSize, FastReadParam, SectorErase, Sfdp, SupportedAddressModes,
 };
 use crate::transport::ProgressIndicator;
-use anyhow::{ensure, Result};
+use anyhow::{Result, ensure};
 use clap::ValueEnum;
 use std::convert::TryFrom;
 use thiserror::Error;
@@ -127,6 +127,7 @@ pub struct SpiFlash {
     pub sfdp: Option<Sfdp>,
     pub read_type: ReadTypes,
     pub erase: Vec<SectorErase>,
+    pub program_ff_optimization: bool,
 }
 
 impl Default for SpiFlash {
@@ -144,6 +145,7 @@ impl Default for SpiFlash {
                 opcode: SpiFlash::SECTOR_ERASE,
                 time: None,
             }],
+            program_ff_optimization: true,
         }
     }
 }
@@ -316,6 +318,7 @@ impl SpiFlash {
             sfdp: Some(sfdp),
             read_type,
             erase,
+            program_ff_optimization: true,
         }
     }
 
@@ -507,7 +510,7 @@ impl SpiFlash {
             let chunk_end = chunk_start + chunk_size;
             let chunk = &buffer[chunk_start..chunk_end];
             // Skip this chunk if all bytes are 0xff.
-            if !chunk.iter().all(|&x| x == 0xff) {
+            if !self.program_ff_optimization || !chunk.iter().all(|&x| x == 0xff) {
                 spi.run_eeprom_transactions(&mut [
                     Transaction::Command(MODE_111.cmd(SpiFlash::WRITE_ENABLE)),
                     Transaction::Write(

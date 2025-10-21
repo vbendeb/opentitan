@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #![allow(clippy::bool_assert_comparison)]
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use clap::Parser;
 use opentitanlib::app::TransportWrapper;
 use opentitanlib::execute_test;
@@ -96,7 +96,7 @@ fn strap_pattern(value: u8) -> String {
         let v = (value >> (2 * i)) & 3;
         buf[2 - i] = bits[v as usize];
     }
-    return std::str::from_utf8(&buf).unwrap().into();
+    std::str::from_utf8(&buf).unwrap().into()
 }
 
 fn test_sw_strap_values(opts: &Opts, transport: &TransportWrapper) -> Result<()> {

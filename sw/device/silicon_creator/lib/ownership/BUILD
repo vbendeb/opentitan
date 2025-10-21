@@ -9,6 +9,7 @@ load(
 )
 load(
     "//rules/opentitan:defs.bzl",
+    "EARLGREY_TEST_ENVS",
     "opentitan_test",
 )
 load(
@@ -38,9 +39,11 @@ cc_library(
         ":owner_block",
         "//sw/device/lib/base:hardened",
         "//sw/device/lib/base:hardened_memory",
+        "//sw/device/lib/base:macros",
         "//sw/device/silicon_creator/lib:error",
         "//sw/device/silicon_creator/lib:manifest",
         "//sw/device/silicon_creator/lib/drivers:flash_ctrl",
+        "//sw/device/silicon_creator/lib/drivers:rnd",
     ],
 )
 
@@ -74,8 +77,10 @@ dual_cc_library(
     deps = dual_inputs(
         device = [
             ":owner_verify",
+            "//sw/device/lib/arch:device",
             "//sw/device/lib/base:memory",
             "//sw/device/lib/base:hardened_memory",
+            "//sw/device/silicon_creator/lib/drivers:rnd",
             "//sw/device/silicon_creator/lib/drivers:keymgr",
             "//sw/device/silicon_creator/lib/drivers:kmac",
             "//sw/device/silicon_creator/lib/drivers:flash_ctrl",
@@ -110,6 +115,24 @@ cc_library(
         "//sw/device/silicon_creator/lib/base:sec_mmio",
         "//sw/device/silicon_creator/lib/drivers:flash_ctrl",
         "//sw/device/silicon_creator/lib/drivers:lifecycle",
+        "//sw/device/silicon_creator/lib/drivers:rnd",
+    ],
+)
+
+cc_test(
+    name = "ownership_unittest",
+    srcs = [
+        "ownership_unittest.cc",
+    ],
+    deps = [
+        ":datatypes",
+        ":ownership",
+        ":ownership_key",
+        "//sw/device/lib/base:hardened",
+        "//sw/device/silicon_creator/lib:boot_data",
+        "//sw/device/silicon_creator/lib/boot_svc:boot_svc_header",
+        "//sw/device/silicon_creator/testing:rom_test",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -128,6 +151,7 @@ cc_library(
         "//sw/device/silicon_creator/lib/drivers:flash_ctrl",
         "//sw/device/silicon_creator/lib/drivers:hmac",
         "//sw/device/silicon_creator/lib/drivers:pinmux",
+        "//sw/device/silicon_creator/lib/drivers:rnd",
     ],
 )
 
@@ -163,6 +187,7 @@ cc_library(
         "//sw/device/silicon_creator/lib/drivers:flash_ctrl",
         "//sw/device/silicon_creator/lib/drivers:hmac",
         "//sw/device/silicon_creator/lib/drivers:lifecycle",
+        "//sw/device/silicon_creator/lib/sigverify:flash_exec",
     ],
 )
 
@@ -179,6 +204,8 @@ cc_test(
         "//sw/device/silicon_creator/lib:boot_data",
         "//sw/device/silicon_creator/lib/boot_svc:boot_svc_header",
         "//sw/device/silicon_creator/lib/drivers:lifecycle",
+        "//sw/device/silicon_creator/lib/drivers:rnd",
+        "//sw/device/silicon_creator/lib/sigverify:flash_exec",
         "//sw/device/silicon_creator/testing:rom_test",
         "@googletest//:gtest_main",
     ],
@@ -198,6 +225,7 @@ cc_library(
         "//sw/device/silicon_creator/lib/boot_svc:boot_svc_msg",
         "//sw/device/silicon_creator/lib/drivers:flash_ctrl",
         "//sw/device/silicon_creator/lib/drivers:lifecycle",
+        "//sw/device/silicon_creator/lib/sigverify:flash_exec",
     ],
 )
 
@@ -213,6 +241,7 @@ cc_test(
         "//sw/device/lib/base:hardened",
         "//sw/device/silicon_creator/lib:boot_data",
         "//sw/device/silicon_creator/lib/boot_svc:boot_svc_header",
+        "//sw/device/silicon_creator/lib/sigverify:flash_exec",
         "//sw/device/silicon_creator/testing:rom_test",
         "@googletest//:gtest_main",
     ],
@@ -256,15 +285,40 @@ cc_library(
     for name, param in TEST_OWNER_CONFIGS.items()
 ]
 
-cc_library(
+dual_cc_library(
     name = "owner_verify",
-    srcs = ["owner_verify.c"],
-    hdrs = ["owner_verify.h"],
+    srcs = dual_inputs(
+        device = ["owner_verify.c"],
+        host = ["mock_owner_verify.cc"],
+    ),
+    hdrs = dual_inputs(
+        host = ["mock_owner_verify.h"],
+        shared = ["owner_verify.h"],
+    ),
+    deps = dual_inputs(
+        device = [
+            "//sw/device/silicon_creator/lib/sigverify",
+        ],
+        host = [
+            "//sw/device/lib/base:global_mock",
+            "//sw/device/silicon_creator/testing:rom_test",
+            "@googletest//:gtest",
+        ],
+        shared = [
+            ":datatypes",
+            "//sw/device/silicon_creator/lib/base:util",
+            "//sw/device/silicon_creator/lib/drivers:hmac",
+            "//sw/device/silicon_creator/lib:error",
+        ],
+    ),
+)
+
+opentitan_test(
+    name = "owner_verify_functest",
+    srcs = ["owner_verify_functest.c"],
+    exec_env = EARLGREY_TEST_ENVS,
     deps = [
-        ":datatypes",
-        "//sw/device/silicon_creator/lib:error",
-        "//sw/device/silicon_creator/lib/base:util",
-        "//sw/device/silicon_creator/lib/drivers:hmac",
-        "//sw/device/silicon_creator/lib/sigverify",
+        ":owner_verify",
+        "//sw/device/lib/testing/test_framework:ottf_main",
     ],
 )

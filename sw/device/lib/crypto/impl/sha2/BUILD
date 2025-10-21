@@ -4,7 +4,7 @@
 
 package(default_visibility = ["//visibility:public"])
 
-load("//rules:opentitan.bzl", "OPENTITAN_CPU")
+load("//rules/opentitan:defs.bzl", "OPENTITAN_CPU")
 
 cc_library(
     name = "sha256",
@@ -17,6 +17,7 @@ cc_library(
         "//sw/device/lib/base:macros",
         "//sw/device/lib/base:memory",
         "//sw/device/lib/crypto/drivers:otbn",
+        "//sw/device/lib/crypto/drivers:rv_core_ibex",
         "//sw/otbn/crypto:run_sha256",
     ],
 )
@@ -32,6 +33,7 @@ cc_library(
         "//sw/device/lib/base:macros",
         "//sw/device/lib/base:memory",
         "//sw/device/lib/crypto/drivers:otbn",
+        "//sw/device/lib/crypto/drivers:rv_core_ibex",
         "//sw/otbn/crypto:run_sha512",
     ],
 )

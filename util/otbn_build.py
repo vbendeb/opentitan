@@ -83,7 +83,7 @@ def run_tool(tool, out_file: Path, args) -> None:
                                           dir=out_dir,
                                           delete=False)
     try:
-        if type(tool) == str:
+        if isinstance(tool, str):
             run_cmd([tool, '-o', tmpfile.name] + args,
                     cmd_to_str([tool, '-o', out_file] + args))
         else:
@@ -310,6 +310,7 @@ def main() -> int:
             '-O', 'elf32-littleriscv',
             '--set-section-flags=*=alloc,load,readonly',
             '--remove-section=.scratchpad', '--remove-section=.bss',
+            '--remove-section=.debug*',
             '--prefix-sections=.rodata.otbn', '--prefix-symbols', host_side_pfx
         ]
         for name, addr in get_otbn_syms(out_elf):
@@ -334,7 +335,7 @@ def main() -> int:
             emb_file.write(b'\1\0')
 
         if archive:
-            out_embedded_a = out_dir / (app_name + '.rv32embed.a')
+            out_embedded_a = out_dir / ('lib' + app_name + '.rv32embed.a')
             call_rv32_ar(['rcs', out_embedded_a, out_embedded_obj])
 
     except subprocess.CalledProcessError as e:

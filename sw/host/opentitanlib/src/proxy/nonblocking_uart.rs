@@ -12,8 +12,8 @@ use std::ptr::hash;
 use std::rc::Rc;
 use std::time::Duration;
 
-use super::socket_server::{get_next_token, Connection};
 use super::ExtraEventHandler;
+use super::socket_server::{Connection, get_next_token};
 use crate::io::uart::Uart;
 
 pub struct NonblockingUartRegistry {
@@ -144,9 +144,8 @@ impl Hash for UartKey {
 }
 impl PartialEq for UartKey {
     /// Determines whether the two `Rc`s point to the same `Uart` instance.
-    #[allow(clippy::vtable_address_comparisons)]
     fn eq(&self, other: &Self) -> bool {
-        Rc::as_ptr(&self.0) == Rc::as_ptr(&other.0)
+        Rc::ptr_eq(&self.0, &other.0)
     }
 }
 

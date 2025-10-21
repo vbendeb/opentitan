@@ -13,9 +13,9 @@ use serialport::Parity;
 use super::UartInterface;
 use crate::io::nonblocking_help::NonblockingHelp;
 use crate::io::uart::Uart;
+use crate::transport::TransportError;
 use crate::transport::common::uart::SerialPortUart;
 use crate::transport::hyperdebug::Inner;
-use crate::transport::TransportError;
 
 const UART_BAUD: u32 = 115200;
 
@@ -92,6 +92,10 @@ impl Uart for HyperdebugUart {
 
     fn set_flow_control(&self, flow_control: bool) -> Result<()> {
         self.serial_port.set_flow_control(flow_control)
+    }
+
+    fn get_device_path(&self) -> Result<String> {
+        self.serial_port.get_device_path()
     }
 
     fn read(&self, buf: &mut [u8]) -> Result<usize> {

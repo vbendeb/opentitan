@@ -9,6 +9,7 @@
 #include "sw/device/silicon_creator/lib/dbg_print.h"
 #include "sw/device/silicon_creator/lib/drivers/flash_ctrl.h"
 #include "sw/device/silicon_creator/lib/error.h"
+#include "sw/device/silicon_creator/lib/ownership/datatypes.h"
 #include "sw/device/silicon_creator/lib/ownership/keys/fake/activate_ecdsa_p256.h"
 #include "sw/device/silicon_creator/lib/ownership/keys/fake/activate_spx.h"
 #include "sw/device/silicon_creator/lib/ownership/keys/fake/app_dev_ecdsa_p256.h"
@@ -61,6 +62,34 @@
   }
 #endif
 
+#if defined(TEST_OWNER_KEY_ALG_SPX_PURE) || \
+    defined(TEST_OWNER_KEY_ALG_SPX_PREHASH)
+#ifdef TEST_OWNER_KEY_ALG_SPX_PURE
+#define TEST_OWNER_KEY_ALG kOwnershipKeyAlgSpxPure
+#endif
+#ifdef TEST_OWNER_KEY_ALG_HYBRID_SPX_PREHASH
+#define TEST_OWNER_KEY_ALG kOwnershipKeyAlgSpxPrehash
+#endif
+#define OWNER_KEYDATA \
+  (owner_keydata_t) { .spx = OWNER_SPX }
+#define ACTIVATE_KEYDATA \
+  (owner_keydata_t) { .spx = ACTIVATE_SPX }
+#define UNLOCK_KEYDATA \
+  (owner_keydata_t) { .spx = UNLOCK_SPX }
+#endif
+
+#if defined(TEST_OWNER_KEY_ALG_CORRUPTED)
+#ifdef TEST_OWNER_KEY_ALG_CORRUPTED
+#define TEST_OWNER_KEY_ALG 0x0
+#define OWNER_KEYDATA \
+  (owner_keydata_t) { .ecdsa = OWNER_ECDSA_P256 }
+#define ACTIVATE_KEYDATA \
+  (owner_keydata_t) { .ecdsa = ACTIVATE_ECDSA_P256 }
+#define UNLOCK_KEYDATA \
+  (owner_keydata_t) { .ecdsa = UNLOCK_ECDSA_P256 }
+#endif
+#endif
+
 #ifndef TEST_OWNER_KEY_ALG
 #define TEST_OWNER_KEY_ALG kOwnershipKeyAlgEcdsaP256
 #define OWNER_KEYDATA \
@@ -71,10 +100,18 @@
   (owner_keydata_t) { .ecdsa = UNLOCK_ECDSA_P256 }
 #endif
 
+#ifndef TEST_OWNERSHIP_STATE
+#define TEST_OWNERSHIP_STATE kOwnershipStateLockedOwner
+#endif
+
+#ifndef TEST_OWNER_SRAM_EXEC_MODE
+#define TEST_OWNER_SRAM_EXEC_MODE kOwnerSramExecModeDisabledLocked
+#endif
+
 // The following preprocessor symbols are only relevant when
 // WITH_RESCUE_PROTOCOL is defined.
-#ifndef WITH_RESCUE_GPIO_PARAM
-#define WITH_RESCUE_GPIO_PARAM 0
+#ifndef WITH_RESCUE_MISC_GPIO_PARAM
+#define WITH_RESCUE_MISC_GPIO_PARAM 0
 #endif
 #ifndef WITH_RESCUE_INDEX
 #define WITH_RESCUE_INDEX 0
@@ -93,6 +130,12 @@
       kBootSvcEmptyReqType, kBootSvcNextBl0SlotReqType,                      \
       kBootSvcMinBl0SecVerReqType, kBootSvcOwnershipActivateReqType,         \
       kBootSvcOwnershipUnlockReqType,
+#endif
+#ifndef WITH_RESCUE_START
+#define WITH_RESCUE_START (32)
+#endif
+#ifndef WITH_RESCUE_SIZE
+#define WITH_RESCUE_SIZE (224)
 #endif
 
 rom_error_t sku_creator_owner_init(boot_data_t *bootdata) {
@@ -121,7 +164,7 @@ rom_error_t sku_creator_owner_init(boot_data_t *bootdata) {
   owner_page[0].header.length = 2048;
   owner_page[0].header.version = (struct_version_t){0, 0};
   owner_page[0].config_version = TEST_OWNER_CONFIG_VERSION;
-  owner_page[0].sram_exec_mode = kOwnerSramExecModeDisabledLocked;
+  owner_page[0].sram_exec_mode = TEST_OWNER_SRAM_EXEC_MODE;
   owner_page[0].ownership_key_alg = TEST_OWNER_KEY_ALG;
   owner_page[0].update_mode = TEST_OWNER_UPDATE_MODE;
   owner_page[0].min_security_version_bl0 = UINT32_MAX;
@@ -236,11 +279,11 @@ rom_error_t sku_creator_owner_init(boot_data_t *bootdata) {
               .length = sizeof(owner_rescue_config_t),
           },
       .protocol = WITH_RESCUE_PROTOCOL,
-      .gpio = WITH_RESCUE_GPIO_PARAM,
+      .gpio = WITH_RESCUE_MISC_GPIO_PARAM,
       .timeout = WITH_RESCUE_TIMEOUT,
       .detect = (WITH_RESCUE_TRIGGER << 6) | WITH_RESCUE_INDEX,
-      .start = 32,
-      .size = 224,
+      .start = WITH_RESCUE_START,
+      .size = WITH_RESCUE_SIZE,
   };
   const uint32_t commands[] = {WITH_RESCUE_COMMAND_ALLOW};
   memcpy(&rescue->command_allow, commands, sizeof(commands));
@@ -282,15 +325,17 @@ rom_error_t sku_creator_owner_init(boot_data_t *bootdata) {
                (uintptr_t)end;
   memset((void *)end, 0x5a, len);
 
+#ifndef TEST_OWNER_DISABLE_OWNER_BLOCK_CHECK
   // Check that the owner_block will parse correctly.
   RETURN_IF_ERROR(owner_block_parse(&owner_page[0],
                                     /*check_only=*/kHardenedBoolTrue, NULL,
                                     NULL));
+#endif
   ownership_seal_page(/*page=*/0);
 
   // Since this module should only get linked in to FPGA builds, we can simply
   // thunk the ownership state to LockedOwner.
-  bootdata->ownership_state = kOwnershipStateLockedOwner;
+  bootdata->ownership_state = TEST_OWNERSHIP_STATE;
 
   // Write the configuration to both owner page 0.  The next boot of the ROM_EXT
   // will make a redundant copyh in page 1.

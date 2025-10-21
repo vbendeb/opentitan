@@ -39,6 +39,12 @@ dual_cc_library(
     ),
 )
 
+# Make the non-mock version of CRC32 visible outside of this package.
+alias(
+    name = "crc32_device_library",
+    actual = dual_cc_device_library_of(":crc32"),
+)
+
 cc_test(
     name = "crc32_unittest",
     srcs = ["crc32_unittest.cc"],
@@ -105,7 +111,12 @@ cc_test(
     ],
     linkopts = [
         "-fsanitize=undefined",
-    ],
+    ] + select({
+        "@rules_cc//cc/compiler:clang": [
+            "-fsanitize-link-c++-runtime",
+        ],
+        "//conditions:default": [],
+    }),
     deps = [
         ":global_mock",
         "@googletest//:gtest_main",
@@ -139,7 +150,7 @@ cc_library(
 alias(
     name = "math_builtins",
     actual = select({
-        "//sw/device:measure_coverage_on_target": "//sw/device:nothing",
+        "//rules/coverage:enabled": "//sw/device:nothing",
         "//conditions:default": ":math_polyfills",
     }),
     visibility = ["//visibility:private"],
@@ -251,7 +262,19 @@ cc_library(
     name = "random_order",
     srcs = ["random_order.c"],
     hdrs = ["random_order.h"],
-    deps = [":bitfield"],
+    deps = [
+        ":bitfield",
+        ":hardened",
+    ],
+)
+
+cc_test(
+    name = "random_order_unittest",
+    srcs = ["random_order_unittest.cc"],
+    deps = [
+        ":random_order",
+        "@googletest//:gtest_main",
+    ],
 )
 
 cc_library(
@@ -263,6 +286,7 @@ cc_library(
         ":macros",
         ":memory",
         ":random_order",
+        "//sw/device/lib/crypto/impl:status",
     ],
 )
 

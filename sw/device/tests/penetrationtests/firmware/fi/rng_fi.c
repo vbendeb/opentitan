@@ -22,11 +22,6 @@
 #include "edn_regs.h"  // Generated
 #include "hw/top_earlgrey/sw/autogen/top_earlgrey.h"
 
-// NOP macros.
-#define NOP1 "addi x0, x0, 0\n"
-#define NOP10 NOP1 NOP1 NOP1 NOP1 NOP1 NOP1 NOP1 NOP1 NOP1 NOP1
-#define NOP30 NOP10 NOP10 NOP10
-
 enum {
   kEdnKatTimeout = (10 * 1000 * 1000),
   kCsrngExpectedOutputLen = 16,
@@ -104,12 +99,6 @@ static dif_edn_auto_params_t kat_auto_params_build(void) {
       .reseed_interval = 32,
   };
 }
-
-static const uint32_t kExpectedOutput[kEdnKatOutputLen] = {
-    0xe48bb8cb, 0x1012c84c, 0x5af8a7f1, 0xd1c07cd9, 0xdf82ab22, 0x771c619b,
-    0xd40fccb1, 0x87189e99, 0x510494b3, 0x64f7ac0c, 0x2581f391, 0x80b1dc2f,
-    0x793e01c5, 0x87b107ae, 0xdb17514c, 0xa43c41b7,
-};
 
 /**
  * Flushes the data entropy buffer until there is no data available to read.
@@ -309,28 +298,17 @@ status_t handle_rng_fi_edn_bias(ujson_t *uj) {
   // Enable EDN0 in auto request mode.
   TRY(dif_edn_set_auto_mode(&edn0, kat_auto_params_build()));
 
-  uint32_t ibex_rnd_data_got[kEdnBiasMaxData];
+  rng_fi_edn_t uj_output;
+  memset(uj_output.rand, 0, sizeof(uj_output.rand));
 
   pentest_set_trigger_high();
   asm volatile(NOP30);
   for (size_t it = 0; it < kEdnBiasMaxData; it++) {
     CHECK_STATUS_OK(rv_core_ibex_testutils_get_rnd_data(
-        &rv_core_ibex, kEdnKatTimeout, &ibex_rnd_data_got[it]));
+        &rv_core_ibex, kEdnKatTimeout, &uj_output.rand[it]));
   }
   asm volatile(NOP30);
   pentest_set_trigger_low();
-
-  rng_fi_edn_t uj_output;
-  memset(uj_output.rand, 0, sizeof(uj_output.rand));
-  size_t collisions = 0;
-  for (size_t got = 0; got < kEdnBiasMaxData; got++) {
-    for (size_t ref = 0; ref < kEdnBiasMaxData; ref++) {
-      if (ibex_rnd_data_got[got] == kExpectedOutput[ref]) {
-        uj_output.rand[collisions] = ibex_rnd_data_got[got];
-        collisions++;
-      }
-    }
-  }
 
   // Get registered alerts from alert handler.
   reg_alerts = pentest_get_triggered_alerts();
@@ -342,7 +320,6 @@ status_t handle_rng_fi_edn_bias(ujson_t *uj) {
   TRY(dif_rv_core_ibex_get_error_status(&rv_core_ibex, &err_ibx));
 
   // Send result & ERR_STATUS to host.
-  uj_output.collisions = collisions;
   memcpy(uj_output.alerts, reg_alerts.alerts, sizeof(reg_alerts.alerts));
   memcpy(uj_output.ast_alerts, sensor_alerts.alerts,
          sizeof(sensor_alerts.alerts));
@@ -375,7 +352,7 @@ status_t handle_rng_fi_edn_resp_ack(ujson_t *uj) {
   pentest_set_trigger_low();
 
   // Check if there are any collisions.
-  rng_fi_edn_t uj_output;
+  rng_fi_edn_collisions_t uj_output;
   memset(uj_output.rand, 0, sizeof(uj_output.rand));
   size_t collisions = 0;
   for (size_t outer = 0; outer < kEdnBusAckMaxData; outer++) {
@@ -404,13 +381,17 @@ status_t handle_rng_fi_edn_resp_ack(ujson_t *uj) {
   memcpy(uj_output.ast_alerts, sensor_alerts.alerts,
          sizeof(sensor_alerts.alerts));
   uj_output.err_status = err_ibx;
-  RESP_OK(ujson_serialize_rng_fi_edn_t, uj, &uj_output);
+  RESP_OK(ujson_serialize_rng_fi_edn_collisions_t, uj, &uj_output);
   return OK_STATUS();
 }
 
 status_t handle_rng_fi_edn_init(ujson_t *uj) {
-  penetrationtest_cpuctrl_t uj_data;
-  TRY(ujson_deserialize_penetrationtest_cpuctrl_t(uj, &uj_data));
+  penetrationtest_cpuctrl_t uj_cpuctrl_data;
+  TRY(ujson_deserialize_penetrationtest_cpuctrl_t(uj, &uj_cpuctrl_data));
+  penetrationtest_sensor_config_t uj_sensor_data;
+  TRY(ujson_deserialize_penetrationtest_sensor_config_t(uj, &uj_sensor_data));
+  penetrationtest_alert_config_t uj_alert_data;
+  TRY(ujson_deserialize_penetrationtest_alert_config_t(uj, &uj_alert_data));
 
   pentest_select_trigger_type(kPentestTriggerTypeSw);
   // As we are using the software defined trigger, the first argument of
@@ -418,16 +399,21 @@ status_t handle_rng_fi_edn_init(ujson_t *uj) {
   // placeholder.
   pentest_init(kPentestTriggerSourceAes,
                kPentestPeripheralIoDiv4 | kPentestPeripheralEntropy |
-                   kPentestPeripheralCsrng | kPentestPeripheralEdn);
+                   kPentestPeripheralCsrng | kPentestPeripheralEdn,
+               uj_sensor_data.sensor_ctrl_enable,
+               uj_sensor_data.sensor_ctrl_en_fatal);
 
   // Configure the CPU for the pentest.
   penetrationtest_device_info_t uj_output;
   TRY(pentest_configure_cpu(
-      uj_data.icache_disable, uj_data.dummy_instr_disable,
-      uj_data.enable_jittery_clock, uj_data.enable_sram_readback,
-      &uj_output.clock_jitter_locked, &uj_output.clock_jitter_en,
-      &uj_output.sram_main_readback_locked, &uj_output.sram_ret_readback_locked,
-      &uj_output.sram_main_readback_en, &uj_output.sram_ret_readback_en));
+      uj_cpuctrl_data.enable_icache, &uj_output.icache_en,
+      uj_cpuctrl_data.enable_dummy_instr, &uj_output.dummy_instr_en,
+      uj_cpuctrl_data.dummy_instr_count, uj_cpuctrl_data.enable_jittery_clock,
+      uj_cpuctrl_data.enable_sram_readback, &uj_output.clock_jitter_locked,
+      &uj_output.clock_jitter_en, &uj_output.sram_main_readback_locked,
+      &uj_output.sram_ret_readback_locked, &uj_output.sram_main_readback_en,
+      &uj_output.sram_ret_readback_en, uj_cpuctrl_data.enable_data_ind_timing,
+      &uj_output.data_ind_timing_en));
 
   // Configure Ibex to allow reading ERR_STATUS register.
   TRY(dif_rv_core_ibex_init(
@@ -436,7 +422,11 @@ status_t handle_rng_fi_edn_init(ujson_t *uj) {
 
   // Configure the alert handler. Alerts triggered by IP blocks are captured
   // and reported to the test.
-  pentest_configure_alert_handler();
+  pentest_configure_alert_handler(
+      uj_alert_data.alert_classes, uj_alert_data.enable_alerts,
+      uj_alert_data.enable_classes, uj_alert_data.accumulation_thresholds,
+      uj_alert_data.signals, uj_alert_data.duration_cycles,
+      uj_alert_data.ping_timeout);
 
   // Initialize peripherals used in this FI test.
   TRY(dif_entropy_src_init(
@@ -446,9 +436,21 @@ status_t handle_rng_fi_edn_init(ujson_t *uj) {
   TRY(dif_edn_init(mmio_region_from_addr(TOP_EARLGREY_EDN0_BASE_ADDR), &edn0));
   TRY(dif_edn_init(mmio_region_from_addr(TOP_EARLGREY_EDN1_BASE_ADDR), &edn1));
 
+  // Read rom digest.
+  TRY(pentest_read_rom_digest(uj_output.rom_digest));
+
   // Read device ID and return to host.
   TRY(pentest_read_device_id(uj_output.device_id));
   RESP_OK(ujson_serialize_penetrationtest_device_info_t, uj, &uj_output);
+
+  // Read the sensor config.
+  TRY(pentest_send_sensor_config(uj));
+
+  // Read the alert config.
+  TRY(pentest_send_alert_config(uj));
+
+  // Read different SKU config fields and return to host.
+  TRY(pentest_send_sku_config(uj));
 
   firmware_override_init = false;
 
@@ -625,24 +627,33 @@ status_t handle_rng_fi_csrng_bias_fw_override(ujson_t *uj, bool static_seed) {
 }
 
 status_t handle_rng_fi_csrng_init(ujson_t *uj) {
-  penetrationtest_cpuctrl_t uj_data;
-  TRY(ujson_deserialize_penetrationtest_cpuctrl_t(uj, &uj_data));
+  penetrationtest_cpuctrl_t uj_cpuctrl_data;
+  TRY(ujson_deserialize_penetrationtest_cpuctrl_t(uj, &uj_cpuctrl_data));
+  penetrationtest_sensor_config_t uj_sensor_data;
+  TRY(ujson_deserialize_penetrationtest_sensor_config_t(uj, &uj_sensor_data));
+  penetrationtest_alert_config_t uj_alert_data;
+  TRY(ujson_deserialize_penetrationtest_alert_config_t(uj, &uj_alert_data));
 
   pentest_select_trigger_type(kPentestTriggerTypeSw);
   // As we are using the software defined trigger, the first argument of
   // pentest_init is not needed. kPentestTriggerSourceAes is selected as a
   // placeholder.
   pentest_init(kPentestTriggerSourceAes,
-               kPentestPeripheralIoDiv4 | kPentestPeripheralCsrng);
+               kPentestPeripheralIoDiv4 | kPentestPeripheralCsrng,
+               uj_sensor_data.sensor_ctrl_enable,
+               uj_sensor_data.sensor_ctrl_en_fatal);
 
   // Configure the CPU for the pentest.
   penetrationtest_device_info_t uj_output;
   TRY(pentest_configure_cpu(
-      uj_data.icache_disable, uj_data.dummy_instr_disable,
-      uj_data.enable_jittery_clock, uj_data.enable_sram_readback,
-      &uj_output.clock_jitter_locked, &uj_output.clock_jitter_en,
-      &uj_output.sram_main_readback_locked, &uj_output.sram_ret_readback_locked,
-      &uj_output.sram_main_readback_en, &uj_output.sram_ret_readback_en));
+      uj_cpuctrl_data.enable_icache, &uj_output.icache_en,
+      uj_cpuctrl_data.enable_dummy_instr, &uj_output.dummy_instr_en,
+      uj_cpuctrl_data.dummy_instr_count, uj_cpuctrl_data.enable_jittery_clock,
+      uj_cpuctrl_data.enable_sram_readback, &uj_output.clock_jitter_locked,
+      &uj_output.clock_jitter_en, &uj_output.sram_main_readback_locked,
+      &uj_output.sram_ret_readback_locked, &uj_output.sram_main_readback_en,
+      &uj_output.sram_ret_readback_en, uj_cpuctrl_data.enable_data_ind_timing,
+      &uj_output.data_ind_timing_en));
 
   // Configure Ibex to allow reading ERR_STATUS register.
   TRY(dif_rv_core_ibex_init(
@@ -651,16 +662,32 @@ status_t handle_rng_fi_csrng_init(ujson_t *uj) {
 
   // Configure the alert handler. Alerts triggered by IP blocks are captured
   // and reported to the test.
-  pentest_configure_alert_handler();
+  pentest_configure_alert_handler(
+      uj_alert_data.alert_classes, uj_alert_data.enable_alerts,
+      uj_alert_data.enable_classes, uj_alert_data.accumulation_thresholds,
+      uj_alert_data.signals, uj_alert_data.duration_cycles,
+      uj_alert_data.ping_timeout);
 
   // Initialize CSRNG.
   mmio_region_t base_addr = mmio_region_from_addr(TOP_EARLGREY_CSRNG_BASE_ADDR);
   CHECK_DIF_OK(dif_csrng_init(base_addr, &csrng));
   CHECK_DIF_OK(dif_csrng_configure(&csrng));
 
+  // Read rom digest.
+  TRY(pentest_read_rom_digest(uj_output.rom_digest));
+
   // Read device ID and return to host.
   TRY(pentest_read_device_id(uj_output.device_id));
   RESP_OK(ujson_serialize_penetrationtest_device_info_t, uj, &uj_output);
+
+  // Read the sensor config.
+  TRY(pentest_send_sensor_config(uj));
+
+  // Read the alert config.
+  TRY(pentest_send_alert_config(uj));
+
+  // Read different SKU config fields and return to host.
+  TRY(pentest_send_sku_config(uj));
 
   return OK_STATUS();
 }

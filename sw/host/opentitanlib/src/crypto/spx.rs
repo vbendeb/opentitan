@@ -2,7 +2,7 @@
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 
-use anyhow::{anyhow, ensure, Context, Result};
+use anyhow::{Context, Result, anyhow, ensure};
 use serde::{Deserialize, Serialize};
 use serde_annotate::Annotate;
 use std::io::{Read, Write};
@@ -11,7 +11,7 @@ use std::str::FromStr;
 use super::Error;
 use sphincsplus::{DecodeKey, SpxPublicKey};
 
-#[derive(Debug, Serialize, Deserialize, Annotate)]
+#[derive(Debug, Serialize, Deserialize, Annotate, PartialEq)]
 pub struct SpxRawPublicKey {
     #[serde(with = "serde_bytes")]
     #[annotate(format = hexstr)]

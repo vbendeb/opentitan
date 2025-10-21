@@ -3,11 +3,13 @@
 # SPDX-License-Identifier: Apache-2.0
 
 load("@bazel_skylib//rules:common_settings.bzl", "BuildSettingInfo")
+load("@rules_cc//cc:action_names.bzl", "OBJ_COPY_ACTION_NAME")
 load("@rules_cc//cc:find_cc_toolchain.bzl", "find_cc_toolchain")
 load("@bazel_skylib//lib:paths.bzl", "paths")
 load("@lowrisc_opentitan//rules/opentitan:util.bzl", "get_override")
+load("//rules:actions.bzl", "OT_ACTION_OBJDUMP")
 
-def obj_transform(ctx, **kwargs):
+def obj_transform(ctx, strip_llvm_prf_cnts = False, **kwargs):
     """Transform an object file via objcopy.
 
     Args:
@@ -17,10 +19,22 @@ def obj_transform(ctx, **kwargs):
                  if not specified.
         src: The src File object.
         format: The objcopy output-format.
+        strip_llvm_prf_cnts: Whether to strip the llvm coverage counter section.
     Returns:
       The transformed File.
     """
     cc_toolchain = find_cc_toolchain(ctx)
+    feature_config = cc_common.configure_features(
+        ctx = ctx,
+        cc_toolchain = cc_toolchain,
+        requested_features = ctx.features,
+        unsupported_features = ctx.disabled_features,
+    )
+    objcopy = cc_common.get_tool_for_action(
+        feature_configuration = feature_config,
+        action_name = OBJ_COPY_ACTION_NAME,
+    )
+
     output = kwargs.get("output")
     if not output:
         name = get_override(ctx, "attr.name", kwargs)
@@ -28,20 +42,54 @@ def obj_transform(ctx, **kwargs):
         output = "{}.{}".format(name, suffix)
 
     output = ctx.actions.declare_file(output)
-    src = get_override(ctx, "attr.src", kwargs)
+    src = get_override(ctx, "file.src", kwargs)
     out_format = get_override(ctx, "attr.format", kwargs)
 
+    transform_inputs = [src]
+    transform_flags = ["--output-target", out_format]
+
+    if strip_llvm_prf_cnts:
+        # Extract the initial contents of the `__llvm_prf_cnts` section.
+        prf_cnts = ctx.actions.declare_file("{}.prf_cnts".format(output))
+        ctx.actions.run(
+            outputs = [prf_cnts],
+            inputs = [src] + cc_toolchain.all_files.to_list(),
+            arguments = [
+                "--output-target",
+                out_format,
+                "--only-section",
+                "__llvm_prf_cnts",
+                "--gap-fill",
+                "0xa5",
+                src.path,
+                prf_cnts.path,
+            ],
+            executable = objcopy,
+        )
+
+        # Checks the initial contents of the `__llvm_prf_cnts` section.
+        prf_cnts_res = ctx.actions.declare_file("{}.prf_cnts_res".format(output))
+        ctx.actions.run(
+            outputs = [prf_cnts_res],
+            inputs = [prf_cnts],
+            arguments = [prf_cnts.path, prf_cnts_res.path],
+            executable = ctx.executable._check_initial_coverage,
+        )
+
+        transform_inputs.append(prf_cnts_res)
+        transform_flags.extend(["--remove-section", "__llvm_prf_cnts"])
+
+    # Transforms the firmware format.
     ctx.actions.run(
         outputs = [output],
-        inputs = [src] + cc_toolchain.all_files.to_list(),
-        arguments = [
-            "--output-target",
-            out_format,
+        inputs = transform_inputs + cc_toolchain.all_files.to_list(),
+        arguments = transform_flags + [
             src.path,
             output.path,
         ],
-        executable = cc_toolchain.objcopy_executable,
+        executable = objcopy,
     )
+
     return output
 
 def obj_disassemble(ctx, **kwargs):
@@ -57,6 +105,17 @@ def obj_disassemble(ctx, **kwargs):
       The disassembled File.
     """
     cc_toolchain = find_cc_toolchain(ctx)
+    feature_config = cc_common.configure_features(
+        ctx = ctx,
+        cc_toolchain = cc_toolchain,
+        requested_features = ctx.features,
+        unsupported_features = ctx.disabled_features,
+    )
+    objdump = cc_common.get_tool_for_action(
+        feature_configuration = feature_config,
+        action_name = OT_ACTION_OBJDUMP,
+    )
+
     output = kwargs.get("output")
     if not output:
         name = get_override(ctx, "attr.name", kwargs)
@@ -69,7 +128,7 @@ def obj_disassemble(ctx, **kwargs):
         outputs = [output],
         inputs = [src] + cc_toolchain.all_files.to_list(),
         arguments = [
-            cc_toolchain.objdump_executable,
+            objdump,
             src.path,
             output.path,
         ],
@@ -100,7 +159,7 @@ def convert_to_vmem(ctx, **kwargs):
         output = "{}.{}.vmem".format(name, word_size)
 
     output = ctx.actions.declare_file(output)
-    src = get_override(ctx, "attr.src", kwargs)
+    src = get_override(ctx, "file.src", kwargs)
 
     ctx.actions.run(
         outputs = [output],
@@ -160,7 +219,7 @@ def scramble_flash(ctx, **kwargs):
         output = "{}.{}".format(name, suffix)
 
     output = ctx.actions.declare_file(output)
-    src = get_override(ctx, "attr.src", kwargs)
+    src = get_override(ctx, "file.src", kwargs)
     otp = get_override(ctx, "file.otp", kwargs)
 
     inputs = [src]

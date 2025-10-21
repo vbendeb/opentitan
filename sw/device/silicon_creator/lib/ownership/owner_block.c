@@ -44,15 +44,15 @@ enum {
 };
 
 hardened_bool_t owner_block_owner_key_equal(void) {
-  hardened_bool_t result =
-      hardened_memeq(owner_page[0].owner_key.raw, owner_page[1].owner_key.raw,
-                     ARRAYSIZE(owner_page[0].owner_key.raw));
-  result ^= owner_page[0].ownership_key_alg;
-  result ^= owner_page[1].ownership_key_alg;
-  if (launder32(result) != kHardenedBoolTrue) {
+  if (launder32(owner_page[0].ownership_key_alg) !=
+      launder32(owner_page[1].ownership_key_alg)) {
     return kHardenedBoolFalse;
   }
-  return result;
+  HARDENED_CHECK_EQ(owner_page[0].ownership_key_alg,
+                    owner_page[1].ownership_key_alg);
+  return hardened_memeq(owner_page[0].owner_key.raw,
+                        owner_page[1].owner_key.raw,
+                        ARRAYSIZE(owner_page[0].owner_key.raw));
 }
 
 hardened_bool_t owner_block_newversion_mode(void) {
@@ -85,10 +85,13 @@ hardened_bool_t owner_block_page1_valid_for_transfer(boot_data_t *bootdata) {
       case kOwnershipStateUnlockedEndorsed:
         // In UnlockedEndorsed, the owner key must match the key endorsed by the
         // next_owner field in bootdata.  If not, skip parsing owner page 1.
-        //
-        // FIXME: Mix in the key algorithm identifier.
-        hmac_sha256(owner_page[1].owner_key.raw,
-                    sizeof(owner_page[1].owner_key.raw), &digest);
+        hmac_sha256_init();
+        hmac_sha256_update(&owner_page[1].ownership_key_alg,
+                           sizeof(owner_page[1].ownership_key_alg));
+        hmac_sha256_update(owner_page[1].owner_key.raw,
+                           sizeof(owner_page[1].owner_key.raw));
+        hmac_sha256_process();
+        hmac_sha256_final(&digest);
         if (hardened_memeq(bootdata->next_owner, digest.digest,
                            ARRAYSIZE(digest.digest)) == kHardenedBoolTrue) {
           return kHardenedBoolTrue;
@@ -568,8 +571,10 @@ rom_error_t owner_block_info_isfb_erase_enable(
 rom_error_t owner_block_rescue_apply(const owner_rescue_config_t *rescue) {
   rescue_detect_t detect = bitfield_field32_read(rescue->detect, RESCUE_DETECT);
   uint32_t index = bitfield_field32_read(rescue->detect, RESCUE_DETECT_INDEX);
-  bool pull_en = bitfield_bit32_read(rescue->gpio, RESCUE_GPIO_PULL_EN_BIT);
-  bool gpio_value = bitfield_bit32_read(rescue->gpio, RESCUE_GPIO_VALUE_BIT);
+  bool pull_en =
+      bitfield_bit32_read(rescue->gpio, RESCUE_MISC_GPIO_PULL_EN_BIT);
+  bool gpio_value =
+      bitfield_bit32_read(rescue->gpio, RESCUE_MISC_GPIO_VALUE_BIT);
   switch (detect) {
     case kRescueDetectGpio:
       if (index <= kTopEarlgreyMuxedPadsLast) {

@@ -4,17 +4,17 @@
 
 use std::time::Duration;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use clap::Parser;
 
 use bindgen::sram_program::{SRAM_MAGIC_SP_CRC_SKIPPED, SRAM_MAGIC_SP_EXECUTION_DONE};
 
-use opentitanlib::app::TransportWrapper;
+use opentitanlib::app::{TransportWrapper, UartRx};
 use opentitanlib::execute_test;
 use opentitanlib::io::jtag::JtagTap;
 use opentitanlib::test_utils::init::InitializeTest;
 use opentitanlib::test_utils::load_sram_program::{
-    execute_sram_program, ExecutionError, ExecutionMode, ExecutionResult, SramProgramParams,
+    ExecutionError, ExecutionMode, ExecutionResult, SramProgramParams, execute_sram_program,
 };
 use opentitanlib::uart::console::UartConsole;
 
@@ -40,7 +40,7 @@ fn test_sram_load(
     // Connect to the RISC-V TAP
     //
     transport.pin_strapping("PINMUX_TAP_RISCV")?.apply()?;
-    transport.reset_target(opts.init.bootstrap.options.reset_delay, true)?;
+    transport.reset(UartRx::Clear)?;
 
     log::info!("Connecting to RISC-V TAP");
     let mut jtag = opts
@@ -78,7 +78,9 @@ fn test_sram_load(
                 if skip_crc {
                     log::info!("SRAM program finished successfully")
                 } else {
-                    bail!("SRAM program finished successfully but did not expect a SKIPPED_CRC result")
+                    bail!(
+                        "SRAM program finished successfully but did not expect a SKIPPED_CRC result"
+                    )
                 }
             }
             SRAM_MAGIC_SP_EXECUTION_DONE => {
@@ -87,7 +89,9 @@ fn test_sram_load(
                 } else if corrupt {
                     bail!("SRAM program finished successfully but expected a CRC failure")
                 } else if skip_crc {
-                    bail!("SRAM program finished successfully but did not expect a SKIPPED_CRC result")
+                    bail!(
+                        "SRAM program finished successfully but did not expect a SKIPPED_CRC result"
+                    )
                 } else {
                     bail!(
                         "SRAM program execution failed with unexpected result {:?}",

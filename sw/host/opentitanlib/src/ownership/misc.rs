@@ -2,17 +2,17 @@
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use serde::{Deserialize, Serialize};
 use serde_annotate::Annotate;
 use std::cmp::Ordering;
 use std::io::{Read, Write};
 
+use crate::crypto::Error;
 use crate::crypto::ecdsa::EcdsaRawPublicKey;
 use crate::crypto::rsa::RsaRawPublicKey;
 use crate::crypto::spx::SpxRawPublicKey;
-use crate::crypto::Error;
 use crate::util::serde::string_or_struct;
 use crate::with_unknown;
 
@@ -74,7 +74,7 @@ impl OwnershipKeyAlg {
     }
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize, Annotate)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, Annotate, PartialEq)]
 #[serde(try_from = "String", into = "String")]
 pub struct StructVersion {
     pub major: u8,
@@ -126,7 +126,7 @@ impl StructVersion {
     }
 }
 
-#[derive(Debug, Default, Serialize, Deserialize, Annotate)]
+#[derive(Debug, Default, Serialize, Deserialize, Annotate, PartialEq)]
 pub struct TlvHeader {
     #[serde(default)]
     pub identifier: TlvTag,
@@ -168,7 +168,7 @@ impl TlvHeader {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct HybridRawPublicKey {
     #[serde(deserialize_with = "string_or_struct")]
     pub ecdsa: EcdsaRawPublicKey,
@@ -194,7 +194,7 @@ impl HybridRawPublicKey {
 }
 
 /// Low-level key material (ie: bit representation).
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
 #[allow(clippy::len_without_is_empty)]
 pub enum KeyMaterial {
     #[serde(alias = "unknown")]

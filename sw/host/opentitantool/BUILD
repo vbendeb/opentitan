@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_test")
-load("@rules_pkg//pkg:mappings.bzl", "pkg_filegroup", "pkg_files")
+load("@rules_pkg//pkg:mappings.bzl", "pkg_attributes", "pkg_filegroup", "pkg_files")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -36,6 +36,7 @@ rust_binary(
         "src/command/status_cmd.rs",
         "src/command/tpm.rs",
         "src/command/transport.rs",
+        "src/command/uart.rs",
         "src/command/update_usr_access.rs",
         "src/command/version.rs",
         "src/command/xmodem.rs",
@@ -77,6 +78,7 @@ rust_binary(
 pkg_files(
     name = "binary",
     srcs = [":opentitantool"],
+    attributes = pkg_attributes(mode = "0755"),
 )
 
 pkg_filegroup(

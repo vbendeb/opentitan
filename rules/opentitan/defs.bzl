@@ -32,6 +32,10 @@ load(
     _spx_key_for_lc_state = "spx_key_for_lc_state",
 )
 load(
+    "@lowrisc_opentitan//rules/opentitan:manual.bzl",
+    _opentitan_manual_test = "opentitan_manual_test",
+)
+load(
     "@lowrisc_opentitan//rules/opentitan:silicon.bzl",
     _silicon = "silicon",
     _silicon_params = "silicon_params",
@@ -66,8 +70,7 @@ load(
 # and opentitan_binary rules.
 CLEAR_KEY_SET = {"//signing:none_key": "none_key"}
 
-# Re-exports of names from transition.bzl; many files in the repo use opentitan.bzl
-# to get to them.
+# Re-exports of names from transition.bzl
 OPENTITAN_CPU = _OPENTITAN_CPU
 OPENTITAN_PLATFORM = _OPENTITAN_PLATFORM
 opentitan_transition = _opentitan_transition
@@ -102,12 +105,15 @@ rsa_key_by_name = _rsa_key_by_name
 spx_key_for_lc_state = _spx_key_for_lc_state
 spx_key_by_name = _spx_key_by_name
 
+opentitan_manual_test = _opentitan_manual_test
+
 # The default set of test environments for Earlgrey.
 EARLGREY_TEST_ENVS = {
     "//hw/top_earlgrey:fpga_cw310_sival_rom_ext": None,
     "//hw/top_earlgrey:fpga_cw310_rom_with_fake_keys": None,
     "//hw/top_earlgrey:sim_dv": None,
     "//hw/top_earlgrey:sim_verilator": None,
+    "//hw/top_earlgrey:sim_qemu_sival_rom_ext": None,
     "//hw/top_earlgrey:sim_qemu_rom_with_fake_keys": None,
 }
 
@@ -305,7 +311,6 @@ def opentitan_test(
             # Tagging and timeout info always comes from a param block.
             tags = tparam.tags + extra_tags + skip_in_ci,
             timeout = tparam.timeout,
-            local = tparam.local,
             # Override parameters in the test rule.
             test_harness = tparam.test_harness,
             binaries = tparam.binaries,

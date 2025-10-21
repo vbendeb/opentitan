@@ -13,7 +13,7 @@ typedef enum ottf_console_type {
   kOttfConsoleSpiDevice,
 } ottf_console_type_t;
 
-typedef struct ottf_console {
+typedef struct ottf_console_opt {
   /**
    * Communication interface type to use for the OTTF console (see
    * `ottf_console_type_t` above).
@@ -38,7 +38,7 @@ typedef struct ottf_console {
    * transmissions.
    */
   bool putbuf_buffered;
-} ottf_console_t;
+} ottf_console_opt_t;
 
 typedef struct ottf_console_tx_indicator {
   /**
@@ -91,7 +91,7 @@ typedef struct ottf_test_config {
    * status and error messages are written to. Typically UART0, but other
    * communication peripherals may be supported.
    */
-  ottf_console_t console;
+  ottf_console_opt_t console;
 
   /**
    * The TX indicator GPIO to use in conjunction with the SPI console, if a
@@ -125,6 +125,16 @@ typedef struct ottf_test_config {
    * this will be the file that defines `test_main()`.
    */
   const char *file;
+
+  /**
+   * If true, OTTF will enable all alerts configured for alert class D which
+   * will escalate with signal 0. OTTF will handle IRQs for class D before they
+   * escalate and abort the test.
+   *
+   * The alert handler configuration is not locked and can be modified further
+   * by the test.
+   */
+  bool ignore_alerts;
 } ottf_test_config_t;
 
 /**

@@ -2,7 +2,7 @@
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 
-use anyhow::{bail, ensure, Result};
+use anyhow::{Result, bail, ensure};
 use std::rc::Rc;
 
 use super::ProxyError;
@@ -143,6 +143,13 @@ impl Target for ProxySpi {
     fn set_voltage(&self, voltage: Voltage) -> Result<()> {
         match self.execute_command(SpiRequest::SetVoltage { voltage })? {
             SpiResponse::SetVoltage => Ok(()),
+            _ => bail!(ProxyError::UnexpectedReply()),
+        }
+    }
+
+    fn get_flashrom_programmer(&self) -> Result<String> {
+        match self.execute_command(SpiRequest::GetFlashromArgs)? {
+            SpiResponse::GetFlashromArgs { programmer } => Ok(programmer),
             _ => bail!(ProxyError::UnexpectedReply()),
         }
     }

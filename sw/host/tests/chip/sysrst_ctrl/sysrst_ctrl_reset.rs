@@ -2,13 +2,13 @@
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 
-use anyhow::{ensure, Result};
+use anyhow::{Result, ensure};
 use clap::Parser;
 use once_cell::sync::Lazy;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use opentitanlib::app::TransportWrapper;
+use opentitanlib::app::{TransportWrapper, UartRx};
 use opentitanlib::execute_test;
 use opentitanlib::io::gpio::PinMode;
 use opentitanlib::io::uart::Uart;
@@ -16,7 +16,7 @@ use opentitanlib::test_utils::init::InitializeTest;
 use opentitanlib::test_utils::test_status::TestStatus;
 use opentitanlib::uart::console::UartConsole;
 
-use sysrst_ctrl::{set_pins, setup_pins, Config};
+use sysrst_ctrl::{Config, set_pins, setup_pins};
 
 #[derive(Debug, Parser)]
 struct Opts {
@@ -101,7 +101,7 @@ fn chip_sw_sysrst_ctrl_reset(
     set_test_phase(transport, TestPhase::CheckComboReset)?;
     set_pins(transport, config, PADS_VALUE_INIT)?;
     // Reset target.
-    transport.reset_target(opts.init.bootstrap.options.reset_delay, true)?;
+    transport.reset(UartRx::Clear)?;
 
     // Wait until target has prepared for the test.
     UartConsole::wait_for(uart, &TestStatus::InWfi.wait_pattern(), opts.timeout)?;

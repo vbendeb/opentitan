@@ -2,7 +2,7 @@
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 
-use anyhow::{ensure, Result};
+use anyhow::{Result, ensure};
 use clap::{Args, ValueEnum};
 use thiserror::Error;
 
@@ -103,7 +103,10 @@ impl RescueParams {
                 self.value
             ))
         );
-        Ok(Box::new(RescueSerial::new(self.uart.create(transport)?)))
+        Ok(Box::new(RescueSerial::new(
+            self.uart.create(transport)?,
+            None,
+        )))
     }
 
     fn create_usbdfu(&self, _transport: &TransportWrapper) -> Result<Box<dyn Rescue>> {
@@ -247,6 +250,16 @@ pub trait Rescue {
     fn get_device_id(&self) -> Result<DeviceId> {
         let id = self.get_raw(RescueMode::DeviceId)?;
         DeviceId::read(&mut std::io::Cursor::new(&id))
+    }
+
+    fn empty(&self, payload: &[u32]) -> Result<()> {
+        let message = BootSvc::empty(payload);
+        self.set_raw(RescueMode::BootSvcReq, &message.to_bytes()?)
+    }
+
+    fn set_min_bl0_sec_ver(&self, ver: u32) -> Result<()> {
+        let message = BootSvc::min_bl0_sec_ver(ver);
+        self.set_raw(RescueMode::BootSvcReq, &message.to_bytes()?)
     }
 
     fn set_next_bl0_slot(&self, primary: BootSlot, next: BootSlot) -> Result<()> {

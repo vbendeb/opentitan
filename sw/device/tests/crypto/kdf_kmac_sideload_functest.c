@@ -7,8 +7,9 @@
 #include "sw/device/lib/crypto/impl/integrity.h"
 #include "sw/device/lib/crypto/impl/keyblob.h"
 #include "sw/device/lib/crypto/include/datatypes.h"
-#include "sw/device/lib/crypto/include/hash.h"
+#include "sw/device/lib/crypto/include/key_transport.h"
 #include "sw/device/lib/crypto/include/kmac_kdf.h"
+#include "sw/device/lib/crypto/include/sha3.h"
 #include "sw/device/lib/runtime/log.h"
 #include "sw/device/lib/testing/keymgr_testutils.h"
 #include "sw/device/lib/testing/test_framework/check.h"
@@ -68,6 +69,7 @@ static kdf_kmac_test_vector_t kKdfTestVectors[] = {
             {
                 .config =
                     {
+                        .version = kOtcryptoLibVersion1,
                         .key_mode = kOtcryptoKeyModeKdfKmac128,
                         .key_length = 32,
                         .hw_backed = kHardenedBoolTrue,
@@ -126,6 +128,7 @@ static kdf_kmac_test_vector_t kKdfTestVectors[] = {
             {
                 .config =
                     {
+                        .version = kOtcryptoLibVersion1,
                         .key_mode = kOtcryptoKeyModeKdfKmac128,
                         .key_length = 32,
                         .hw_backed = kHardenedBoolTrue,
@@ -208,6 +211,7 @@ static kdf_kmac_test_vector_t kKdfTestVectors[] = {
             {
                 .config =
                     {
+                        .version = kOtcryptoLibVersion1,
                         .key_mode = kOtcryptoKeyModeKdfKmac256,
                         .key_length = 32,
                         .hw_backed = kHardenedBoolTrue,
@@ -301,33 +305,6 @@ static kmac_test_vector_t sha3_test_vector = {
 static kdf_kmac_test_vector_t *current_test_vector = NULL;
 
 /**
- * Get the mode for SHA3 based on the security strength.
- *
- * @param security_str Security strength (in bits).
- * @param[out] mode Hash mode enum value.
- */
-status_t get_sha3_mode(size_t security_strength, otcrypto_hash_mode_t *mode) {
-  switch (security_strength) {
-    case 224:
-      *mode = kOtcryptoHashModeSha3_224;
-      break;
-    case 256:
-      *mode = kOtcryptoHashModeSha3_256;
-      break;
-    case 384:
-      *mode = kOtcryptoHashModeSha3_384;
-      break;
-    case 512:
-      *mode = kOtcryptoHashModeSha3_512;
-      break;
-    default:
-      LOG_INFO("Invalid size for SHA3: %d bits", security_strength);
-      return INVALID_ARGUMENT();
-  }
-  return OK_STATUS();
-}
-
-/**
  * Run the test pointed to by `current_test_vector`.
  */
 static status_t run_test_vector(void) {
@@ -336,6 +313,8 @@ static status_t run_test_vector(void) {
   size_t km_key_len = current_test_vector->keying_material.config.key_length;
   size_t km_keyblob_len =
       keyblob_num_words(current_test_vector->keying_material.config);
+  size_t km_keyblob_share_len =
+      keyblob_share_num_words(current_test_vector->keying_material.config);
   uint32_t km_buffer1[km_keyblob_len];
   uint32_t km_buffer2[km_keyblob_len];
 
@@ -345,11 +324,12 @@ static status_t run_test_vector(void) {
   otcrypto_key_config_t km_config = {
       // The following key_mode is a dummy placeholder. It does not
       // necessarily match the `key_length`.
+      .version = kOtcryptoLibVersion1,
       .key_mode = kOtcryptoKeyModeKdfKmac128,
       .key_length = km_key_len,
       .hw_backed = kHardenedBoolFalse,
       .security_level = kOtcryptoKeySecurityLevelHigh,
-      .exportable = kHardenedBoolFalse,
+      .exportable = kHardenedBoolTrue,
   };
 
   otcrypto_blinded_key_t keying_material1 = {
@@ -376,22 +356,64 @@ static status_t run_test_vector(void) {
   };
 
   LOG_INFO("Running the first KDF-KMAC sideload operation.");
-  TRY(otcrypto_kmac_kdf(current_test_vector->key_derivation_key,
+  TRY(otcrypto_kmac_kdf(&current_test_vector->key_derivation_key,
                         current_test_vector->label,
                         current_test_vector->context, &keying_material1));
 
+  // Export the derived blinded key
+  uint32_t km_share0[km_keyblob_share_len];
+  uint32_t km_share1[km_keyblob_share_len];
+  TRY(otcrypto_export_blinded_key(
+      &keying_material1,
+      (otcrypto_word32_buf_t){.data = km_share0, .len = ARRAYSIZE(km_share0)},
+      (otcrypto_word32_buf_t){.data = km_share1, .len = ARRAYSIZE(km_share1)}));
+
+  // Unmask the derived key
+  uint32_t first_key[km_key_len];
+  for (size_t i = 0; i < ARRAYSIZE(first_key); i++) {
+    first_key[i] = km_share0[i] ^ km_share1[i];
+  }
+
   // Run a SHA-3 operation in between the two KMAC operations.
   LOG_INFO("Running the intermediate SHA3 operation.");
-  TRY(get_sha3_mode(sha3_test_vector.security_strength, &digest_buf.mode));
-  TRY(otcrypto_hash(sha3_test_vector.input_msg, digest_buf));
+  switch (sha3_test_vector.security_strength) {
+    case 224:
+      TRY(otcrypto_sha3_224(sha3_test_vector.input_msg, &digest_buf));
+      break;
+    case 256:
+      TRY(otcrypto_sha3_256(sha3_test_vector.input_msg, &digest_buf));
+      break;
+    case 384:
+      TRY(otcrypto_sha3_384(sha3_test_vector.input_msg, &digest_buf));
+      break;
+    case 512:
+      TRY(otcrypto_sha3_512(sha3_test_vector.input_msg, &digest_buf));
+      break;
+    default:
+      LOG_INFO("Invalid security level for SHA3: %d bits",
+               sha3_test_vector.security_strength);
+      return INVALID_ARGUMENT();
+  }
 
   LOG_INFO("Running the second KDF-KMAC sideload operation for comparison.");
-  TRY(otcrypto_kmac_kdf(current_test_vector->key_derivation_key,
+  TRY(otcrypto_kmac_kdf(&current_test_vector->key_derivation_key,
                         current_test_vector->label,
                         current_test_vector->context, &keying_material2));
 
-  TRY_CHECK_ARRAYS_EQ((unsigned char *)keying_material1.keyblob,
-                      (unsigned char *)keying_material2.keyblob, km_key_len);
+  // Export the second derived blinded key
+  TRY(otcrypto_export_blinded_key(
+      &keying_material2,
+      (otcrypto_word32_buf_t){.data = km_share0, .len = ARRAYSIZE(km_share0)},
+      (otcrypto_word32_buf_t){.data = km_share1, .len = ARRAYSIZE(km_share1)}));
+
+  // Unmask the second derived key
+  uint32_t second_key[km_key_len];
+  for (size_t i = 0; i < ARRAYSIZE(second_key); i++) {
+    second_key[i] = km_share0[i] ^ km_share1[i];
+  }
+
+  TRY_CHECK_ARRAYS_EQ((unsigned char *)first_key, (unsigned char *)second_key,
+                      km_key_len);
   return OTCRYPTO_OK;
 }
 

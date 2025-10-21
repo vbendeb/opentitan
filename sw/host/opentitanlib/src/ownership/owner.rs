@@ -2,7 +2,7 @@
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 
-use anyhow::{anyhow, ensure, Result};
+use anyhow::{Result, anyhow, ensure};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use serde::{Deserialize, Serialize};
 use serde_annotate::Annotate;
@@ -10,14 +10,14 @@ use sphincsplus::SpxSecretKey;
 use std::convert::TryFrom;
 use std::io::{Read, Write};
 
-use super::misc::{KeyMaterial, OwnershipKeyAlg, TlvHeader, TlvTag};
 use super::GlobalFlags;
+use super::misc::{KeyMaterial, OwnershipKeyAlg, TlvHeader, TlvTag};
 use super::{
     DetachedSignature, OwnerApplicationKey, OwnerFlashConfig, OwnerFlashInfoConfig,
     OwnerIsfbConfig, OwnerRescueConfig,
 };
-use crate::crypto::ecdsa::{EcdsaPrivateKey, EcdsaRawSignature};
 use crate::crypto::Error as CryptoError;
+use crate::crypto::ecdsa::{EcdsaPrivateKey, EcdsaRawSignature};
 use crate::with_unknown;
 
 with_unknown! {
@@ -40,7 +40,7 @@ with_unknown! {
 }
 
 /// Describes the owner configuration and key material.
-#[derive(Debug, Serialize, Deserialize, Annotate)]
+#[derive(Debug, Serialize, Deserialize, Annotate, PartialEq)]
 pub struct OwnerBlock {
     /// Header identifying this struct.
     #[serde(
@@ -125,7 +125,7 @@ impl OwnerBlock {
     const NO_CONSTRAINT: u32 = 0x7e7e7e7e;
 
     pub fn default_header() -> TlvHeader {
-        TlvHeader::new(TlvTag::Owner, 0, "0.0")
+        TlvHeader::new(TlvTag::Owner, Self::SIZE, "0.0")
     }
     pub fn basic() -> Self {
         Self {
@@ -140,8 +140,7 @@ impl OwnerBlock {
     }
 
     pub fn write(&self, dest: &mut impl Write) -> Result<()> {
-        let header = TlvHeader::new(TlvTag::Owner, Self::SIZE, "0.0");
-        header.write(dest)?;
+        self.header.write(dest)?;
         dest.write_u32::<LittleEndian>(self.config_version)?;
         dest.write_u32::<LittleEndian>(u32::from(self.sram_exec))?;
         dest.write_u32::<LittleEndian>(u32::from(self.ownership_key_alg))?;
@@ -265,7 +264,7 @@ impl OwnerBlock {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Annotate)]
+#[derive(Debug, Serialize, Deserialize, Annotate, PartialEq)]
 pub enum OwnerConfigItem {
     #[serde(alias = "application_key")]
     ApplicationKey(OwnerApplicationKey),
@@ -587,6 +586,7 @@ r#"00000000: 4f 57 4e 52 00 08 00 00 00 00 00 00 4c 4e 45 58  OWNR........LNEX
         trigger_index: 0,
         gpio_pull_en: false,
         gpio_value: false,
+        enter_on_watchdog: false,
         enter_on_failure: false,
         timeout: 0,
         start: 32,

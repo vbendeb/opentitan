@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 load("//rules:const.bzl", "CONST", "hex_digits")
-load("//rules:opentitan.bzl", "SILICON_CREATOR_KEYS")
+load("//rules/opentitan:keyutils.bzl", "SILICON_CREATOR_KEYS")
 
 MSG_TEMPLATE_BFV = "{}{}\r\n(?s:.*){}{}\r\n".format(
     CONST.SHUTDOWN.PREFIX.BFV,
@@ -39,8 +39,8 @@ MSG_STARTING_ROM_EXT = "\nROM_EXT:"
 MSG_PASS = "PASS!"
 
 SLOTS = {
-    "a": "0x0",
-    "b": "0x80000",
+    "a": "{rom_ext_slot_a}",
+    "b": "{rom_ext_slot_b}",
 }
 
 # list of keys that will be used to build various flash images

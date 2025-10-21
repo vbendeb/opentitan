@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #![allow(clippy::bool_assert_comparison)]
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use clap::Parser;
 use regex::Regex;
 use std::path::PathBuf;
@@ -41,6 +41,9 @@ struct Opts {
     #[arg(long, help = "Next Owner's application public key (ECDSA P256)")]
     next_application_key: PathBuf,
 
+    #[arg(long, value_parser = humantime::parse_duration, help = "Max timeout to enter rescue mode")]
+    rescue_enter_delay: Option<Duration>,
+
     #[arg(
         long,
         value_enum,
@@ -57,7 +60,7 @@ struct Opts {
 
 fn rescue_permission_test(opts: &Opts, transport: &TransportWrapper) -> Result<()> {
     let uart = transport.uart("console")?;
-    let rescue = RescueSerial::new(Rc::clone(&uart));
+    let rescue = RescueSerial::new(Rc::clone(&uart), opts.rescue_enter_delay);
 
     log::info!("###### Get Boot Log (1/2) ######");
     let (data, devid) = transfer_lib::get_device_info(transport, &rescue)?;
@@ -76,6 +79,8 @@ fn rescue_permission_test(opts: &Opts, transport: &TransportWrapper) -> Result<(
         } else {
             None
         },
+        None,
+        false,
     )?;
 
     log::info!("###### Get Boot Log (2/2) ######");
@@ -106,6 +111,7 @@ fn rescue_permission_test(opts: &Opts, transport: &TransportWrapper) -> Result<(
             .clone()
             .or_else(|| opts.next_activate_key.clone()),
         None,
+        BootSlot::SlotA,
     )?;
 
     log::info!("###### Check Rescue Dis-Allowed Command ######");

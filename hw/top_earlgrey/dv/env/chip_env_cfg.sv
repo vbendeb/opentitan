@@ -114,6 +114,9 @@ class chip_env_cfg #(type RAL_T = chip_ral_pkg::chip_reg_block) extends cip_base
   // The JTAG RV debugger model.
   jtag_rv_debugger debugger;
 
+  // Instantiate an object to handle OTTF SPI Console interaction.
+  ottf_spi_console ottf_spi_console_h;
+
   // Run small page rma
   bit   en_small_rma = 0;
 
@@ -459,7 +462,7 @@ class chip_env_cfg #(type RAL_T = chip_ral_pkg::chip_reg_block) extends cip_base
           // A flash image could be signed, and if it is, Bazel will attach a
           // suffix to the image name.
           if ("signed" inside {sw_image_flags[i]}) begin
-            // Options match DEFAULT_SIGNING_KEYS in `rules/opentitan.bzl`.
+            // Options match DEFAULT_SIGNING_KEYS in `rules/opentitan/keyutils.bzl`.
             if ("fake_ecdsa_dev_key_0" inside {sw_image_flags[i]}) begin
               sw_images[i] = $sformatf("%0s.fake_ecdsa_dev_key_0.signed", sw_images[i]);
             end else if ("fake_ecdsa_prod_key_0" inside {sw_image_flags[i]}) begin

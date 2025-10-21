@@ -2,13 +2,13 @@
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 
-use anyhow::{anyhow, ensure, Context, Result};
+use anyhow::{Context, Result, anyhow, ensure};
+use ecdsa::Signature;
 use ecdsa::elliptic_curve::pkcs8::{DecodePrivateKey, EncodePrivateKey};
 use ecdsa::elliptic_curve::pkcs8::{DecodePublicKey, EncodePublicKey};
 use ecdsa::signature::hazmat::PrehashVerifier;
-use ecdsa::Signature;
-use p256::ecdsa::{SigningKey, VerifyingKey};
 use p256::NistP256;
+use p256::ecdsa::{SigningKey, VerifyingKey};
 use pem_rfc7468::Decoder;
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
@@ -79,7 +79,7 @@ impl EcdsaPrivateKey {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Annotate)]
+#[derive(Debug, Clone, Serialize, Deserialize, Annotate, PartialEq)]
 pub struct EcdsaRawSignature {
     #[serde(with = "serde_bytes")]
     #[annotate(format = hexstr)]
@@ -137,7 +137,7 @@ impl EcdsaRawSignature {
             let mut data = Vec::<u8>::new();
 
             file.read_to_end(&mut data)
-                .with_context(|| "Failed to read {path:?}")?;
+                .with_context(|| format!("Failed to read {path:?}"))?;
 
             // Let's try interpreting the file as ASN.1 DER.
             // If unsuccessful, attempt PEM decoding.
@@ -255,7 +255,7 @@ impl TryFrom<&EcdsaRawPublicKey> for EcdsaPublicKey {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Annotate)]
+#[derive(Debug, Serialize, Deserialize, Annotate, PartialEq)]
 pub struct EcdsaRawPublicKey {
     #[serde(with = "serde_bytes")]
     #[annotate(format = hexstr)]

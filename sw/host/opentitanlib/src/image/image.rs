@@ -2,7 +2,7 @@
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 
-use anyhow::{bail, ensure, Result};
+use anyhow::{Result, bail, ensure};
 use memoffset::offset_of;
 use sphincsplus::{SphincsPlus, SpxDomain, SpxPublicKey};
 use std::borrow::Cow;
@@ -13,6 +13,7 @@ use std::io::{Read, Write};
 use std::mem::{align_of, size_of};
 use std::path::{Path, PathBuf};
 use thiserror::Error;
+use zerocopy::FromBytes;
 
 use crate::crypto::ecdsa::{EcdsaPublicKey, EcdsaRawPublicKey, EcdsaRawSignature};
 use crate::crypto::rsa::Modulus;
@@ -20,9 +21,9 @@ use crate::crypto::rsa::RsaPublicKey;
 use crate::crypto::rsa::Signature as RsaSignature;
 use crate::crypto::sha256::Sha256Digest;
 use crate::image::manifest::{
-    Manifest, ManifestKind, SigverifySpxSignature, CHIP_MANIFEST_VERSION_MAJOR1,
-    CHIP_MANIFEST_VERSION_MAJOR2, CHIP_MANIFEST_VERSION_MINOR1, CHIP_ROM_EXT_IDENTIFIER,
-    CHIP_ROM_EXT_SIZE_MAX, MANIFEST_EXT_ID_SPX_KEY, MANIFEST_EXT_ID_SPX_SIGNATURE,
+    CHIP_MANIFEST_VERSION_MAJOR1, CHIP_MANIFEST_VERSION_MAJOR2, CHIP_MANIFEST_VERSION_MINOR1,
+    CHIP_ROM_EXT_IDENTIFIER, CHIP_ROM_EXT_SIZE_MAX, MANIFEST_EXT_ID_SPX_KEY,
+    MANIFEST_EXT_ID_SPX_SIGNATURE, Manifest, ManifestKind, SigverifySpxSignature,
 };
 use crate::image::manifest_def::{ManifestSigverifyBuffer, ManifestSpec};
 use crate::image::manifest_ext::{ManifestExtEntry, ManifestExtEntrySpec};
@@ -512,8 +513,7 @@ impl Image {
         let mut offset = 0;
         while offset < self.size {
             let m = &self.data.bytes[offset..offset + size_of::<Manifest>()];
-            let manifest: zerocopy::Ref<_, Manifest> =
-                zerocopy::Ref::new(m).ok_or(ImageError::Parse)?;
+            let manifest = Manifest::ref_from_bytes(m).map_err(|_| ImageError::Parse)?;
             let kind = ManifestKind(manifest.identifier);
             let mut size = 1;
             if kind.is_known_value() {
@@ -521,7 +521,7 @@ impl Image {
                 result.push(SubImage {
                     kind,
                     offset,
-                    manifest: manifest.into_ref(),
+                    manifest,
                     data: &self.data.bytes[offset..offset + size],
                 });
             }
@@ -537,17 +537,13 @@ impl Image {
 
     pub fn borrow_manifest(&self) -> Result<&Manifest> {
         let manifest_slice = &self.data.bytes[0..size_of::<Manifest>()];
-        let manifest_layout: zerocopy::Ref<_, Manifest> =
-            zerocopy::Ref::new(manifest_slice).ok_or(ImageError::Parse)?;
-        let manifest: &Manifest = manifest_layout.into_ref();
+        let manifest = Manifest::ref_from_bytes(manifest_slice).map_err(|_| ImageError::Parse)?;
         Ok(manifest)
     }
 
     pub fn borrow_manifest_mut(&mut self) -> Result<&mut Manifest> {
         let manifest_slice = &mut self.data.bytes[0..size_of::<Manifest>()];
-        let manifest_layout: zerocopy::Ref<_, Manifest> =
-            zerocopy::Ref::new(manifest_slice).ok_or(ImageError::Parse)?;
-        let manifest: &mut Manifest = manifest_layout.into_mut();
+        let manifest = Manifest::mut_from_bytes(manifest_slice).map_err(|_| ImageError::Parse)?;
         Ok(manifest)
     }
 
@@ -662,6 +658,10 @@ impl ImageAssembler {
     fn read(path: &Path, buf: &mut [u8]) -> Result<usize> {
         let mut file = File::open(path)?;
         let len = file.metadata()?.len() as usize;
+        ensure!(len <= buf.len(), ImageError::IncompleteRead(len, buf.len()));
+        if buf[..len].iter().any(|&c| c != 0xff) {
+            bail!("{path:?} Overlapped during image assembly");
+        }
         let n = file.read(buf)?;
         ensure!(len == n, ImageError::IncompleteRead(len, n));
         Ok(n)
@@ -698,15 +698,15 @@ impl ImageAssembler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testdata;
+    use crate::util::testdata;
 
     #[test]
     fn test_assemble_concat() -> Result<()> {
         // Test image assembly by concatenation.
         let mut image = ImageAssembler::with_params(16, false);
         image.parse(&[
-            testdata!("hello.txt").to_str().unwrap(),
-            testdata!("world.txt").to_str().unwrap(),
+            testdata("image/hello.txt").to_str().unwrap(),
+            testdata("image/world.txt").to_str().unwrap(),
         ])?;
         let data = image.assemble()?;
         assert_eq!(data, b"HelloWorld\xff\xff\xff\xff\xff\xff");
@@ -718,8 +718,8 @@ mod tests {
         // Test image assembly by explicit offsets.
         let mut image = ImageAssembler::with_params(16, false);
         image.parse(&[
-            testdata!("hello.txt@0").to_str().unwrap(),
-            testdata!("world.txt@0x8").to_str().unwrap(),
+            testdata("image/hello.txt@0").to_str().unwrap(),
+            testdata("image/world.txt@0x8").to_str().unwrap(),
         ])?;
         let data = image.assemble()?;
         assert_eq!(data, b"Hello\xff\xff\xffWorld\xff\xff\xff");
@@ -731,8 +731,8 @@ mod tests {
         // Test image assembly with mirroring.
         let mut image = ImageAssembler::with_params(20, true);
         image.parse(&[
-            testdata!("hello.txt").to_str().unwrap(),
-            testdata!("world.txt").to_str().unwrap(),
+            testdata("image/hello.txt").to_str().unwrap(),
+            testdata("image/world.txt").to_str().unwrap(),
         ])?;
         let data = image.assemble()?;
         assert_eq!(data, b"HelloWorldHelloWorld");
@@ -744,8 +744,8 @@ mod tests {
         // Test image assembly where one of the source files isn't read completely.
         let mut image = ImageAssembler::with_params(16, true);
         image.parse(&[
-            testdata!("hello.txt@0").to_str().unwrap(),
-            testdata!("world.txt@0x5").to_str().unwrap(),
+            testdata("image/hello.txt@0").to_str().unwrap(),
+            testdata("image/world.txt@0x5").to_str().unwrap(),
         ])?;
         let err = image.assemble().unwrap_err();
         assert_eq!(
@@ -758,18 +758,18 @@ mod tests {
     #[test]
     fn test_load_image() {
         // Read and write back image.
-        let image = Image::read_from_file(&testdata!("test_image.bin")).unwrap();
+        let image = Image::read_from_file(&testdata("image/test_image.bin")).unwrap();
         image
-            .write_to_file(&testdata!("test_image_out.bin"))
+            .write_to_file(&testdata("image/test_image_out.bin"))
             .unwrap();
 
         // Ensure the result is identical to the original.
         let (mut orig_bytes, mut res_bytes) = (Vec::<u8>::new(), Vec::<u8>::new());
-        File::open(testdata!("test_image.bin"))
+        File::open(testdata("image/test_image.bin"))
             .unwrap()
             .read_to_end(&mut orig_bytes)
             .unwrap();
-        File::open(testdata!("test_image_out.bin"))
+        File::open(testdata("image/test_image_out.bin"))
             .unwrap()
             .read_to_end(&mut res_bytes)
             .unwrap();

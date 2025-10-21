@@ -4,7 +4,7 @@
 
 package(default_visibility = ["//visibility:public"])
 
-load("//third_party/python:requirements.bzl", "requirement")
+load("@ot_python_deps//:requirements.bzl", "requirement")
 load("@rules_python//python:defs.bzl", "py_binary", "py_library")
 
 py_binary(
@@ -45,3 +45,5 @@ alias(
     name = "qemu-img",
     actual = "@qemu_opentitan//:build/qemu-img",
 )
+
+exports_files(["build_qemu.sh"])

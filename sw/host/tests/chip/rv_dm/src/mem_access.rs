@@ -5,11 +5,11 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use anyhow::{ensure, Result};
+use anyhow::{Result, ensure};
 use clap::Parser;
 use rand::prelude::*;
 
-use opentitanlib::app::TransportWrapper;
+use opentitanlib::app::{TransportWrapper, UartRx};
 use opentitanlib::execute_test;
 use opentitanlib::io::jtag::JtagTap;
 use opentitanlib::test_utils::init::InitializeTest;
@@ -46,12 +46,12 @@ const NUM_ACCESSES_PER_REGION: usize = 32;
 const ROM_ACCESSIBLE_BYTES: usize = top_earlgrey::ROM_SIZE_BYTES - 32;
 
 fn test_mem_access(opts: &Opts, transport: &TransportWrapper) -> Result<()> {
-    let seed = opts.seed.unwrap_or_else(|| thread_rng().gen());
+    let seed = opts.seed.unwrap_or_else(|| thread_rng().r#gen());
     log::info!("Random number generator seed is {:x}", seed);
     let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(seed);
 
     transport.pin_strapping("PINMUX_TAP_RISCV")?.apply()?;
-    transport.reset_target(opts.init.bootstrap.options.reset_delay, true)?;
+    transport.reset(UartRx::Clear)?;
     let uart = &*transport.uart("console")?;
     uart.set_flow_control(true)?;
 
@@ -61,7 +61,7 @@ fn test_mem_access(opts: &Opts, transport: &TransportWrapper) -> Result<()> {
     } else {
         // Avoid watchdog timeout by entering bootstrap mode.
         transport.pin_strapping("ROM_BOOTSTRAP")?.apply()?;
-        transport.reset_target(opts.init.bootstrap.options.reset_delay, true)?;
+        transport.reset(UartRx::Clear)?;
     }
 
     let jtag = &mut *opts
@@ -104,7 +104,7 @@ fn test_mem_access(opts: &Opts, transport: &TransportWrapper) -> Result<()> {
                 .step_by(4)
                 .choose_multiple(&mut rng, NUM_ACCESSES_PER_REGION)
                 .into_iter()
-                .map(|offset| (name, base, offset, rng.gen::<u32>())),
+                .map(|offset| (name, base, offset, rng.r#gen::<u32>())),
         );
     }
 
@@ -139,7 +139,9 @@ fn test_mem_access(opts: &Opts, transport: &TransportWrapper) -> Result<()> {
         let addr = base + offset;
         let mut readback = 0;
         jtag.read_memory32(addr, std::slice::from_mut(&mut readback))?;
-        log::info!("Reading from {name} (base {base:#x}) offset {offset:#x} with value {readback:#x} (expecting {value:#x})");
+        log::info!(
+            "Reading from {name} (base {base:#x}) offset {offset:#x} with value {readback:#x} (expecting {value:#x})"
+        );
         ensure!(value == readback);
     }
 

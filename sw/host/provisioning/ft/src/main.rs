@@ -6,12 +6,12 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use arrayvec::ArrayVec;
 use base64ct::{Base64, Encoding};
 use clap::{Args, Parser};
-use elliptic_curve::pkcs8::DecodePrivateKey;
 use elliptic_curve::SecretKey;
+use elliptic_curve::pkcs8::DecodePrivateKey;
 use indexmap::IndexMap;
 use p256::NistP256;
 
@@ -26,11 +26,11 @@ use opentitanlib::io::gpio::{PinMode, PullMode};
 use opentitanlib::test_utils::init::InitializeTest;
 use opentitanlib::test_utils::lc::{read_device_id, read_lc_state};
 use opentitanlib::test_utils::load_sram_program::SramProgramParams;
-use ujson_lib::provisioning_data::{ManufCertgenInputs, ManufFtIndividualizeData};
 use ujson_lib::UjsonPayloads;
+use ujson_lib::provisioning_data::{ManufCertgenInputs, ManufFtIndividualizeData};
 use util_lib::response::PersonalizeResponse;
 use util_lib::{
-    encrypt_token, hex_string_to_u32_arrayvec, hex_string_to_u8_arrayvec, load_rsa_public_key,
+    encrypt_token, hex_string_to_u8_arrayvec, hex_string_to_u32_arrayvec, load_rsa_public_key,
     random_token,
 };
 
@@ -201,11 +201,7 @@ fn main() -> Result<()> {
     };
 
     // Only run test unlock operation if we are in a locked LC state.
-    response.lc_state.initial = read_lc_state(
-        &transport,
-        &opts.init.jtag_params,
-        opts.init.bootstrap.options.reset_delay,
-    )?;
+    response.lc_state.initial = read_lc_state(&transport, &opts.init.jtag_params)?;
     match response.lc_state.initial {
         DifLcCtrlState::TestLocked0
         | DifLcCtrlState::TestLocked1
@@ -215,12 +211,7 @@ fn main() -> Result<()> {
         | DifLcCtrlState::TestLocked5
         | DifLcCtrlState::TestLocked6 => {
             let t0 = Instant::now();
-            test_unlock(
-                &transport,
-                &opts.init.jtag_params,
-                opts.init.bootstrap.options.reset_delay,
-                &_test_unlock_token,
-            )?;
+            test_unlock(&transport, &opts.init.jtag_params, &_test_unlock_token)?;
             response.stats.log_elapsed_time("test-unlock", t0);
         }
         _ => {
@@ -230,11 +221,7 @@ fn main() -> Result<()> {
 
     // Only run the SRAM individualize program in a test unlocked state. If we have transitioned to
     // a mission state already, then we can skip this step.
-    response.lc_state.unlocked = read_lc_state(
-        &transport,
-        &opts.init.jtag_params,
-        opts.init.bootstrap.options.reset_delay,
-    )?;
+    response.lc_state.unlocked = read_lc_state(&transport, &opts.init.jtag_params)?;
     match response.lc_state.unlocked {
         DifLcCtrlState::TestUnlocked0 => {
             bail!("FT stage cannot be run from test unlocked 0. Run CP stage first.");
@@ -252,7 +239,6 @@ fn main() -> Result<()> {
             run_sram_ft_individualize(
                 &transport,
                 &opts.init.jtag_params,
-                opts.init.bootstrap.options.reset_delay,
                 &opts.sram_program,
                 &ft_individualize_data_in,
                 &spi_console,
@@ -266,7 +252,6 @@ fn main() -> Result<()> {
             test_exit(
                 &transport,
                 &opts.init.jtag_params,
-                opts.init.bootstrap.options.reset_delay,
                 &_test_exit_token,
                 opts.provisioning_data.target_mission_mode_lc_state,
             )?;
@@ -300,7 +285,6 @@ fn main() -> Result<()> {
 
     check_slot_b_boot_up(
         &transport,
-        &opts.init,
         opts.timeout,
         &mut response,
         opts.owner_success_text,
@@ -308,11 +292,7 @@ fn main() -> Result<()> {
     log::info!("Provisioning Done");
 
     // Extract final device ID.
-    let mut final_device_id = read_device_id(
-        &transport,
-        &opts.init.jtag_params,
-        opts.init.bootstrap.options.reset_delay,
-    )?;
+    let mut final_device_id = read_device_id(&transport, &opts.init.jtag_params)?;
 
     // Convert final device ID to a big-endian string.
     final_device_id.reverse();

@@ -14,11 +14,6 @@ load(
     "manifest",
 )
 load(
-    "//rules:opentitan_test.bzl",
-    "OTTF_SUCCESS_MSG",
-    "ROM_BOOT_FAILURE_MSG",
-)
-load(
     "//rules:otp.bzl",
     "STD_OTP_OVERLAYS",
     "otp_image",
@@ -31,6 +26,8 @@ load(
 )
 load(
     "//rules/opentitan:defs.bzl",
+    "OTTF_SUCCESS_MSG",
+    "ROM_BOOT_FAILURE_MSG",
     "cw310_params",
     "fpga_params",
     "opentitan_test",
@@ -241,7 +238,7 @@ BOOT_POLICY_BAD_MANIFEST_CASES = [
         ),
         srcs = ["//sw/device/silicon_creator/rom/e2e:empty_test"],
         # Use the prod key because it is valid in every LC state.
-        ecdsa_key = {"//sw/device/silicon_creator/rom/keys/fake/ecdsa:prod_key_0_ecdsa_p256": "prod_key_0"},
+        ecdsa_key = {"//sw/device/silicon_creator/rom/keys/fake/ecdsa:ecdsa_keyset": "prod_key_0"},
         exec_env = {
             "//hw/top_earlgrey:fpga_cw310_rom_with_fake_keys": None,
         },

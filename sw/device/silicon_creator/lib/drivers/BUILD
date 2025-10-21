@@ -14,6 +14,7 @@ load(
 )
 load(
     "//rules/opentitan:defs.bzl",
+    "EARLGREY_CW340_TEST_ENVS",
     "EARLGREY_SILICON_OWNER_ROM_EXT_ENVS",
     "EARLGREY_TEST_ENVS",
     "fpga_params",
@@ -204,6 +205,7 @@ dual_cc_library(
             "@googletest//:gtest",
         ],
         shared = [
+            ":ibex",
             "//sw/device/lib/base:abs_mmio",
             "//sw/device/lib/base:bitfield",
             "//sw/device/lib/base:hardened",
@@ -216,6 +218,7 @@ dual_cc_library(
 cc_test(
     name = "hmac_unittest",
     srcs = ["hmac_unittest.cc"],
+    local_defines = ["HMAC_UNIT_TEST_"],
     deps = [
         dual_cc_device_library_of(":hmac"),
         "//hw/ip/hmac/data:hmac_c_regs",
@@ -230,7 +233,10 @@ cc_test(
 opentitan_test(
     name = "hmac_functest",
     srcs = ["hmac_functest.c"],
-    exec_env = EARLGREY_TEST_ENVS,
+    exec_env = dicts.add(
+        EARLGREY_TEST_ENVS,
+        EARLGREY_CW340_TEST_ENVS,
+    ),
     verilator = verilator_params(
         timeout = "long",
     ),
@@ -314,8 +320,10 @@ opentitan_test(
             "//hw/top_earlgrey:silicon_creator": None,
             # FIXME broken in sival ROM_EXT, remove this line when fixed. See #21706.
             "//hw/top_earlgrey:fpga_cw310_sival_rom_ext": "broken",
+            "//hw/top_earlgrey:sim_qemu_sival_rom_ext": "qemu_broken",
         },
     ),
+    qemu_broken = qemu_params(tags = ["broken"]),
     verilator = verilator_params(
         timeout = "long",
     ),
@@ -369,7 +377,10 @@ cc_test(
 opentitan_test(
     name = "kmac_functest",
     srcs = ["kmac_functest.c"],
-    exec_env = EARLGREY_TEST_ENVS,
+    exec_env = dicts.add(
+        EARLGREY_TEST_ENVS,
+        EARLGREY_CW340_TEST_ENVS,
+    ),
     verilator = verilator_params(
         timeout = "long",
     ),
@@ -407,6 +418,7 @@ dual_cc_library(
             "//sw/device/lib/base:bitfield",
             "//sw/device/lib/base:hardened",
             "//sw/device/lib/base:macros",
+            "//sw/device/lib/base:abs_mmio",
             "//sw/device/silicon_creator/lib/base:sec_mmio",
         ],
     ),
@@ -693,12 +705,6 @@ opentitan_test(
     name = "rstmgr_functest",
     srcs = ["rstmgr_functest.c"],
     exec_env = EARLGREY_TEST_ENVS,
-    qemu = qemu_params(
-        globals = {
-            # Test uses rstmgr, keep running on fatal resets:
-            "ot-rstmgr.fatal_reset": 0,
-        },
-    ),
     verilator = verilator_params(
         timeout = "long",
     ),

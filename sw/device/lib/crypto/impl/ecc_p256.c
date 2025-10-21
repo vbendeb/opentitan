@@ -4,6 +4,7 @@
 
 #include "sw/device/lib/crypto/include/ecc_p256.h"
 
+#include "sw/device/lib/base/hardened_memory.h"
 #include "sw/device/lib/crypto/drivers/entropy.h"
 #include "sw/device/lib/crypto/drivers/hmac.h"
 #include "sw/device/lib/crypto/impl/ecc/p256.h"
@@ -40,6 +41,29 @@ otcrypto_status_t otcrypto_ecdsa_p256_verify(
                                                    verification_result);
 }
 
+otcrypto_status_t otcrypto_ecdsa_p256_sign_verify(
+    const otcrypto_blinded_key_t *private_key,
+    const otcrypto_unblinded_key_t *public_key,
+    const otcrypto_hash_digest_t message_digest,
+    otcrypto_word32_buf_t signature) {
+  // Signature generation.
+  HARDENED_TRY(
+      otcrypto_ecdsa_p256_sign(private_key, message_digest, signature));
+
+  // Verify signature before releasing it.
+  otcrypto_const_word32_buf_t signature_check = {
+      .data = signature.data,
+      .len = signature.len,
+  };
+  hardened_bool_t verification_result = kHardenedBoolFalse;
+  HARDENED_TRY(otcrypto_ecdsa_p256_verify(
+      public_key, message_digest, signature_check, &verification_result));
+
+  // Trap if signature verification failed.
+  HARDENED_CHECK_EQ(verification_result, kHardenedBoolTrue);
+  return OTCRYPTO_OK;
+}
+
 otcrypto_status_t otcrypto_ecdh_p256_keygen(
     otcrypto_blinded_key_t *private_key, otcrypto_unblinded_key_t *public_key) {
   HARDENED_TRY(otcrypto_ecdh_p256_keygen_async_start(private_key));
@@ -65,7 +89,7 @@ otcrypto_status_t otcrypto_ecdh_p256(const otcrypto_blinded_key_t *private_key,
 OT_WARN_UNUSED_RESULT
 static status_t internal_p256_keygen_start(
     const otcrypto_blinded_key_t *private_key) {
-  // Check that the entropy complex is initialized.
+  // Ensure the entropy complex is initialized.
   HARDENED_TRY(entropy_complex_check());
 
   if (launder32(private_key->config.hw_backed) == kHardenedBoolTrue) {
@@ -184,6 +208,9 @@ static status_t p256_public_key_length_check(
 OT_WARN_UNUSED_RESULT
 static status_t internal_p256_keygen_finalize(
     otcrypto_blinded_key_t *private_key, otcrypto_unblinded_key_t *public_key) {
+  // Ensure the entropy complex is initialized.
+  HARDENED_TRY(entropy_complex_check());
+
   // Check the lengths of caller-allocated buffers.
   HARDENED_TRY(p256_private_key_length_check(private_key));
   HARDENED_TRY(p256_public_key_length_check(public_key));
@@ -199,14 +226,19 @@ static status_t internal_p256_keygen_finalize(
     HARDENED_TRY(p256_sideload_keygen_finalize(pk));
   } else if (launder32(private_key->config.hw_backed) == kHardenedBoolFalse) {
     HARDENED_CHECK_EQ(private_key->config.hw_backed, kHardenedBoolFalse);
-    p256_masked_scalar_t *sk = (p256_masked_scalar_t *)private_key->keyblob;
-    HARDENED_TRY(p256_keygen_finalize(sk, pk));
-    private_key->checksum = integrity_blinded_checksum(private_key);
+
+    // Randomize the keyblob before writing secret data.
+    HARDENED_TRY(hardened_memshred(private_key->keyblob,
+                                   keyblob_num_words(private_key->config)));
+
+    HARDENED_TRY(
+        p256_keygen_finalize((p256_masked_scalar_t *)private_key->keyblob, pk));
   } else {
     return OTCRYPTO_BAD_ARGS;
   }
 
-  // Prepare the public key.
+  // Set the key checksums.
+  private_key->checksum = integrity_blinded_checksum(private_key);
   public_key->checksum = integrity_unblinded_checksum(public_key);
 
   // Clear the OTBN sideload slot (in case the seed was sideloaded).
@@ -240,6 +272,9 @@ otcrypto_status_t otcrypto_ecdsa_p256_sign_async_start(
     return OTCRYPTO_BAD_ARGS;
   }
 
+  // Check that the entropy complex is initialized.
+  HARDENED_TRY(entropy_complex_check());
+
   // Check the integrity of the private key.
   if (launder32(integrity_blinded_key_check(private_key)) !=
       kHardenedBoolTrue) {
@@ -247,9 +282,6 @@ otcrypto_status_t otcrypto_ecdsa_p256_sign_async_start(
   }
   HARDENED_CHECK_EQ(integrity_blinded_key_check(private_key),
                     kHardenedBoolTrue);
-
-  // Check that the entropy complex is initialized.
-  HARDENED_TRY(entropy_complex_check());
 
   if (launder32(private_key->config.key_mode) != kOtcryptoKeyModeEcdsaP256) {
     return OTCRYPTO_BAD_ARGS;
@@ -268,17 +300,26 @@ otcrypto_status_t otcrypto_ecdsa_p256_sign_async_start(
   if (launder32(private_key->config.hw_backed) == kHardenedBoolFalse) {
     // Start the asynchronous signature-generation routine.
     HARDENED_CHECK_EQ(private_key->config.hw_backed, kHardenedBoolFalse);
-    p256_masked_scalar_t *sk = (p256_masked_scalar_t *)private_key->keyblob;
-    return p256_ecdsa_sign_start(message_digest.data, sk);
+    HARDENED_TRY(p256_ecdsa_sign_start(
+        message_digest.data, (p256_masked_scalar_t *)private_key->keyblob));
   } else if (launder32(private_key->config.hw_backed) == kHardenedBoolTrue) {
     // Load the key and start in sideloaded-key mode.
     HARDENED_CHECK_EQ(private_key->config.hw_backed, kHardenedBoolTrue);
     HARDENED_TRY(keyblob_sideload_key_otbn(private_key));
-    return p256_ecdsa_sideload_sign_start(message_digest.data);
+    HARDENED_TRY(p256_ecdsa_sideload_sign_start(message_digest.data));
+  } else {
+    // Invalid value for private_key->hw_backed.
+    return OTCRYPTO_BAD_ARGS;
   }
 
-  // Invalid value for private_key->hw_backed.
-  return OTCRYPTO_BAD_ARGS;
+  // To detect forgeries of the pointer to the private key that we have passed
+  // to the ECC implementation, check again its integrity. If the pointer would
+  // have been tampered with between the first integrity check we did when
+  // entering the CryptoLib and here, we would detect this now.
+  HARDENED_CHECK_EQ(integrity_blinded_key_check(private_key),
+                    kHardenedBoolTrue);
+
+  return OTCRYPTO_OK;
 }
 
 /**
@@ -307,6 +348,9 @@ otcrypto_status_t otcrypto_ecdsa_p256_sign_async_finalize(
     return OTCRYPTO_BAD_ARGS;
   }
 
+  // Ensure the entropy complex is initialized.
+  HARDENED_TRY(entropy_complex_check());
+
   HARDENED_TRY(p256_signature_length_check(signature.len));
   p256_ecdsa_signature_t *sig_p256 = (p256_ecdsa_signature_t *)signature.data;
   // Note: This operation wipes DMEM, so if an error occurs after this
@@ -326,6 +370,9 @@ otcrypto_status_t otcrypto_ecdsa_p256_verify_async_start(
       message_digest.data == NULL || public_key->key == NULL) {
     return OTCRYPTO_BAD_ARGS;
   }
+
+  // Ensure the entropy complex is initialized.
+  HARDENED_TRY(entropy_complex_check());
 
   // Check the integrity of the public key.
   if (launder32(integrity_unblinded_key_check(public_key)) !=
@@ -356,7 +403,15 @@ otcrypto_status_t otcrypto_ecdsa_p256_verify_async_start(
   p256_ecdsa_signature_t *sig = (p256_ecdsa_signature_t *)signature.data;
 
   // Start the asynchronous signature-verification routine.
-  return p256_ecdsa_verify_start(sig, message_digest.data, pk);
+  HARDENED_TRY(p256_ecdsa_verify_start(sig, message_digest.data, pk));
+
+  // To detect forgeries of the pointer to the public key that we have passed
+  // to the ECC implementation, check again its integrity. If the pointer would
+  // have been tampered with between the first integrity check we did when
+  // entering the CryptoLib and here, we would detect this now.
+  HARDENED_CHECK_EQ(integrity_unblinded_key_check(public_key),
+                    kHardenedBoolTrue);
+  return OTCRYPTO_OK;
 }
 
 otcrypto_status_t otcrypto_ecdsa_p256_verify_async_finalize(
@@ -365,6 +420,9 @@ otcrypto_status_t otcrypto_ecdsa_p256_verify_async_finalize(
   if (verification_result == NULL) {
     return OTCRYPTO_BAD_ARGS;
   }
+
+  // Ensure the entropy complex is initialized.
+  HARDENED_TRY(entropy_complex_check());
 
   HARDENED_TRY(p256_signature_length_check(signature.len));
   p256_ecdsa_signature_t *sig_p256 = (p256_ecdsa_signature_t *)signature.data;
@@ -409,6 +467,9 @@ otcrypto_status_t otcrypto_ecdh_p256_async_start(
     return OTCRYPTO_BAD_ARGS;
   }
 
+  // Ensure the entropy complex is initialized.
+  HARDENED_TRY(entropy_complex_check());
+
   // Check the integrity of the keys.
   if (launder32(integrity_blinded_key_check(private_key)) !=
           kHardenedBoolTrue ||
@@ -437,15 +498,26 @@ otcrypto_status_t otcrypto_ecdh_p256_async_start(
   if (launder32(private_key->config.hw_backed) == kHardenedBoolTrue) {
     HARDENED_CHECK_EQ(private_key->config.hw_backed, kHardenedBoolTrue);
     HARDENED_TRY(keyblob_sideload_key_otbn(private_key));
-    return p256_sideload_ecdh_start(pk);
+    HARDENED_TRY(p256_sideload_ecdh_start(pk));
   } else if (launder32(private_key->config.hw_backed) == kHardenedBoolFalse) {
     HARDENED_CHECK_EQ(private_key->config.hw_backed, kHardenedBoolFalse);
-    p256_masked_scalar_t *sk = (p256_masked_scalar_t *)private_key->keyblob;
-    return p256_ecdh_start(sk, pk);
+    HARDENED_TRY(
+        p256_ecdh_start((p256_masked_scalar_t *)private_key->keyblob, pk));
+  } else {
+    // Invalid value for `hw_backed`.
+    return OTCRYPTO_BAD_ARGS;
   }
 
-  // Invalid value for `hw_backed`.
-  return OTCRYPTO_BAD_ARGS;
+  // To detect forgeries of the pointer to the public key that we have passed
+  // to the ECC implementation, check again its integrity. If the pointer would
+  // have been tampered with between the first integrity check we did when
+  // entering the CryptoLib and here, we would detect this now.
+  HARDENED_CHECK_EQ(integrity_blinded_key_check(private_key),
+                    kHardenedBoolTrue);
+  HARDENED_CHECK_EQ(integrity_unblinded_key_check(public_key),
+                    kHardenedBoolTrue);
+
+  return OTCRYPTO_OK;
 }
 
 otcrypto_status_t otcrypto_ecdh_p256_async_finalize(
@@ -453,6 +525,9 @@ otcrypto_status_t otcrypto_ecdh_p256_async_finalize(
   if (shared_secret == NULL || shared_secret->keyblob == NULL) {
     return OTCRYPTO_BAD_ARGS;
   }
+
+  // Ensure the entropy complex is initialized.
+  HARDENED_TRY(entropy_complex_check());
 
   // Shared keys cannot be sideloaded because they are software-generated.
   if (launder32(shared_secret->config.hw_backed) != kHardenedBoolFalse) {
@@ -477,10 +552,12 @@ otcrypto_status_t otcrypto_ecdh_p256_async_finalize(
   // occurs after this point then the keys would be unrecoverable. This should
   // be the last potentially error-causing line before returning to the caller.
   p256_ecdh_shared_key_t ss;
+  HARDENED_TRY(hardened_memshred(ss.share0, ARRAYSIZE(ss.share0)));
+  HARDENED_TRY(hardened_memshred(ss.share1, ARRAYSIZE(ss.share1)));
   HARDENED_TRY(p256_ecdh_finalize(&ss));
 
-  keyblob_from_shares(ss.share0, ss.share1, shared_secret->config,
-                      shared_secret->keyblob);
+  HARDENED_TRY(keyblob_from_shares(ss.share0, ss.share1, shared_secret->config,
+                                   shared_secret->keyblob));
 
   // Set the checksum.
   shared_secret->checksum = integrity_blinded_checksum(shared_secret);

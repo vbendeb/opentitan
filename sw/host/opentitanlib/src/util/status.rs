@@ -9,7 +9,7 @@ use std::convert::TryFrom;
 use std::ffi::CString;
 use std::path::PathBuf;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use bindgen::status::{ot_status_create_record_t, status_create, status_err, status_extract};
 use num_enum::TryFromPrimitive;
 use object::{Object, ObjectSection};
@@ -203,7 +203,7 @@ impl StatusCreateRecords {
         let iter = self
             .records
             .iter()
-            .filter(|rec| rec.get_module_id().map_or(false, |id| id == *mod_id))
+            .filter(|rec| rec.get_module_id().is_ok_and(|id| id == *mod_id))
             .map(|rec| rec.filename.clone());
         std::collections::HashSet::<String>::from_iter(iter)
             .into_iter()
@@ -228,14 +228,17 @@ pub fn load_elf(elf_file: &PathBuf) -> Result<StatusCreateRecords> {
     // Make sure that the section size is a multiple of the record size.
     const RECORD_SIZE: usize = std::mem::size_of::<ot_status_create_record_t>();
     if status_create_records.len() % RECORD_SIZE != 0 {
-        bail!(".ot.status_create_record section size ({}) is not a multiple of the ot_status_create_record_t size ({})",
-              status_create_records.len(), RECORD_SIZE);
+        bail!(
+            ".ot.status_create_record section size ({}) is not a multiple of the ot_status_create_record_t size ({})",
+            status_create_records.len(),
+            RECORD_SIZE
+        );
     }
     // Conversion is unsafe but since the structure is packed and contains only POD,
     // it really is safe.
     let records = status_create_records
         .chunks(RECORD_SIZE)
-        .map(|chunk| ot_status_create_record_t::read_from(chunk).unwrap())
+        .map(|chunk| ot_status_create_record_t::read_from_bytes(chunk).unwrap())
         .map(StatusCreateRecord::try_from)
         .collect::<Result<_>>()?;
     Ok(StatusCreateRecords { records })

@@ -3,14 +3,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #![allow(clippy::bool_assert_comparison)]
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use clap::Parser;
 use regex::Regex;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::Duration;
 
-use opentitanlib::app::TransportWrapper;
+use opentitanlib::app::{TransportWrapper, UartRx};
 use opentitanlib::chip::boot_svc::{BootSlot, UnlockMode};
 use opentitanlib::chip::rom_error::RomError;
 use opentitanlib::ownership::OwnershipKeyAlg;
@@ -56,6 +56,8 @@ struct Opts {
         help = "Load a firmware payload via rescue after activating ownership"
     )]
     rescue_after_activate: Option<PathBuf>,
+    #[arg(long, value_parser = humantime::parse_duration, help = "Max timeout to enter rescue mode")]
+    rescue_enter_delay: Option<Duration>,
     #[arg(long, default_value = "SlotA", help = "Which slot to rescue into")]
     rescue_slot: BootSlot,
     #[arg(
@@ -168,7 +170,7 @@ fn flash_info_check(info: &[FlashRegion<'_>], unlocked: bool) -> Result<()> {
 
 fn flash_permission_test(opts: &Opts, transport: &TransportWrapper) -> Result<()> {
     let uart = transport.uart("console")?;
-    let rescue = RescueSerial::new(Rc::clone(&uart));
+    let rescue = RescueSerial::new(Rc::clone(&uart), opts.rescue_enter_delay);
 
     log::info!("###### Get Boot Log (1/2) ######");
     let (data, devid) = transfer_lib::get_device_info(transport, &rescue)?;
@@ -187,6 +189,8 @@ fn flash_permission_test(opts: &Opts, transport: &TransportWrapper) -> Result<()
         } else {
             None
         },
+        None,
+        false,
     )?;
 
     log::info!("###### Get Boot Log (2/2) ######");
@@ -220,7 +224,7 @@ fn flash_permission_test(opts: &Opts, transport: &TransportWrapper) -> Result<()
         //
         // The flash configuration will be the previous owner in Side A and
         // the new owner in SideB.
-        transport.reset_target(Duration::from_millis(50), /*clear_uart=*/ true)?;
+        transport.reset_with_delay(UartRx::Clear, Duration::from_millis(50))?;
         let capture = UartConsole::wait_for(
             &*uart,
             r"(?msR)Running(.*)Finished.*PASS!$|BFV:([0-9A-Fa-f]{8})$",
@@ -295,6 +299,7 @@ fn flash_permission_test(opts: &Opts, transport: &TransportWrapper) -> Result<()
             .clone()
             .or_else(|| opts.next_activate_key.clone()),
         None,
+        BootSlot::SlotA,
     )?;
 
     if let Some(fw) = &opts.rescue_after_activate {
@@ -309,7 +314,7 @@ fn flash_permission_test(opts: &Opts, transport: &TransportWrapper) -> Result<()
 
     log::info!("###### Boot After Transfer Complete ######");
     // After the activate command, the device should report the ownership state as `OWND`.
-    transport.reset_target(Duration::from_millis(50), /*clear_uart=*/ true)?;
+    transport.reset_with_delay(UartRx::Clear, Duration::from_millis(50))?;
     let capture = UartConsole::wait_for(
         &*uart,
         r"(?msR)Running(.*)Finished.*PASS!$|BFV:([0-9A-Fa-f]{8})$",
