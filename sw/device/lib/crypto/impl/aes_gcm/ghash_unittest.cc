@@ -8,10 +8,14 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "sw/device/lib/base/mock_crc32.h"
+#include "sw/device/lib/crypto/impl/status.h"
 
 namespace ghash_unittest {
 namespace {
 using ::testing::ElementsAreArray;
+
+#define EXPECT_OK(status_) EXPECT_EQ(status_.value, OTCRYPTO_OK.value)
 
 // Zero block.
 std::array<uint32_t, 4> Zero = {
@@ -39,12 +43,27 @@ TEST(Ghash, McGrawViegaTestCase1) {
 
   // Compute GHASH(H, A, C).
   ghash_context_t ctx;
-  ghash_init_subkey(H.data(), ctx.tbl0);
-  ghash_init_subkey(Zero.data(), ctx.tbl1);
+  rom_test::MockCrc32 crc32_;
+  EXPECT_OK(ghash_init_subkey(H.data(), ctx.tbl0));
+  EXPECT_OK(ghash_init_subkey(Zero.data(), ctx.tbl1));
+
+  constexpr int kExpectedCrc32Cycles = 3;
+  EXPECT_CALL(crc32_, Init(testing::NotNull())).Times(kExpectedCrc32Cycles);
+  EXPECT_CALL(crc32_, Add(testing::NotNull(), ctx.tbl0, 256))
+      .Times(kExpectedCrc32Cycles);
+  EXPECT_CALL(crc32_, Add(testing::NotNull(), ctx.correction_term0.data, 16))
+      .Times(kExpectedCrc32Cycles);
+  EXPECT_CALL(crc32_,
+              Add(testing::NotNull(), ctx.enc_initial_counter_block0.data, 16))
+      .Times(kExpectedCrc32Cycles);
+  EXPECT_CALL(crc32_, Finish(testing::NotNull()))
+      .Times(kExpectedCrc32Cycles)
+      .WillRepeatedly(testing::Return(0));
+
   ghash_handle_enc_initial_counter_block(Zero.data(), Zero.data(), &ctx);
-  ghash_init(&ctx);
+  EXPECT_OK(ghash_init(&ctx));
   uint32_t result[kGhashBlockNumWords];
-  ghash_final(&ctx, result);
+  EXPECT_OK(ghash_final(&ctx, result));
 
   EXPECT_THAT(result, testing::ElementsAreArray(exp_result));
 }
@@ -64,16 +83,31 @@ TEST(Ghash, ProcessFullBlocksOneByte) {
   uint32_t input_word = 0xaabbccdd;
   uint8_t *input = (unsigned char *)&input_word;
   size_t input_len = sizeof(input_word);
-  // All-zero block for comparison.
-  std::array<uint32_t, 4> zero_block = {0, 0, 0, 0};
 
   // Initialize context.
   ghash_context_t ctx;
-  ghash_init_subkey(H.data(), ctx.tbl0);
-  ghash_init_subkey(Zero.data(), ctx.tbl1);
-  ghash_handle_enc_initial_counter_block(Zero.data(), Zero.data(), &ctx);
-  ghash_init(&ctx);
-  ghash_process_full_blocks(&ctx, partial_len, &partial, input_len, input);
+  rom_test::MockCrc32 crc32_;
+  EXPECT_OK(ghash_init_subkey(H.data(), ctx.tbl0));
+  EXPECT_OK(ghash_init_subkey(Zero.data(), ctx.tbl1));
+
+  constexpr int kExpectedCrc32Cycles = 2;
+  EXPECT_CALL(crc32_, Init(testing::NotNull())).Times(kExpectedCrc32Cycles);
+  EXPECT_CALL(crc32_, Add(testing::NotNull(), ctx.tbl0, 256))
+      .Times(kExpectedCrc32Cycles);
+  EXPECT_CALL(crc32_, Add(testing::NotNull(), ctx.correction_term0.data, 16))
+      .Times(kExpectedCrc32Cycles);
+  EXPECT_CALL(crc32_,
+              Add(testing::NotNull(), ctx.enc_initial_counter_block0.data, 16))
+      .Times(kExpectedCrc32Cycles);
+  EXPECT_CALL(crc32_, Finish(testing::NotNull()))
+      .Times(kExpectedCrc32Cycles)
+      .WillRepeatedly(testing::Return(0));
+
+  EXPECT_OK(
+      ghash_handle_enc_initial_counter_block(Zero.data(), Zero.data(), &ctx));
+  EXPECT_OK(ghash_init(&ctx));
+  EXPECT_OK(
+      ghash_process_full_blocks(&ctx, partial_len, &partial, input_len, input));
   EXPECT_EQ(partial.data[0], input_word);
   EXPECT_EQ(partial.data[1], 0);
   EXPECT_EQ(partial.data[2], 0);
@@ -90,28 +124,45 @@ TEST(Ghash, Mul1) {
       0x59fa4c88,
       0x2e2b34ca,
   };
-  std::array<uint32_t, 4> zero = {0, 0, 0, 0};
   // Big-endian form of 1.
   uint8_t one = 0x80;
 
   ghash_context_t ctx;
-  ghash_init_subkey(H.data(), ctx.tbl0);
-  ghash_init_subkey(Zero.data(), ctx.tbl1);
-  ghash_handle_enc_initial_counter_block(Zero.data(), Zero.data(), &ctx);
-  ghash_init(&ctx);
+  rom_test::MockCrc32 crc32_;
+  EXPECT_OK(ghash_init_subkey(H.data(), ctx.tbl0));
+  EXPECT_OK(ghash_init_subkey(Zero.data(), ctx.tbl1));
+
+  constexpr int kExpectedCrc32Cycles = 4;
+  EXPECT_CALL(crc32_, Init(testing::NotNull())).Times(kExpectedCrc32Cycles);
+  EXPECT_CALL(crc32_, Add(testing::NotNull(), ctx.tbl0, 256))
+      .Times(kExpectedCrc32Cycles);
+  EXPECT_CALL(crc32_, Add(testing::NotNull(), ctx.correction_term0.data, 16))
+      .Times(kExpectedCrc32Cycles);
+  EXPECT_CALL(crc32_,
+              Add(testing::NotNull(), ctx.enc_initial_counter_block0.data, 16))
+      .Times(kExpectedCrc32Cycles);
+  EXPECT_CALL(crc32_, Finish(testing::NotNull()))
+      .Times(kExpectedCrc32Cycles)
+      .WillRepeatedly(testing::Return(0));
+  constexpr int kExpectedCrc32AddCycles = 5;
+
+  EXPECT_OK(
+      ghash_handle_enc_initial_counter_block(Zero.data(), Zero.data(), &ctx));
+  EXPECT_OK(ghash_init(&ctx));
 
   ghash_block_t partial = {.data = {0}};
   size_t partial_len = 0;
   size_t input_len = 1;
   uint8_t *input = &one;
-  ghash_process_full_blocks(&ctx, partial_len, &partial, input_len, input);
+  EXPECT_OK(
+      ghash_process_full_blocks(&ctx, partial_len, &partial, input_len, input));
   EXPECT_LT(input_len, kGhashBlockNumBytes - partial_len);
   EXPECT_EQ(partial.data[0], one);
 
-  ghash_update(&ctx, 1, &one);
+  EXPECT_OK(ghash_update(&ctx, 1, &one));
   EXPECT_THAT(ctx.state0.data, testing::ElementsAreArray(H));
   uint32_t result[kGhashBlockNumWords];
-  ghash_final(&ctx, result);
+  EXPECT_OK(ghash_final(&ctx, result));
 
   EXPECT_THAT(result, testing::ElementsAreArray(H));
 }
@@ -154,16 +205,34 @@ TEST(Ghash, McGrawViegaTestCase2) {
 
   // Compute GHASH(H, A, C).
   ghash_context_t ctx;
-  ghash_init_subkey(H.data(), ctx.tbl0);
-  ghash_init_subkey(Zero.data(), ctx.tbl1);
-  ghash_handle_enc_initial_counter_block(Zero.data(), Zero.data(), &ctx);
-  ghash_init(&ctx);
-  ghash_update(&ctx, A.size() * sizeof(uint32_t), (unsigned char *)A.data());
-  ghash_update(&ctx, C.size() * sizeof(uint32_t), (unsigned char *)C.data());
-  ghash_update(&ctx, bitlengths.size() * sizeof(uint64_t),
-               (unsigned char *)bitlengths.data());
+  rom_test::MockCrc32 crc32_;
+  EXPECT_OK(ghash_init_subkey(H.data(), ctx.tbl0));
+  EXPECT_OK(ghash_init_subkey(Zero.data(), ctx.tbl1));
+
+  constexpr int kExpectedCrc32Cycles = 5;
+  EXPECT_CALL(crc32_, Init(testing::NotNull())).Times(kExpectedCrc32Cycles);
+  EXPECT_CALL(crc32_, Add(testing::NotNull(), ctx.tbl0, 256))
+      .Times(kExpectedCrc32Cycles);
+  EXPECT_CALL(crc32_, Add(testing::NotNull(), ctx.correction_term0.data, 16))
+      .Times(kExpectedCrc32Cycles);
+  EXPECT_CALL(crc32_,
+              Add(testing::NotNull(), ctx.enc_initial_counter_block0.data, 16))
+      .Times(kExpectedCrc32Cycles);
+  EXPECT_CALL(crc32_, Finish(testing::NotNull()))
+      .Times(kExpectedCrc32Cycles)
+      .WillRepeatedly(testing::Return(0));
+
+  EXPECT_OK(
+      ghash_handle_enc_initial_counter_block(Zero.data(), Zero.data(), &ctx));
+  EXPECT_OK(ghash_init(&ctx));
+  EXPECT_OK(ghash_update(&ctx, A.size() * sizeof(uint32_t),
+                         (unsigned char *)A.data()));
+  EXPECT_OK(ghash_update(&ctx, C.size() * sizeof(uint32_t),
+                         (unsigned char *)C.data()));
+  EXPECT_OK(ghash_update(&ctx, bitlengths.size() * sizeof(uint64_t),
+                         (unsigned char *)bitlengths.data()));
   uint32_t result[kGhashBlockNumWords];
-  ghash_final(&ctx, result);
+  EXPECT_OK(ghash_final(&ctx, result));
 
   EXPECT_THAT(result, testing::ElementsAreArray(exp_result));
 }
@@ -202,28 +271,48 @@ TEST(Ghash, ContextReset) {
 
   // Initialize the hash subkey (should only need to do this once).
   ghash_context_t ctx;
-  ghash_init_subkey(H.data(), ctx.tbl0);
-  ghash_init_subkey(Zero.data(), ctx.tbl1);
-  ghash_handle_enc_initial_counter_block(Zero.data(), Zero.data(), &ctx);
+  rom_test::MockCrc32 crc32_;
+  EXPECT_OK(ghash_init_subkey(H.data(), ctx.tbl0));
+  EXPECT_OK(ghash_init_subkey(Zero.data(), ctx.tbl1));
+
+  constexpr int kExpectedCrc32Cycles = 9;
+  EXPECT_CALL(crc32_, Init(testing::NotNull())).Times(kExpectedCrc32Cycles);
+  EXPECT_CALL(crc32_, Add(testing::NotNull(), ctx.tbl0, 256))
+      .Times(kExpectedCrc32Cycles);
+  EXPECT_CALL(crc32_, Add(testing::NotNull(), ctx.correction_term0.data, 16))
+      .Times(kExpectedCrc32Cycles);
+  EXPECT_CALL(crc32_,
+              Add(testing::NotNull(), ctx.enc_initial_counter_block0.data, 16))
+      .Times(kExpectedCrc32Cycles);
+  EXPECT_CALL(crc32_, Finish(testing::NotNull()))
+      .Times(kExpectedCrc32Cycles)
+      .WillRepeatedly(testing::Return(0));
+
+  EXPECT_OK(
+      ghash_handle_enc_initial_counter_block(Zero.data(), Zero.data(), &ctx));
 
   // Compute GHASH(H, A, C).
-  ghash_init(&ctx);
-  ghash_update(&ctx, A.size() * sizeof(uint32_t), (unsigned char *)A.data());
-  ghash_update(&ctx, C.size() * sizeof(uint32_t), (unsigned char *)C.data());
-  ghash_update(&ctx, bitlengths.size() * sizeof(uint64_t),
-               (unsigned char *)bitlengths.data());
+  EXPECT_OK(ghash_init(&ctx));
+  EXPECT_OK(ghash_update(&ctx, A.size() * sizeof(uint32_t),
+                         (unsigned char *)A.data()));
+  EXPECT_OK(ghash_update(&ctx, C.size() * sizeof(uint32_t),
+                         (unsigned char *)C.data()));
+  EXPECT_OK(ghash_update(&ctx, bitlengths.size() * sizeof(uint64_t),
+                         (unsigned char *)bitlengths.data()));
   uint32_t result[kGhashBlockNumWords];
-  ghash_final(&ctx, result);
+  EXPECT_OK(ghash_final(&ctx, result));
 
   EXPECT_THAT(result, testing::ElementsAreArray(exp_result));
 
   // Compute GHASH(H, A, C) a second time.
-  ghash_init(&ctx);
-  ghash_update(&ctx, A.size() * sizeof(uint32_t), (unsigned char *)A.data());
-  ghash_update(&ctx, C.size() * sizeof(uint32_t), (unsigned char *)C.data());
-  ghash_update(&ctx, bitlengths.size() * sizeof(uint64_t),
-               (unsigned char *)bitlengths.data());
-  ghash_final(&ctx, result);
+  EXPECT_OK(ghash_init(&ctx));
+  EXPECT_OK(ghash_update(&ctx, A.size() * sizeof(uint32_t),
+                         (unsigned char *)A.data()));
+  EXPECT_OK(ghash_update(&ctx, C.size() * sizeof(uint32_t),
+                         (unsigned char *)C.data()));
+  EXPECT_OK(ghash_update(&ctx, bitlengths.size() * sizeof(uint64_t),
+                         (unsigned char *)bitlengths.data()));
+  EXPECT_OK(ghash_final(&ctx, result));
 
   EXPECT_THAT(result, testing::ElementsAreArray(exp_result));
 }
@@ -268,16 +357,34 @@ TEST(Ghash, McGrawViegaTestCase18) {
 
   // Compute GHASH(H, A, C).
   ghash_context_t ctx;
-  ghash_init_subkey(H.data(), ctx.tbl0);
-  ghash_init_subkey(Zero.data(), ctx.tbl1);
-  ghash_handle_enc_initial_counter_block(Zero.data(), Zero.data(), &ctx);
-  ghash_init(&ctx);
-  ghash_update(&ctx, A.size() * sizeof(uint32_t), (unsigned char *)A.data());
-  ghash_update(&ctx, C.size() * sizeof(uint32_t), (unsigned char *)C.data());
-  ghash_update(&ctx, bitlengths.size() * sizeof(uint64_t),
-               (unsigned char *)bitlengths.data());
+  rom_test::MockCrc32 crc32_;
+  EXPECT_OK(ghash_init_subkey(H.data(), ctx.tbl0));
+  EXPECT_OK(ghash_init_subkey(Zero.data(), ctx.tbl1));
+
+  constexpr int kExpectedCrc32Cycles = 10;
+  EXPECT_CALL(crc32_, Init(testing::NotNull())).Times(kExpectedCrc32Cycles);
+  EXPECT_CALL(crc32_, Add(testing::NotNull(), ctx.tbl0, 256))
+      .Times(kExpectedCrc32Cycles);
+  EXPECT_CALL(crc32_, Add(testing::NotNull(), ctx.correction_term0.data, 16))
+      .Times(kExpectedCrc32Cycles);
+  EXPECT_CALL(crc32_,
+              Add(testing::NotNull(), ctx.enc_initial_counter_block0.data, 16))
+      .Times(kExpectedCrc32Cycles);
+  EXPECT_CALL(crc32_, Finish(testing::NotNull()))
+      .Times(kExpectedCrc32Cycles)
+      .WillRepeatedly(testing::Return(0));
+
+  EXPECT_OK(
+      ghash_handle_enc_initial_counter_block(Zero.data(), Zero.data(), &ctx));
+  EXPECT_OK(ghash_init(&ctx));
+  EXPECT_OK(ghash_update(&ctx, A.size() * sizeof(uint32_t),
+                         (unsigned char *)A.data()));
+  EXPECT_OK(ghash_update(&ctx, C.size() * sizeof(uint32_t),
+                         (unsigned char *)C.data()));
+  EXPECT_OK(ghash_update(&ctx, bitlengths.size() * sizeof(uint64_t),
+                         (unsigned char *)bitlengths.data()));
   uint32_t result[kGhashBlockNumWords];
-  ghash_final(&ctx, result);
+  EXPECT_OK(ghash_final(&ctx, result));
 
   EXPECT_THAT(result, testing::ElementsAreArray(exp_result));
 }

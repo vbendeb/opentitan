@@ -25,6 +25,7 @@ cc_library(
     hdrs = [
         "aes.h",
         "aes_gcm.h",
+        "cryptolib_build_info.h",
         "datatypes.h",
         "drbg.h",
         "ecc_p256.h",
@@ -38,6 +39,7 @@ cc_library(
         "kmac_kdf.h",
         "otcrypto.h",
         "rsa.h",
+        "security_config.h",
         "sha2.h",
         "sha3.h",
         "x25519.h",
@@ -57,6 +59,7 @@ cc_library(
     hdrs = [
         "aes.h",
         "aes_gcm.h",
+        "cryptolib_build_info.h",
         "datatypes.h",
         "drbg.h",
         "ecc_p256.h",

@@ -139,7 +139,7 @@ sim_qemu(
         "--rcfile=",
         "--logging=info",
         "--interface={interface}",
-        "--qemu-monitor-tty=qemu-monitor",
+        "--qemu-monitor-socket=qemu-monitor",
         "--qemu-quit",
     ],
     design = "earlgrey",
@@ -173,6 +173,18 @@ sim_qemu(
     exec_env = "sim_qemu_rom_with_fake_keys",
     manifest = "//sw/device/silicon_creator/rom_ext:manifest",
     rom = "//sw/device/silicon_creator/rom:mask_rom",
+)
+
+sim_qemu(
+    name = "sim_qemu_sival",
+    testonly = True,
+    base = ":sim_qemu_base",
+    ecdsa_key = {"//sw/device/silicon_creator/rom/keys/fake/ecdsa:ecdsa_keyset": "prod_key_0"},
+    exec_env = "sim_qemu_sival",
+    manifest = "//sw/device/silicon_creator/rom_ext:manifest",
+    otp = "//hw/ip/otp_ctrl/data/earlgrey_skus/emulation:otp_img_prod_manuf_personalized",
+    rom = "//sw/device/silicon_creator/rom:mask_rom",
+    spx_key = {"//sw/device/silicon_creator/rom/keys/fake/spx:spx_keyset": "prod_key_0"},
 )
 
 sim_qemu(

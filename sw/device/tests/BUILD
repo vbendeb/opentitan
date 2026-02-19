@@ -8,7 +8,6 @@ load(
     "CONST",
     "get_lc_items",
 )
-load("//rules/opentitan:keyutils.bzl", "ECDSA_ONLY_KEY_STRUCTS")
 load(
     "//rules:otp.bzl",
     "STD_OTP_OVERLAYS",
@@ -31,6 +30,7 @@ load(
     "silicon_params",
     "verilator_params",
 )
+load("//rules/opentitan:keyutils.bzl", "ECDSA_ONLY_KEY_STRUCTS")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -1086,6 +1086,7 @@ opentitan_test(
         EARLGREY_TEST_ENVS,
         EARLGREY_SILICON_OWNER_ROM_EXT_ENVS,
         {
+            "//hw/top_earlgrey:fpga_cw340_test_rom": None,
             "//hw/top_earlgrey:silicon_creator": None,
         },
     ),
@@ -1094,6 +1095,8 @@ opentitan_test(
         "//sw/device/lib/arch:device",
         "//sw/device/lib/base:macros",
         "//sw/device/lib/base:stdasm",
+        "//sw/device/lib/coverage:api",
+        "//sw/device/lib/coverage:ottf_runtime",
         "//sw/device/lib/dif:uart",
         "//sw/device/lib/runtime:ibex",
         "//sw/device/lib/runtime:log",
@@ -1215,7 +1218,6 @@ opentitan_test(
         "//hw/top_earlgrey/sw/autogen:top_earlgrey",
         "//sw/device/lib/base:mmio",
         "//sw/device/lib/crypto/drivers:otbn",
-        "//sw/device/lib/crypto/impl/rsa:rsa_3072_verify",
         "//sw/device/lib/dif:aes",
         "//sw/device/lib/dif:csrng",
         "//sw/device/lib/dif:edn",
@@ -1231,7 +1233,6 @@ opentitan_test(
         "//sw/device/lib/testing/test_framework:check",
         "//sw/device/lib/testing/test_framework:ottf_main",
         "//sw/device/tests:otbn_randomness_impl",
-        "//sw/device/tests/crypto:rsa_3072_verify_testvectors_hardcoded_header",
     ],
 )
 
@@ -1636,6 +1637,7 @@ opentitan_test(
         "//sw/device/lib/testing:otp_ctrl_testutils",
         "//sw/device/lib/testing:pwrmgr_testutils",
         "//sw/device/lib/testing:rv_plic_testutils",
+        "//sw/device/lib/testing/test_framework:ottf_alerts",
         "//sw/device/lib/testing/test_framework:ottf_main",
     ],
 )
@@ -2367,10 +2369,19 @@ opentitan_test(
             "//hw/top_earlgrey:sim_dv": None,
             "//hw/top_earlgrey:sim_verilator": None,
             "//hw/top_earlgrey:fpga_cw310_test_rom": None,
+            "//hw/top_earlgrey:fpga_cw310_rom_with_fake_keys": None,
+            "//hw/top_earlgrey:fpga_cw310_sival": None,
+            "//hw/top_earlgrey:fpga_cw340_test_rom": None,
+            "//hw/top_earlgrey:fpga_cw340_rom_with_fake_keys": None,
+            "//hw/top_earlgrey:fpga_cw340_sival": None,
+            "//hw/top_earlgrey:sim_qemu_rom_with_fake_keys": None,
             # This test is not expected to run on silicon, as it would require a very specific OTP configuration that is only useful for this test.
         },
     ),
     fpga = fpga_params(
+        otp = ":otp_ctrl_descrambling_otp_image",
+    ),
+    qemu = qemu_params(
         otp = ":otp_ctrl_descrambling_otp_image",
     ),
     deps = [
@@ -3905,13 +3916,20 @@ opentitan_test(
             "//hw/top_earlgrey:sim_verilator": None,
             "//hw/top_earlgrey:fpga_cw340_sival": None,
             "//hw/top_earlgrey:fpga_cw340_sival_rom_ext": None,
+            "//hw/top_earlgrey:sim_qemu_rom_with_fake_keys": None,
+            "//hw/top_earlgrey:sim_qemu_sival_rom_ext": None,
         },
     ),
     fpga = fpga_params(
         # This test requires the spi full duplex on the hyperdebug board.
-        tags = ["manual"],
         test_cmd = """
             --bootstrap="{firmware}"
+            "{firmware:elf}"
+        """,
+        test_harness = "//sw/host/tests/chip/spi_device:spi_device_tpm_test",
+    ),
+    qemu = qemu_params(
+        test_cmd = """
             "{firmware:elf}"
         """,
         test_harness = "//sw/host/tests/chip/spi_device:spi_device_tpm_test",
@@ -4367,6 +4385,7 @@ opentitan_test(
     exec_env = {
         "//hw/top_earlgrey:fpga_hyper310_rom_with_fake_keys": None,
         "//hw/top_earlgrey:fpga_cw340_rom_with_fake_keys": None,
+        "//hw/top_earlgrey:sim_qemu_rom_with_fake_keys": None,
     },
     fpga = fpga_params(
         # We run this as part of the manuf test suite as we want to run it in
@@ -4379,6 +4398,14 @@ opentitan_test(
             --clear-bitstream
             --bootstrap="{firmware}"
             "{firmware:elf}"
+        """,
+        test_harness = "//sw/host/tests/chip/ottf_console_with_gpio_tx_indicator",
+    ),
+    qemu = qemu_params(
+        test_cmd = """
+            --bootstrap="{firmware}"
+            "{firmware:elf}"
+            --console-tx-indicator-pin=0
         """,
         test_harness = "//sw/host/tests/chip/ottf_console_with_gpio_tx_indicator",
     ),
@@ -4399,10 +4426,19 @@ opentitan_test(
         {
             "//hw/top_earlgrey:fpga_cw310_sival_rom_ext": None,
             "//hw/top_earlgrey:fpga_cw310_rom_with_fake_keys": None,
+            "//hw/top_earlgrey:sim_qemu_rom_with_fake_keys": None,
+            "//hw/top_earlgrey:sim_qemu_sival_rom_ext": None,
         },
         EARLGREY_CW340_TEST_ENVS,
     ),
     fpga = fpga_params(
+        test_cmd = """
+            --bootstrap="{firmware}"
+            "{firmware:elf}"
+        """,
+        test_harness = "//sw/host/tests/chip/spi_device_ottf_console",
+    ),
+    qemu = qemu_params(
         test_cmd = """
             --bootstrap="{firmware}"
             "{firmware:elf}"
@@ -4569,6 +4605,7 @@ opentitan_test(
     silicon = silicon_params(
         test_cmd = """
             --bootstrap="{firmware}"
+            --strapping=USB_VBUS_SENSE
             --vbus-sense-en=VBUS_SENSE_EN
             --vbus-sense=VBUS_SENSE
             --no-wait-for-usb-device
@@ -4603,10 +4640,23 @@ opentitan_test(
         """,
         test_harness = "//sw/host/tests/chip/usb:usb_harness",
     ),
+    qemu = qemu_params(
+        globals = {
+            # We do not need a full host for this test so just drive VBUS
+            # in override mode.
+            "ot-usbdev.vbus-override": "true",
+        },
+        test_cmd = """
+            --vbus-sense-en=VBUS_SENSE_EN
+            --no-wait-for-usb-device
+        """,
+        test_harness = "//sw/host/tests/chip/usb:usb_harness",
+    ),
     silicon = silicon_params(
         test_cmd = """
             --bootstrap="{firmware}"
             --timeout=30s
+            --strapping=USB_VBUS_SENSE
             --vbus-sense-en=VBUS_SENSE_EN
             --vbus-sense=VBUS_SENSE
             --no-wait-for-usb-device
@@ -4641,6 +4691,7 @@ opentitan_test(
     silicon = silicon_params(
         test_cmd = """
             --bootstrap="{firmware}"
+            --strapping=USB_VBUS_SENSE
             --vbus-sense-en=VBUS_SENSE_EN
             --vbus-sense=VBUS_SENSE
             --no-wait-for-usb-device
@@ -4670,6 +4721,7 @@ opentitan_test(
     silicon = silicon_params(
         test_cmd = """
             --bootstrap="{firmware}"
+            --strapping=USB_VBUS_SENSE
             --vbus-sense-en=VBUS_SENSE_EN
             --vbus-sense=VBUS_SENSE
             --wake=disconnect
@@ -4705,6 +4757,7 @@ opentitan_test(
     silicon = silicon_params(
         test_cmd = """
             --bootstrap="{firmware}"
+            --strapping=USB_VBUS_SENSE
             --vbus-sense-en=VBUS_SENSE_EN
             --vbus-sense=VBUS_SENSE
             --no-wait-for-usb-device
@@ -4750,6 +4803,7 @@ opentitan_test(
     silicon = silicon_params(
         test_cmd = """
             --bootstrap="{firmware}"
+            --strapping=USB_VBUS_SENSE
             --vbus-sense-en=VBUS_SENSE_EN
             --vbus-sense=VBUS_SENSE
             --wake=reset
@@ -4773,6 +4827,7 @@ opentitan_test(
     srcs = ["usbdev_setuprx_test.c"],
     exec_env = dicts.add(
         EARLGREY_TEST_ENVS,
+        EARLGREY_CW340_TEST_ENVS,
         EARLGREY_SILICON_OWNER_ROM_EXT_ENVS,
     ),
     fpga = fpga_params(
@@ -4782,9 +4837,18 @@ opentitan_test(
         """,
         test_harness = "//sw/host/tests/chip/usb:usb_harness",
     ),
+    qemu = qemu_params(
+        # Require the PHY_PINS_SENSE register.
+        tags = ["broken"],
+        test_cmd = """
+            --no-wait-for-usb-device
+        """,
+        test_harness = "//sw/host/tests/chip/usb:usb_harness",
+    ),
     silicon = silicon_params(
         test_cmd = """
             --bootstrap="{firmware}"
+            --strapping=USB_VBUS_SENSE
             --vbus-sense-en=VBUS_SENSE_EN
             --vbus-sense=VBUS_SENSE
             --no-wait-for-usb-device
@@ -4809,6 +4873,7 @@ opentitan_test(
     srcs = ["usbdev_config_host_test.c"],
     exec_env = dicts.add(
         EARLGREY_TEST_ENVS,
+        EARLGREY_CW340_TEST_ENVS,
         EARLGREY_SILICON_OWNER_ROM_EXT_ENVS,
     ),
     fpga = fpga_params(
@@ -4818,9 +4883,16 @@ opentitan_test(
         """,
         test_harness = "//sw/host/tests/chip/usb:usb_harness",
     ),
+    qemu = qemu_params(
+        test_cmd = """
+            --no-wait-for-usb-device
+        """,
+        test_harness = "//sw/host/tests/chip/usb:usb_harness",
+    ),
     silicon = silicon_params(
         test_cmd = """
             --bootstrap="{firmware}"
+            --strapping=USB_VBUS_SENSE
             --vbus-sense-en=VBUS_SENSE_EN
             --vbus-sense=VBUS_SENSE
             --no-wait-for-usb-device
@@ -4849,6 +4921,7 @@ opentitan_test(
     srcs = ["usbdev_test.c"],
     exec_env = dicts.add(
         EARLGREY_TEST_ENVS,
+        EARLGREY_CW340_TEST_ENVS,
         EARLGREY_SILICON_OWNER_ROM_EXT_ENVS,
     ),
     fpga = fpga_params(
@@ -4861,6 +4934,7 @@ opentitan_test(
     silicon = silicon_params(
         test_cmd = """
             --bootstrap="{firmware}"
+            --strapping=USB_VBUS_SENSE
             --vbus-sense-en=VBUS_SENSE_EN
             --vbus-sense=VBUS_SENSE
         """,
@@ -4885,6 +4959,7 @@ opentitan_test(
     srcs = ["usbdev_mem_test.c"],
     exec_env = dicts.add(
         EARLGREY_TEST_ENVS,
+        EARLGREY_CW340_TEST_ENVS,
         EARLGREY_SILICON_OWNER_ROM_EXT_ENVS,
     ),
     deps = [
@@ -4907,6 +4982,7 @@ opentitan_test(
     ],
     exec_env = dicts.add(
         EARLGREY_TEST_ENVS,
+        EARLGREY_CW340_TEST_ENVS,
         EARLGREY_SILICON_OWNER_ROM_EXT_ENVS,
     ),
     fpga = fpga_params(
@@ -4919,6 +4995,7 @@ opentitan_test(
     silicon = silicon_params(
         test_cmd = """
             --bootstrap="{firmware}"
+            --strapping=USB_VBUS_SENSE
             --vbus-sense-en=VBUS_SENSE_EN
             --vbus-sense=VBUS_SENSE
             --exec=$(rootpath :usbdev_stream_host_harness)
@@ -4946,6 +5023,7 @@ opentitan_test(
     ],
     exec_env = dicts.add(
         EARLGREY_TEST_ENVS,
+        EARLGREY_CW340_TEST_ENVS,
         EARLGREY_SILICON_OWNER_ROM_EXT_ENVS,
     ),
     fpga = fpga_params(
@@ -4958,6 +5036,7 @@ opentitan_test(
     silicon = silicon_params(
         test_cmd = """
             --bootstrap="{firmware}"
+            --strapping=USB_VBUS_SENSE
             --vbus-sense-en=VBUS_SENSE_EN
             --vbus-sense=VBUS_SENSE
             --exec=$(rootpath :usbdev_stream_host_harness)
@@ -4985,6 +5064,7 @@ opentitan_test(
     ],
     exec_env = dicts.add(
         EARLGREY_TEST_ENVS,
+        EARLGREY_CW340_TEST_ENVS,
         EARLGREY_SILICON_OWNER_ROM_EXT_ENVS,
     ),
     fpga = fpga_params(
@@ -4997,6 +5077,7 @@ opentitan_test(
     silicon = silicon_params(
         test_cmd = """
             --bootstrap="{firmware}"
+            --strapping=USB_VBUS_SENSE
             --vbus-sense-en=VBUS_SENSE_EN
             --vbus-sense=VBUS_SENSE
             --exec=$(rootpath :usbdev_stream_host_harness)
@@ -5021,6 +5102,7 @@ opentitan_test(
     srcs = ["usbdev_toggle_restore_test.c"],
     exec_env = dicts.add(
         EARLGREY_TEST_ENVS,
+        EARLGREY_CW340_TEST_ENVS,
         EARLGREY_SILICON_OWNER_ROM_EXT_ENVS,
     ),
     fpga = fpga_params(
@@ -5033,6 +5115,7 @@ opentitan_test(
     silicon = silicon_params(
         test_cmd = """
             --bootstrap="{firmware}"
+            --strapping=USB_VBUS_SENSE
             --vbus-sense-en=VBUS_SENSE_EN
             --vbus-sense=VBUS_SENSE
             --no-wait-for-usb-device
@@ -5121,9 +5204,9 @@ opentitan_test(
     ),
     exec_env = dicts.add(
         EARLGREY_TEST_ENVS,
+        EARLGREY_CW340_TEST_ENVS,
         EARLGREY_SILICON_OWNER_ROM_EXT_ENVS,
         {
-            "//hw/top_earlgrey:fpga_cw310_sival_rom_ext": None,
             "//hw/top_earlgrey:fpga_cw310_test_rom": None,
             "//hw/top_earlgrey:sim_dv": None,
         },
@@ -5133,6 +5216,7 @@ opentitan_test(
             --bootstrap="{firmware}"
             --fin-phase=suspend
             --init-phase=suspend
+            --strapping=USB_VBUS_SENSE
             --vbus-sense-en=VBUS_SENSE_EN
             --vbus-sense=VBUS_SENSE
         """,
@@ -5159,9 +5243,9 @@ opentitan_test(
     ),
     exec_env = dicts.add(
         EARLGREY_TEST_ENVS,
+        EARLGREY_CW340_TEST_ENVS,
         EARLGREY_SILICON_OWNER_ROM_EXT_ENVS,
         {
-            "//hw/top_earlgrey:fpga_cw310_sival_rom_ext": None,
             "//hw/top_earlgrey:fpga_cw310_test_rom": None,
             "//hw/top_earlgrey:sim_dv": None,
         },
@@ -5171,6 +5255,7 @@ opentitan_test(
             --bootstrap="{firmware}"
             --fin-phase=sleep-resume
             --init-phase=sleep-resume
+            --strapping=USB_VBUS_SENSE
             --vbus-sense-en=VBUS_SENSE_EN
             --vbus-sense=VBUS_SENSE
         """,
@@ -5198,6 +5283,7 @@ opentitan_test(
     ),
     exec_env = dicts.add(
         EARLGREY_TEST_ENVS,
+        EARLGREY_CW340_TEST_ENVS,
         EARLGREY_SILICON_OWNER_ROM_EXT_ENVS,
         {
             "//hw/top_earlgrey:fpga_cw310_sival_rom_ext": None,
@@ -5210,6 +5296,7 @@ opentitan_test(
             --bootstrap="{firmware}"
             --fin-phase=sleep-reset
             --init-phase=sleep-resume
+            --strapping=USB_VBUS_SENSE
             --vbus-sense-en=VBUS_SENSE_EN
             --vbus-sense=VBUS_SENSE
         """,
@@ -5239,9 +5326,9 @@ opentitan_test(
     ),
     exec_env = dicts.add(
         EARLGREY_TEST_ENVS,
+        EARLGREY_CW340_TEST_ENVS,
         EARLGREY_SILICON_OWNER_ROM_EXT_ENVS,
         {
-            "//hw/top_earlgrey:fpga_cw310_sival_rom_ext": None,
             "//hw/top_earlgrey:fpga_cw310_test_rom": None,
             "//hw/top_earlgrey:sim_dv": None,
         },
@@ -5251,6 +5338,7 @@ opentitan_test(
             --bootstrap="{firmware}"
             --fin-phase=deep-resume
             --init-phase=sleep-disconnect
+            --strapping=USB_VBUS_SENSE
             --vbus-sense-en=VBUS_SENSE_EN
             --vbus-sense=VBUS_SENSE
         """,
@@ -5278,6 +5366,7 @@ opentitan_test(
     ),
     exec_env = dicts.add(
         EARLGREY_TEST_ENVS,
+        EARLGREY_CW340_TEST_ENVS,
         EARLGREY_SILICON_OWNER_ROM_EXT_ENVS,
         {
             "//hw/top_earlgrey:fpga_cw310_sival_rom_ext": None,
@@ -5290,6 +5379,7 @@ opentitan_test(
             --bootstrap="{firmware}"
             --fin-phase=deep-resume
             --init-phase=deep-resume
+            --strapping=USB_VBUS_SENSE
             --vbus-sense-en=VBUS_SENSE_EN
             --vbus-sense=VBUS_SENSE
         """,
@@ -5317,6 +5407,7 @@ opentitan_test(
     ),
     exec_env = dicts.add(
         EARLGREY_TEST_ENVS,
+        EARLGREY_CW340_TEST_ENVS,
         EARLGREY_SILICON_OWNER_ROM_EXT_ENVS,
         {
             "//hw/top_earlgrey:fpga_cw310_sival_rom_ext": None,
@@ -5329,6 +5420,7 @@ opentitan_test(
             --bootstrap="{firmware}"
             --fin-phase=deep-reset
             --init-phase=deep-resume
+            --strapping=USB_VBUS_SENSE
             --vbus-sense-en=VBUS_SENSE_EN
             --vbus-sense=VBUS_SENSE
         """,
@@ -5346,7 +5438,26 @@ opentitan_test(
     srcs = [
         "usbdev_deep_disconnect_test.c",
     ],
-    cw310 = fpga_params(
+    broken = fpga_params(tags = ["broken"]),
+    exec_env = dicts.add(
+        EARLGREY_SILICON_OWNER_ROM_EXT_ENVS,
+        {
+            # Modified EARLGREY_TEST_ENVS test set to mark broken tests (#28985):
+            "//hw/top_earlgrey:fpga_cw310_sival_rom_ext": "broken",
+            "//hw/top_earlgrey:fpga_cw310_rom_with_fake_keys": "broken",
+            "//hw/top_earlgrey:sim_dv": None,
+            "//hw/top_earlgrey:sim_verilator": None,
+            "//hw/top_earlgrey:sim_qemu_sival_rom_ext": None,
+            "//hw/top_earlgrey:sim_qemu_rom_with_fake_keys": None,
+            # Modified EARLGREY_CW340_TEST_ENVS test set to mark broken tests (#28985):
+            "//hw/top_earlgrey:fpga_cw340_test_rom": "broken",
+            "//hw/top_earlgrey:fpga_cw340_rom_with_fake_keys": "broken",
+            "//hw/top_earlgrey:fpga_cw340_sival": "broken",
+            "//hw/top_earlgrey:fpga_cw340_sival_rom_ext": "broken",
+            "//hw/top_earlgrey:fpga_cw340_rom_ext": "broken",
+        },
+    ),
+    fpga = fpga_params(
         test_cmd = """
             --bootstrap="{firmware}"
             --fin-phase=shutdown
@@ -5354,20 +5465,12 @@ opentitan_test(
         """,
         test_harness = "//sw/host/tests/chip/usb:usbdev_suspend",
     ),
-    exec_env = dicts.add(
-        EARLGREY_TEST_ENVS,
-        EARLGREY_SILICON_OWNER_ROM_EXT_ENVS,
-        {
-            "//hw/top_earlgrey:fpga_cw310_sival_rom_ext": None,
-            "//hw/top_earlgrey:fpga_cw310_test_rom": None,
-            "//hw/top_earlgrey:sim_dv": None,
-        },
-    ),
     silicon = silicon_params(
         test_cmd = """
             --bootstrap="{firmware}"
             --fin-phase=shutdown
             --init-phase=deep-disconnect
+            --strapping=USB_VBUS_SENSE
             --vbus-sense-en=VBUS_SENSE_EN
             --vbus-sense=VBUS_SENSE
         """,
@@ -5398,6 +5501,7 @@ opentitan_test(
             --bootstrap="{firmware}"
             --fin-phase=shutdown
             --init-phase=suspend
+            --strapping=USB_VBUS_SENSE
             --vbus-sense-en=VBUS_SENSE_EN
             --vbus-sense=VBUS_SENSE
         """,
@@ -5721,6 +5825,12 @@ opentitan_test(
         """,
         test_harness = "//sw/host/tests/chip/spi_device:spi_passthru",
     ),
+    qemu = qemu_params(
+        test_cmd = """
+            "{firmware:elf}"
+        """,
+        test_harness = "//sw/host/tests/chip/spi_device:spi_passthru",
+    ),
     silicon = silicon_params(
         test_cmd = """
             --bootstrap="{firmware}"
@@ -5829,6 +5939,7 @@ _RV_DM_TEST_CONFIGURATIONS = [
         exec_env = {
             "//hw/top_earlgrey:fpga_cw310_sival": None,
             "//hw/top_earlgrey:fpga_cw340_sival": None,
+            "//hw/top_earlgrey:sim_qemu_sival": None,
         },
         fpga = fpga_params(
             needs_jtag = True,
@@ -5836,6 +5947,21 @@ _RV_DM_TEST_CONFIGURATIONS = [
             rv_dm_delayed_en = test_cfg["rv_dm_delayed_en"],
             tags = [
                 "lc_{}".format(test_cfg["lc_state"]),
+            ],
+            test_cmd = """
+                --bootstrap="{firmware}"
+                {rv_dm_delayed_en}
+            """,
+            test_harness = "//sw/host/tests/chip/rv_dm:csr_rw",
+        ),
+        qemu = qemu_params(
+            needs_jtag = True,
+            otp = test_cfg["otp"],
+            rv_dm_delayed_en = test_cfg["rv_dm_delayed_en"],
+            tags = [
+                "lc_{}".format(test_cfg["lc_state"]),
+                # Delayed enable currently not working in QEMU.
+                "broken" if test_cfg["rv_dm_delayed_en"] != "" else "",
             ],
             test_cmd = """
                 --bootstrap="{firmware}"
@@ -7362,6 +7488,7 @@ opentitan_test(
         "//sw/device/lib/testing:flash_ctrl_testutils",
         "//sw/device/lib/testing:rstmgr_testutils",
         "//sw/device/lib/testing:sram_ctrl_testutils",
+        "//sw/device/lib/testing/test_framework:ottf_alerts",
         "//sw/device/lib/testing/test_framework:ottf_main",
     ],
 )

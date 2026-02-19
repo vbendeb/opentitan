@@ -1023,14 +1023,6 @@ static status_t personalize_endorse_certificates(ujson_t *uj) {
   return OK_STATUS();
 }
 
-static status_t send_final_hash(ujson_t *uj, serdes_sha256_hash_t *hash) {
-  TRY(dif_gpio_write(&gpio, kGpioPinSpiConsoleTxReady, true));
-  TRY(RESP_OK_PADDED_NO_CRC(ujson_serialize_with_padding_serdes_sha256_hash_t,
-                            uj, hash, kSerdesSha256HashSerializedMaxSize));
-  TRY(dif_gpio_write(&gpio, kGpioPinSpiConsoleTxReady, false));
-  return OK_STATUS();
-}
-
 /**
  * Compare the OTP measurement used during certificate generation with the OTP
  * measurment calculated from the final OTP values. Ensure that the UDS
@@ -1167,7 +1159,9 @@ static status_t provision(ujson_t *uj) {
   serdes_sha256_hash_t hash;
   hmac_sha256_process();
   hmac_sha256_final((hmac_digest_t *)&hash);
-  TRY(send_final_hash(uj, &hash));
+
+  TRY(RESP_OK_PADDED_NO_CRC(ujson_serialize_with_padding_serdes_sha256_hash_t,
+                            uj, &hash, kSerdesSha256HashSerializedMaxSize));
 
   // Complete any remaining OTP programming.
   TRY(finalize_otp_partitions());
@@ -1196,6 +1190,7 @@ bool test_main(void) {
   pinmux_testutils_init(&pinmux);
   CHECK_STATUS_OK(configure_ate_gpio_indicators());
   CHECK_DIF_OK(dif_gpio_write(&gpio, kGpioPinTestStart, true));
+  CHECK_STATUS_OK(entropy_complex_init());
   ujson_t uj = ujson_ottf_console();
 
   // Read the reset reason directly from the RSTMGR.

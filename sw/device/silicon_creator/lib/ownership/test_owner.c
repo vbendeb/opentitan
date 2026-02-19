@@ -108,6 +108,10 @@
 #define TEST_OWNER_SRAM_EXEC_MODE kOwnerSramExecModeDisabledLocked
 #endif
 
+#ifndef TEST_OWNER_BOOT_SVC_AFTER_WAKEUP
+#define TEST_OWNER_BOOT_SVC_AFTER_WAKEUP kHardenedBoolFalse
+#endif
+
 // The following preprocessor symbols are only relevant when
 // WITH_RESCUE_PROTOCOL is defined.
 #ifndef WITH_RESCUE_MISC_GPIO_PARAM
@@ -139,6 +143,10 @@
 #endif
 
 rom_error_t sku_creator_owner_init(boot_data_t *bootdata) {
+#ifdef TEST_FAULT_NO_OWNER
+  return kErrorOwnershipNoOwner;
+#endif
+
   owner_keydata_t owner = OWNER_KEYDATA;
   ownership_state_t state = bootdata->ownership_state;
 
@@ -165,6 +173,7 @@ rom_error_t sku_creator_owner_init(boot_data_t *bootdata) {
   owner_page[0].header.version = (struct_version_t){0, 0};
   owner_page[0].config_version = TEST_OWNER_CONFIG_VERSION;
   owner_page[0].sram_exec_mode = TEST_OWNER_SRAM_EXEC_MODE;
+  owner_page[0].boot_svc_after_wakeup = TEST_OWNER_BOOT_SVC_AFTER_WAKEUP;
   owner_page[0].ownership_key_alg = TEST_OWNER_KEY_ALG;
   owner_page[0].update_mode = TEST_OWNER_UPDATE_MODE;
   owner_page[0].min_security_version_bl0 = UINT32_MAX;
@@ -350,3 +359,33 @@ rom_error_t sku_creator_owner_init(boot_data_t *bootdata) {
   dbg_printf("sku_creator_owner_init: saved to flash\r\n");
   return kErrorOk;
 }
+
+#ifdef WITH_FALLBACK_OWNER
+
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wgnu-flexible-array-initializer"
+static const owner_rescue_config_t fallback_rescue_config = {
+    .header =
+        {
+            .tag = kTlvTagRescueConfig,
+            .length = sizeof(owner_rescue_config_t) + 1 * sizeof(uint32_t),
+            .version = {0, 0},
+        },
+    .protocol = WITH_RESCUE_PROTOCOL,
+    .gpio = WITH_RESCUE_MISC_GPIO_PARAM,
+    .timeout = WITH_RESCUE_TIMEOUT,
+    .detect = (WITH_RESCUE_TRIGGER << 6) | WITH_RESCUE_INDEX,
+    .start = 32,
+    .size = 224,
+    .command_allow = {kRescueModeOpenTitanID},
+};
+#pragma clang diagnostic pop
+
+void owner_config_default(owner_config_t *config) {
+  owner_config_clear(config);
+  config->rescue = &fallback_rescue_config;
+  OT_DISCARD(owner_block_rescue_apply(config->rescue));
+  dbg_printf("info: set fallback owner with customized settings\r\n");
+}
+
+#endif

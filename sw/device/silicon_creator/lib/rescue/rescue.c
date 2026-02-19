@@ -299,6 +299,7 @@ rom_error_t rescue_recv_handler(rescue_state_t *state) {
     case kRescueModeOwnerPage0:
     case kRescueModeOwnerPage1:
       // Nothing to do for send modes.
+      state->offset = 0;
       break;
     case kRescueModeBootSvcReq:
       if (state->offset >= sizeof(rr->creator.boot_svc_msg)) {
@@ -340,8 +341,9 @@ void rescue_state_init(rescue_state_t *state, boot_data_t *bootdata,
   state->bootdata = bootdata;
   state->config = config;
   state->default_mode = kRescueModeFirmware;
+  state->next_mode = 0;
 
-  if ((hardened_bool_t)config == kHardenedBoolFalse) {
+  if (launder32((hardened_bool_t)config) == kHardenedBoolFalse) {
     HARDENED_CHECK_EQ((hardened_bool_t)config, kHardenedBoolFalse);
     // If there is no rescue config, then the rescue region starts immediately
     // after the ROM_EXT and ends at the end of the flash bank.

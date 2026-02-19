@@ -149,13 +149,8 @@ def char_p256_base_mult_fvsr(
     ot_prng.seed_prng([1, 0, 0, 0])
 
     for _ in range(iterations):
-        asymsca.handle_p256_base_mult_fvsr(
-            scalar,
-            cfg,
-            trigger,
-            num_iterations
-        )
-        response = target.read_response()
+        asymsca.handle_p256_base_mult_fvsr(scalar, cfg, trigger, num_iterations)
+        response = target.read_response(init_timeout=0.01 * num_iterations)
     return response
 
 
@@ -178,13 +173,8 @@ def char_p256_base_mult_daisy(
         asymsca.init()
     )
     for _ in range(iterations):
-        asymsca.handle_p256_base_mult_daisy(
-            scalar,
-            cfg,
-            trigger,
-            num_iterations
-        )
-        response = target.read_response()
+        asymsca.handle_p256_base_mult_daisy(scalar, cfg, trigger, num_iterations)
+        response = target.read_response(init_timeout=0.01 * num_iterations)
     return response
 
 
@@ -237,13 +227,7 @@ def char_p256_ecdh(
         asymsca.init()
     )
     for _ in range(iterations):
-        asymsca.handle_p256_ecdh(
-            private_key,
-            public_x,
-            public_y,
-            cfg,
-            trigger
-        )
+        asymsca.handle_p256_ecdh(private_key, public_x, public_y, cfg, trigger)
         response = target.read_response()
     return response
 
@@ -303,13 +287,8 @@ def char_p384_base_mult_fvsr(
     ot_prng = OTPRNG(target=target)
     ot_prng.seed_prng([1, 0, 0, 0])
     for _ in range(iterations):
-        asymsca.handle_p384_base_mult_fvsr(
-            scalar,
-            cfg,
-            trigger,
-            num_iterations
-        )
-        response = target.read_response()
+        asymsca.handle_p384_base_mult_fvsr(scalar, cfg, trigger, num_iterations)
+        response = target.read_response(init_timeout=0.01 * num_iterations)
     return response
 
 
@@ -332,13 +311,8 @@ def char_p384_base_mult_daisy(
         asymsca.init()
     )
     for _ in range(iterations):
-        asymsca.handle_p384_base_mult_daisy(
-            scalar,
-            cfg,
-            trigger,
-            num_iterations
-        )
-        response = target.read_response()
+        asymsca.handle_p384_base_mult_daisy(scalar, cfg, trigger, num_iterations)
+        response = target.read_response(init_timeout=0.01 * num_iterations)
     return response
 
 

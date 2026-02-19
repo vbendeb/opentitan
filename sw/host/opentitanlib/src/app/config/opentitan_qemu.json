@@ -14,6 +14,13 @@
       "alias_of": "255",
       "level": true,
     },
+    // VBUS control currently has to go through a special QEMU chardev because
+    // QEMU does not yet implement a real pinmux.
+    {
+      "name": "VBUS_SENSE_EN",
+      "alias_of": "254",
+      "level": false,
+    },
     // NOTE: these pins are actually going directly to GPIOs, not through pins.
     // This is okay for straps which have a fixed GPIO, but should not be used
     // for muxed GPIOs.
@@ -66,6 +73,19 @@
         }
       ]
     },
+    // QEMU does not currently model TAP straps, the JTAG interfaces are always available.
+    // For now we model both straps as no-ops without any pins.
+    {
+      "name": "PINMUX_TAP_RISCV",
+      "pins": [],
+    },
+    {
+      "name": "PINMUX_TAP_LC",
+      "pins": [],
+    },
+    {
+      "name": "SPI_TPM"
+    }
   ],
   "uarts": [
     {

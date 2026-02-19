@@ -8,6 +8,7 @@ load("//rules:const.bzl", "CONST", "hex")
 load("//rules:cross_platform.bzl", "dual_cc_device_library_of", "dual_cc_library", "dual_inputs")
 load("//rules:linker.bzl", "ld_library")
 load("//rules:manifest.bzl", "manifest")
+load("//rules/coverage:asm.bzl", "asm_library_with_coverage")
 load("//rules/opentitan:defs.bzl", "OPENTITAN_CPU", "opentitan_binary")
 load(
     "//sw/device/silicon_creator/rom_ext:defs.bzl",
@@ -18,8 +19,11 @@ load(
 )
 load("@bazel_skylib//rules:common_settings.bzl", "string_flag")
 load("//rules:signing.bzl", "signature_test")
+load("//util/design:hardened.bzl", "hardened_comparison_test")
 
 package(default_visibility = ["//visibility:public"])
+
+ROM_EXT_LABELS = []
 
 filegroup(
     name = "signed_spx_binaries",
@@ -145,7 +149,7 @@ cc_test(
     ],
 )
 
-cc_library(
+asm_library_with_coverage(
     name = "rom_ext_flash_exc_handler",
     srcs = ["//sw/device/silicon_creator/lib:flash_exc_handler"],
     defines = [
@@ -157,6 +161,7 @@ cc_library(
         "//hw/top_earlgrey/sw/autogen:top_earlgrey",
         "//sw/device/lib/base:hardened",
         "//sw/device/lib/base:macros",
+        "//sw/device/lib/coverage:api_asm",
     ],
 )
 
@@ -230,7 +235,7 @@ ld_library(
     ],
 )
 
-cc_library(
+asm_library_with_coverage(
     name = "rom_ext_start",
     srcs = ["rom_ext_start.S"],
     target_compatible_with = [OPENTITAN_CPU],
@@ -294,6 +299,7 @@ cc_library(
             "//sw/device/silicon_creator/lib/drivers:watchdog",
             "//sw/device/silicon_creator/lib/ownership",
             "//sw/device/silicon_creator/lib/ownership:isfb",
+            "//sw/device/silicon_creator/lib/ownership:owner_block",
             "//sw/device/silicon_creator/lib/ownership:owner_verify",
             "//sw/device/silicon_creator/lib/ownership:ownership_activate",
             "//sw/device/silicon_creator/lib/ownership:ownership_unlock",
@@ -350,6 +356,12 @@ manifest(d = {
     for slot in SLOTS
 ]
 
+ROM_EXT_LABELS.extend([
+    "rom_ext_{}_slot_{}".format(variation_name, slot)
+    for variation_name, variation_deps in ROM_EXT_VARIATIONS.items()
+    for slot in SLOTS
+])
+
 [
     opentitan_binary(
         name = "rom_ext_{}".format(name),
@@ -377,6 +389,11 @@ manifest(d = {
     )
     for name, param in TEST_OWNER_CONFIGS.items()
 ]
+
+ROM_EXT_LABELS.extend([
+    "rom_ext_{}".format(name)
+    for name, param in TEST_OWNER_CONFIGS.items()
+])
 
 manifest(d = {
     "name": "manifest_bad_address_translation",
@@ -412,6 +429,11 @@ opentitan_binary(
     ],
 )
 
+hardened_comparison_test(
+    name = "rom_ext_dice_x509_slot_a_bad_address_translation_hardened_comparison_test",
+    srcs = [":rom_ext_dice_x509_slot_a_bad_address_translation"],
+)
+
 output_groups(
     name = "fpga_dev_binaries",
     testonly = True,
@@ -440,3 +462,11 @@ pkg_filegroup(
     prefix = "rom_ext",
     tags = ["manual"],
 )
+
+[
+    hardened_comparison_test(
+        name = label + "_hardened_comparison_test",
+        srcs = [":" + label],
+    )
+    for label in ROM_EXT_LABELS
+]

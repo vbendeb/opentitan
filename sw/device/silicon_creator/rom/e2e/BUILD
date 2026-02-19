@@ -14,7 +14,6 @@ load(
     "otp_partition",
 )
 load("//rules:rom_e2e.bzl", "maybe_skip_in_ci")
-load("//rules:splice.bzl", "bitstream_splice")
 load(
     "//sw/device/silicon_creator/rom/e2e:defs.bzl",
     "MSG_PASS",
@@ -66,17 +65,6 @@ otp_image(
     visibility = ["//visibility:private"],
 )
 
-bitstream_splice(
-    name = "bitstream_default_otp",
-    src = "//hw/bitstream:mask_rom",
-    data = ":otp_img_default",
-    instance = "otp",
-    meminfo = "//hw/bitstream:cw310_mmi",
-    tags = maybe_skip_in_ci(CONST.LCV.RMA),
-    update_usr_access = True,
-    visibility = ["//visibility:private"],
-)
-
 opentitan_test(
     name = "rom_e2e_default_otp_bootup",
     srcs = [":empty_test"],
@@ -84,7 +72,7 @@ opentitan_test(
         "//hw/top_earlgrey:fpga_cw310_rom_with_fake_keys": None,
     },
     fpga = fpga_params(
-        bitstream = ":bitstream_default_otp",
+        otp = ":otp_img_default",
         tags = maybe_skip_in_ci(CONST.LCV.RMA),
     ),
     deps = [
@@ -475,5 +463,22 @@ opentitan_test(
         "//sw/device/silicon_creator/lib/drivers:lifecycle",
         "//sw/device/silicon_creator/lib/drivers:otp",
         "//sw/device/silicon_creator/lib/drivers:rstmgr",
+    ],
+)
+
+opentitan_test(
+    name = "rom_e2e_chip_info",
+    srcs = ["chip_info_test.c"],
+    exec_env = {
+        "//hw/top_earlgrey:fpga_cw310_rom_with_fake_keys": None,
+        "//hw/top_earlgrey:fpga_cw310_test_rom": None,
+        "//hw/top_earlgrey:fpga_cw340_rom_with_fake_keys": None,
+        "//hw/top_earlgrey:fpga_cw340_test_rom": None,
+    },
+    deps = [
+        "//sw/device/lib/testing:ret_sram_testutils",
+        "//sw/device/lib/testing/test_framework:ottf_main",
+        "//sw/device/silicon_creator/lib:build_info",
+        "//sw/device/silicon_creator/lib/drivers:retention_sram",
     ],
 )

@@ -39,6 +39,8 @@ extern owner_page_status_t owner_page_valid[2];
 typedef struct owner_config {
   /** The requested SRAM execution configuration. */
   owner_sram_exec_mode_t sram_exec;
+  /** Allow boot_svc after wakeup. */
+  hardened_bool_t boot_svc_after_wakeup;
   /** The requested flash configuration. */
   const owner_flash_config_t *flash;
   /** The requested flash INFO configuration. */
@@ -85,10 +87,20 @@ hardened_bool_t owner_block_newversion_mode(void);
 hardened_bool_t owner_block_page1_valid_for_transfer(boot_data_t *bootdata);
 
 /**
- * Initialize the owner config with default values.
+ * Clear all settings in the owner config.
  *
  * The sram_exec mode is set to DisabledLocked and the three configuration
  * pointers are set to kHardenedBoolFalse.
+ *
+ * @param config A pointer to a config struct holding pointers to config items.
+ */
+void owner_config_clear(owner_config_t *config);
+
+/**
+ * Initialize the owner config with default fallback values.
+ *
+ * The default implementation calls `owner_config_clear`, and is weak so it can
+ * be overridden for SKU-specific defaults.
  *
  * @param config A pointer to a config struct holding pointers to config items.
  */

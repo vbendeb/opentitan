@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 load("@lowrisc_opentitan//rules/opentitan:transform.bzl", "obj_transform")
+load("//rules/coverage:asm.bzl", "asm_library_with_coverage")
 load("//rules/opentitan:defs.bzl", "OPENTITAN_CPU", "opentitan_binary")
 load("//rules:linker.bzl", "ld_library")
 load(
@@ -21,24 +22,37 @@ load(
     "create_imm_section_targets",
     "imm_section_bundle",
 )
+load("//util/design:hardened.bzl", "hardened_comparison_test")
 
 package(default_visibility = ["//visibility:public"])
 
+asm_library_with_coverage(
+    name = "imm_section_start",
+    srcs = ["imm_section_start.S"],
+    target_compatible_with = [OPENTITAN_CPU],
+    deps = [
+        "//hw/top_earlgrey/sw/autogen:top_earlgrey",
+        "//sw/device/lib/base:hardened",
+        "//sw/device/lib/coverage:api_asm",
+    ],
+)
+
 cc_library(
     name = "main_lib",
-    srcs = [
-        "imm_section.c",
-        "imm_section_start.S",
-    ],
+    srcs = ["imm_section.c"],
     hdrs = ["imm_section.h"],
     target_compatible_with = [OPENTITAN_CPU],
     deps = [
         ":imm_section_epmp",
+        ":imm_section_start",
         ":imm_section_version_def",
         "//hw/top_earlgrey/ip_autogen/flash_ctrl:flash_ctrl_c_regs",
         "//sw/device/lib/arch:device",
         "//sw/device/lib/base:hardened",
         "//sw/device/lib/base:macros",
+        "//sw/device/lib/coverage:api",
+        "//sw/device/lib/coverage:api_asm",
+        "//sw/device/lib/coverage:uart_runtime",
         "//sw/device/silicon_creator/lib:epmp_state",
         "//sw/device/silicon_creator/lib:error",
         "//sw/device/silicon_creator/lib:manifest",
@@ -101,6 +115,7 @@ ld_library(
     deps = [
         "//hw/top_earlgrey/sw/autogen:top_earlgrey_memory",
         "//sw/device:info_sections",
+        "//sw/device/lib/coverage:coverage_sections",
         "//sw/device/silicon_creator/lib/base:static_critical_sections",
         "//sw/device/silicon_creator/lib/base:static_dice_sections",
     ],
@@ -132,6 +147,15 @@ ld_library(
             ":main_lib",
             "//sw/device/lib/crt",
         ] + variation_deps,
+    )
+    for variation_name, variation_deps in ROM_EXT_VARIATIONS.items()
+    for slot in SLOTS
+]
+
+[
+    hardened_comparison_test(
+        name = "main_binaries_{}_slot_{}_hardened_comparison_test".format(variation_name, slot),
+        srcs = [":main_binaries_{}_slot_{}".format(variation_name, slot)],
     )
     for variation_name, variation_deps in ROM_EXT_VARIATIONS.items()
     for slot in SLOTS

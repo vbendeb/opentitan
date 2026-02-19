@@ -139,6 +139,22 @@ cc_test(
     ],
 )
 
+cc_library(
+    name = "clkmgr",
+    srcs = ["clkmgr.c"],
+    hdrs = [
+        "clkmgr.h",
+    ],
+    deps = [
+        "//hw/top_earlgrey/ip_autogen/clkmgr:clkmgr_c_regs",
+        "//hw/top_earlgrey/sw/autogen:top_earlgrey",
+        "//sw/device/lib/base:abs_mmio",
+        "//sw/device/lib/base:hardened",
+        "//sw/device/lib/base:macros",
+        "//sw/device/lib/base:multibits",
+    ],
+)
+
 dual_cc_library(
     name = "flash_ctrl",
     srcs = dual_inputs(
@@ -535,27 +551,42 @@ cc_test(
     ],
 )
 
-cc_library(
+dual_cc_library(
     name = "retention_sram",
-    srcs = ["retention_sram.c"],
-    hdrs = ["retention_sram.h"],
-    deps = [
-        "//hw/ip/sram_ctrl/data:sram_ctrl_c_regs",
-        "//hw/top_earlgrey/sw/autogen:top_earlgrey",
-        "//sw/device/lib/base:abs_mmio",
-        "//sw/device/lib/base:macros",
-        "//sw/device/lib/base:memory",
-        "//sw/device/silicon_creator/lib:boot_log",
-        "//sw/device/silicon_creator/lib:error",
-        "//sw/device/silicon_creator/lib/boot_svc:boot_svc_msg",
-    ],
+    srcs = dual_inputs(
+        device = ["retention_sram.c"],
+        host = ["mock_retention_sram.cc"],
+    ),
+    hdrs = dual_inputs(
+        host = ["mock_retention_sram.h"],
+        shared = ["retention_sram.h"],
+    ),
+    deps = dual_inputs(
+        device = [
+            "//hw/ip/sram_ctrl/data:sram_ctrl_c_regs",
+            "//hw/top_earlgrey/sw/autogen:top_earlgrey",
+            "//sw/device/lib/base:abs_mmio",
+            "//sw/device/lib/base:macros",
+            "//sw/device/lib/base:memory",
+        ],
+        host = [
+            "//sw/device/lib/base:global_mock",
+            "//sw/device/silicon_creator/testing:rom_test",
+            "@googletest//:gtest",
+        ],
+        shared = [
+            "//sw/device/silicon_creator/lib:boot_log",
+            "//sw/device/silicon_creator/lib:error",
+            "//sw/device/silicon_creator/lib/boot_svc:boot_svc_msg",
+        ],
+    ),
 )
 
 cc_test(
     name = "retention_sram_unittest",
     srcs = ["retention_sram_unittest.cc"],
     deps = [
-        ":retention_sram",
+        dual_cc_device_library_of(":retention_sram"),
         "//hw/top_earlgrey/sw/autogen:top_earlgrey",
         "//sw/device/lib/base:abs_mmio",
         "//sw/device/silicon_creator/testing:rom_test",
@@ -684,6 +715,7 @@ dual_cc_library(
             "//sw/device/lib/base:macros",
             "//sw/device/lib/base:multibits",
             "//sw/device/lib/runtime:hart",
+            "//sw/device/lib/coverage:api",
             "//sw/device/silicon_creator/lib:error",
             "//sw/device/silicon_creator/lib/base:sec_mmio",
             "//sw/device/silicon_creator/lib/drivers:otp",

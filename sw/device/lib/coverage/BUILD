@@ -12,6 +12,7 @@ cc_library(
     name = "api",
     hdrs = ["api.h"],
     deps = [
+        ":empty_runtime",
         "//sw/device/lib/base:macros",
     ],
 )
@@ -21,7 +22,22 @@ cc_library(
     hdrs = ["api_asm.h"],
     deps = [
         ":api",
+        ":asm_runtime",
     ],
+)
+
+cc_library(
+    name = "asm_runtime_real",
+    srcs = ["asm_runtime.c"],
+    features = ["-coverage"],
+)
+
+alias(
+    name = "asm_runtime",
+    actual = select({
+        "//rules/coverage:instrumented": ":asm_runtime_real",
+        "//conditions:default": "//sw/device:nothing",
+    }),
 )
 
 cc_library(
@@ -34,6 +50,23 @@ cc_library(
         "//sw/device/lib/base:macros",
     ],
     alwayslink = True,  # replacing weak symbol
+)
+
+cc_library(
+    name = "empty_runtime_real",
+    srcs = ["empty_runtime.c"],
+    features = ["-coverage"],
+    deps = [
+        "//sw/device/lib/base:macros",
+    ],
+)
+
+alias(
+    name = "empty_runtime",
+    actual = select({
+        "//rules/coverage:enabled": ":empty_runtime_real",
+        "//conditions:default": "//sw/device:nothing",
+    }),
 )
 
 cc_library(

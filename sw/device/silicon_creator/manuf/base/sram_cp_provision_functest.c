@@ -5,6 +5,7 @@
 #include <stdint.h>
 
 #include "sw/device/lib/arch/device.h"
+#include "sw/device/lib/crypto/drivers/entropy.h"
 #include "sw/device/lib/dif/dif_flash_ctrl.h"
 #include "sw/device/lib/dif/dif_gpio.h"
 #include "sw/device/lib/dif/dif_lc_ctrl.h"
@@ -28,7 +29,9 @@
 #include "hw/top_earlgrey/sw/autogen/top_earlgrey.h"
 #include "otp_ctrl_regs.h"  // Generated.
 
-static const dif_gpio_pin_t kGpioPinSpiConsoleTxReady = 0;
+// We use GPIO 3 to match the GPIO used by the CP flow itself, as a work-around
+// for the fact that QEMU emulation does not currently route GPIO via Pinmux.
+static const dif_gpio_pin_t kGpioPinSpiConsoleTxReady = 3;
 
 OTTF_DEFINE_TEST_CONFIG(.console.type = kOttfConsoleSpiDevice,
                         .console.base_addr = TOP_EARLGREY_SPI_DEVICE_BASE_ADDR,
@@ -118,6 +121,7 @@ static status_t prep_flash_info_page_0(manuf_cp_test_data_t *test_data) {
 bool test_main(void) {
   // Initialize peripherals, pinmux, and console.
   CHECK_STATUS_OK(peripheral_handles_init());
+  CHECK_STATUS_OK(entropy_complex_init());
   CHECK_STATUS_OK(configure_ate_gpio_indicators());
   ottf_console_init();
   ujson_t uj = ujson_ottf_console();

@@ -177,7 +177,10 @@ cc_library(
     name = "pentest_lib_commands",
     srcs = ["pentest_lib_commands.c"],
     hdrs = ["pentest_lib_commands.h"],
-    deps = ["//sw/device/lib/ujson"],
+    deps = [
+        "//hw/top_earlgrey:alert_handler_c_regs",
+        "//sw/device/lib/ujson",
+    ],
 )
 
 cc_library(
@@ -191,5 +194,12 @@ cc_library(
     name = "trigger_sca_commands",
     srcs = ["trigger_sca_commands.c"],
     hdrs = ["trigger_sca_commands.h"],
+    deps = ["//sw/device/lib/ujson"],
+)
+
+cc_library(
+    name = "gdb_commands",
+    srcs = ["gdb_commands.c"],
+    hdrs = ["gdb_commands.h"],
     deps = ["//sw/device/lib/ujson"],
 )

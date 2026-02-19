@@ -3,7 +3,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "hw/top_earlgrey/sw/autogen/top_earlgrey_memory.h"
+#include "sw/device/lib/coverage/api_asm.h"
 #include "sw/device/lib/base/hardened_asm.h"
+
+// PRAGMA_COVERAGE: section(__llvm_prf_cnts)
 
   /**
    * NOTE: The "ax" flag below is necessary to ensure that this section
@@ -38,6 +41,11 @@ _imm_section_start_boot:
   addi sp, sp, -8
   sw ra, 4(sp)
 
+  // NOTE: Coverage transport isn't re-initialized to reuse ROM's settings.
+  COVERAGE_ASM_INIT()
+
+  // PRAGMA_COVERAGE: autogen start
+
   /**
    * Disable Interrupts.
    *
@@ -46,6 +54,7 @@ _imm_section_start_boot:
    */
 
   // Clear `MIE` field of `mstatus` (disable interrupts globally).
+  COVERAGE_ASM_AUTOGEN_MARK(t6,0)
   csrci mstatus, 0x8
 
   /**
@@ -72,14 +81,15 @@ _imm_section_start_boot:
    * We do this despite zeroing all of SRAM above, so that we still zero `.bss`
    * once we've enabled SRAM scrambling.
    */
+  COVERAGE_ASM_AUTOGEN_MARK(t6,1)
   la   a0, _bss_start
   la   a1, _bss_end
   jal  ra, crt_section_clear
 
-
   /**
    * Restore registers.
    */
+  COVERAGE_ASM_AUTOGEN_MARK(t6,2)
   lw ra, 4(sp)
   addi sp, sp, 8
 

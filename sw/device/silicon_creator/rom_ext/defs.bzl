@@ -14,7 +14,7 @@ def secver_write_selection():
 # because of how the bazel rule accepts attributes.
 ROM_EXT_VERSION = struct(
     MAJOR = "0",
-    MINOR = "115",
+    MINOR = "119",
     SECURITY = "0",
 )
 
@@ -34,6 +34,10 @@ SLOTS = [
 ]
 
 TEST_OWNER_CONFIGS = {
+    "boot_svc_after_wakeup": {
+        "owner_defines": ["TEST_OWNER_BOOT_SVC_AFTER_WAKEUP=kHardenedBoolTrue"],
+        "rescue_module": ["//sw/device/silicon_creator/lib/rescue:rescue_xmodem"],
+    },
     "hybrid_owner_keys": {
         # Enable hybrid ECDSA/SPX+ ownership.
         "owner_defines": ["TEST_OWNER_KEY_ALG_HYBRID_SPX_PURE=1"],
@@ -261,5 +265,46 @@ TEST_OWNER_CONFIGS = {
             "WITH_ISFB=1",
         ],
         "rescue_module": ["//sw/device/silicon_creator/lib/rescue:rescue_xmodem"],
+    },
+    "custom_fallback_owner": {
+        "owner_defines": [
+            # Enable fallback default owner override.
+            "WITH_FALLBACK_OWNER=1",
+            # 0x53 is 'S'pi.
+            "WITH_RESCUE_PROTOCOL=0x53",
+            # Trigger 3 is GPIO pin.
+            "WITH_RESCUE_TRIGGER=3",
+            # When the trigger is GPIO, the index is the MuxedPad to us as the sense
+            # input. Index 2 is kTopEarlgreyMuxedPadsIoa2.
+            "WITH_RESCUE_INDEX=2",
+            # GPIO param 3 means enable the internal pull resistor and trigger
+            # rescue when the GPIO is high.
+            "WITH_RESCUE_MISC_GPIO_PARAM=3",
+            # Timeout: 0x80=enter_on_fail, 0x05 = 5 seconds.
+            "WITH_RESCUE_TIMEOUT=0x85",
+        ],
+        "rescue_module": ["//sw/device/silicon_creator/lib/rescue:rescue_spidfu"],
+    },
+    "fault_to_fallback_owner": {
+        "owner_defines": [
+            # Fault to skip parsing owner blocks.
+            # (e.g. simulating boot data corruption)
+            "TEST_FAULT_NO_OWNER=1",
+            # Enable fallback default owner override.
+            "WITH_FALLBACK_OWNER=1",
+            # 0x53 is 'S'pi.
+            "WITH_RESCUE_PROTOCOL=0x53",
+            # Trigger 3 is GPIO pin.
+            "WITH_RESCUE_TRIGGER=3",
+            # When the trigger is GPIO, the index is the MuxedPad to us as the sense
+            # input. Index 2 is kTopEarlgreyMuxedPadsIoa2.
+            "WITH_RESCUE_INDEX=2",
+            # GPIO param 3 means enable the internal pull resistor and trigger
+            # rescue when the GPIO is high.
+            "WITH_RESCUE_MISC_GPIO_PARAM=3",
+            # No timeout.
+            "WITH_RESCUE_TIMEOUT=0",
+        ],
+        "rescue_module": ["//sw/device/silicon_creator/lib/rescue:rescue_spidfu"],
     },
 }

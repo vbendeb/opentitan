@@ -74,20 +74,24 @@ static const otbn_addr_t kOtbnAppKeySideloadkl =
 static const otbn_addr_t kOtbnAppKeySideloadkh =
     OTBN_ADDR_T_INIT(otbn_key_sideload_sca, k_h);
 
-// RSA OTBN App.
-OTBN_DECLARE_APP_SYMBOLS(rsa);
-OTBN_DECLARE_SYMBOL_ADDR(rsa, mode);
-OTBN_DECLARE_SYMBOL_ADDR(rsa, n_limbs);
-OTBN_DECLARE_SYMBOL_ADDR(rsa, inout);
-OTBN_DECLARE_SYMBOL_ADDR(rsa, modulus);
-OTBN_DECLARE_SYMBOL_ADDR(rsa, exp);
+// RSA-512 OTBN App.
+OTBN_DECLARE_APP_SYMBOLS(run_rsa);
+OTBN_DECLARE_SYMBOL_ADDR(run_rsa, mode);
+OTBN_DECLARE_SYMBOL_ADDR(run_rsa, inout);
+OTBN_DECLARE_SYMBOL_ADDR(run_rsa, rsa_n);
+OTBN_DECLARE_SYMBOL_ADDR(run_rsa, rsa_d0);
+OTBN_DECLARE_SYMBOL_ADDR(run_rsa, rsa_d1);
 
-static const otbn_app_t kOtbnAppRsa = OTBN_APP_T_INIT(rsa);
-static const otbn_addr_t kOtbnVarRsaMode = OTBN_ADDR_T_INIT(rsa, mode);
-static const otbn_addr_t kOtbnVarRsaNLimbs = OTBN_ADDR_T_INIT(rsa, n_limbs);
-static const otbn_addr_t kOtbnVarRsaInOut = OTBN_ADDR_T_INIT(rsa, inout);
-static const otbn_addr_t kOtbnVarRsaModulus = OTBN_ADDR_T_INIT(rsa, modulus);
-static const otbn_addr_t kOtbnVarRsaExp = OTBN_ADDR_T_INIT(rsa, exp);
+static const otbn_app_t kOtbnAppRsa = OTBN_APP_T_INIT(run_rsa);
+static const otbn_addr_t kOtbnVarRsaMode = OTBN_ADDR_T_INIT(run_rsa, mode);
+static const otbn_addr_t kOtbnVarRsaInOut = OTBN_ADDR_T_INIT(run_rsa, inout);
+static const otbn_addr_t kOtbnVarRsaModulus = OTBN_ADDR_T_INIT(run_rsa, rsa_n);
+static const otbn_addr_t kOtbnVarRsaD0 = OTBN_ADDR_T_INIT(run_rsa, rsa_d0);
+static const otbn_addr_t kOtbnVarRsaD1 = OTBN_ADDR_T_INIT(run_rsa, rsa_d1);
+
+OTBN_DECLARE_SYMBOL_ADDR(run_rsa, MODE_RSA_512_MODEXP);
+static const uint32_t kMode512Modexp =
+    OTBN_ADDR_T_INIT(run_rsa, MODE_RSA_512_MODEXP);
 
 // p256_ecdsa_sca has randomization removed.
 OTBN_DECLARE_APP_SYMBOLS(p256_ecdsa_sca);
@@ -474,14 +478,8 @@ status_t handle_otbn_sca_ecdsa_p256_sign_fvsr_batch(ujson_t *uj) {
 }
 
 status_t handle_otbn_pentest_init(ujson_t *uj) {
-  penetrationtest_cpuctrl_t uj_cpuctrl_data;
-  TRY(ujson_deserialize_penetrationtest_cpuctrl_t(uj, &uj_cpuctrl_data));
-  penetrationtest_sensor_config_t uj_sensor_data;
-  TRY(ujson_deserialize_penetrationtest_sensor_config_t(uj, &uj_sensor_data));
-
-  // Configure the entropy complex for OTBN. Set the reseed interval to max
-  // to avoid a non-constant trigger window.
-  TRY(pentest_configure_entropy_source_max_reseed_interval());
+  // Configure the device.
+  pentest_setup_device(uj, false, true);
 
   // Init the OTBN core.
   TRY(dif_otbn_init(mmio_region_from_addr(TOP_EARLGREY_OTBN_BASE_ADDR), &otbn));
@@ -491,31 +489,10 @@ status_t handle_otbn_pentest_init(ujson_t *uj) {
     return ABORTED();
   }
 
-  // Configure the CPU for the pentest.
-  penetrationtest_device_info_t uj_output;
-  TRY(pentest_configure_cpu(
-      uj_cpuctrl_data.enable_icache, &uj_output.icache_en,
-      uj_cpuctrl_data.enable_dummy_instr, &uj_output.dummy_instr_en,
-      uj_cpuctrl_data.dummy_instr_count, uj_cpuctrl_data.enable_jittery_clock,
-      uj_cpuctrl_data.enable_sram_readback, &uj_output.clock_jitter_locked,
-      &uj_output.clock_jitter_en, &uj_output.sram_main_readback_locked,
-      &uj_output.sram_ret_readback_locked, &uj_output.sram_main_readback_en,
-      &uj_output.sram_ret_readback_en, uj_cpuctrl_data.enable_data_ind_timing,
-      &uj_output.data_ind_timing_en));
-
   pentest_init(kPentestTriggerSourceOtbn,
                kPentestPeripheralEntropy | kPentestPeripheralIoDiv4 |
                    kPentestPeripheralOtbn | kPentestPeripheralCsrng |
-                   kPentestPeripheralEdn,
-               uj_sensor_data.sensor_ctrl_enable,
-               uj_sensor_data.sensor_ctrl_en_fatal);
-
-  // Read rom digest.
-  TRY(pentest_read_rom_digest(uj_output.rom_digest));
-
-  // Read device ID and return to host.
-  TRY(pentest_read_device_id(uj_output.device_id));
-  RESP_OK(ujson_serialize_penetrationtest_device_info_t, uj, &uj_output);
+                   kPentestPeripheralEdn);
 
   // Read different SKU config fields and return to host.
   TRY(pentest_send_sku_config(uj));
@@ -770,17 +747,16 @@ status_t handle_otbn_sca_rsa512_decrypt(ujson_t *uj) {
   TRY(ujson_deserialize_penetrationtest_otbn_sca_rsa512_dec_t(uj, &uj_data));
   otbn_load_app(kOtbnAppRsa);
 
-  uint32_t mode = 2;  // Decrypt.
-  // RSA512 configuration.
-  uint32_t n_limbs = 2;
+  const uint8_t zero[64] = {0};
 
   // Write data into OTBN DMEM.
-  TRY(dif_otbn_dmem_write(&otbn, kOtbnVarRsaMode, &mode, sizeof(mode)));
-  TRY(dif_otbn_dmem_write(&otbn, kOtbnVarRsaNLimbs, &n_limbs, sizeof(n_limbs)));
+  TRY(dif_otbn_dmem_write(&otbn, kOtbnVarRsaMode, &kMode512Modexp,
+                          sizeof(uint32_t)));
   TRY(dif_otbn_dmem_write(&otbn, kOtbnVarRsaModulus, uj_data.modu,
                           sizeof(uj_data.modu)));
-  TRY(dif_otbn_dmem_write(&otbn, kOtbnVarRsaExp, uj_data.exp,
+  TRY(dif_otbn_dmem_write(&otbn, kOtbnVarRsaD0, uj_data.exp,
                           sizeof(uj_data.exp)));
+  TRY(dif_otbn_dmem_write(&otbn, kOtbnVarRsaD1, zero, sizeof(uj_data.exp)));
   TRY(dif_otbn_dmem_write(&otbn, kOtbnVarRsaInOut, uj_data.msg,
                           sizeof(uj_data.msg)));
 

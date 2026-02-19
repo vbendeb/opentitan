@@ -6,8 +6,9 @@ load(
     "@bazel_skylib//lib:dicts.bzl",
     "dicts",
 )
-load("//rules:autogen.bzl", "autogen_chip_info")
+load("//rules:autogen.bzl", "autogen_build_info")
 load("//rules:cross_platform.bzl", "dual_cc_device_library_of", "dual_cc_library", "dual_inputs")
+load("//rules/coverage:asm.bzl", "asm_library_with_coverage")
 load("//rules/opentitan:defs.bzl", "OPENTITAN_CPU")
 load(
     "//rules/opentitan:defs.bzl",
@@ -74,6 +75,7 @@ opentitan_test(
         ),
         {
             "//hw/top_earlgrey:fpga_cw310_sival": None,
+            "//hw/top_earlgrey:fpga_cw340_rom_with_fake_keys": None,
         },
     ),
     verilator = verilator_params(
@@ -96,8 +98,9 @@ cc_library(
     deps = [
         ":boot_data",
         ":nonce",
+        "//sw/device/lib/base:bitfield",
         "//sw/device/lib/base:macros",
-        "//sw/device/silicon_creator/lib:chip_info",
+        "//sw/device/silicon_creator/lib:build_info",
         "//sw/device/silicon_creator/lib:error",
         "//sw/device/silicon_creator/lib/drivers:hmac",
         "//sw/device/silicon_creator/lib/ownership:datatypes",
@@ -109,7 +112,7 @@ cc_test(
     srcs = ["boot_log_unittest.cc"],
     deps = [
         ":boot_log",
-        "//sw/device/silicon_creator/lib:chip_info",
+        "//sw/device/silicon_creator/lib:build_info",
         "//sw/device/silicon_creator/lib/drivers:hmac",
         "@googletest//:gtest_main",
     ],
@@ -198,7 +201,7 @@ cc_test(
     ],
 )
 
-cc_library(
+asm_library_with_coverage(
     name = "irq_asm",
     srcs = ["irq_asm.S"],
     target_compatible_with = [OPENTITAN_CPU],
@@ -209,6 +212,7 @@ cc_library(
         "//hw/top_earlgrey/ip_autogen/rstmgr:rstmgr_c_regs",
         "//hw/top_earlgrey/sw/autogen:top_earlgrey",
         "//sw/device/lib/base:multibits",
+        "//sw/device/lib/coverage:api_asm",
     ],
 )
 
@@ -352,7 +356,7 @@ filegroup(
     ],
 )
 
-autogen_chip_info(name = "chip_info")
+autogen_build_info(name = "build_info")
 
 dual_cc_library(
     name = "shutdown",
@@ -371,12 +375,13 @@ dual_cc_library(
             "@googletest//:gtest",
         ],
         shared = [
-            ":chip_info",
+            ":build_info",
             ":error",
             ":epmp_defs",
             ":stack_utilization",
             "//sw/device/lib/base:hardened",
             "//sw/device/lib/base:macros",
+            "//sw/device/lib/coverage:api",
             "//sw/device/silicon_creator/lib/drivers:lifecycle",
             "//hw/ip/keymgr/data:keymgr_c_regs",
             "//hw/ip/lc_ctrl/data:lc_ctrl_c_regs",

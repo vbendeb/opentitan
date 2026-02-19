@@ -169,25 +169,34 @@ static status_t kmac_get_keccak_rate_words(kmac_security_str_t security_str,
   // Since Keccak state is 1600 bits, rate is calculated with
   // rate = (1600 - 2*x) where x is the security strength (i.e. half the
   // capacity).
-  switch (security_str) {
+  kmac_security_str_t security_str_set = launder32(0);
+  switch (launder32(security_str)) {
     case kKmacSecurityStrength128:
       *keccak_rate = (1600 - 2 * 128) / 32;
+      security_str_set = launder32(security_str_set) | kKmacSecurityStrength128;
       break;
     case kKmacSecurityStrength224:
       *keccak_rate = (1600 - 2 * 224) / 32;
+      security_str_set = launder32(security_str_set) | kKmacSecurityStrength224;
       break;
     case kKmacSecurityStrength256:
       *keccak_rate = (1600 - 2 * 256) / 32;
+      security_str_set = launder32(security_str_set) | kKmacSecurityStrength256;
       break;
     case kKmacSecurityStrength384:
       *keccak_rate = (1600 - 2 * 384) / 32;
+      security_str_set = launder32(security_str_set) | kKmacSecurityStrength384;
       break;
     case kKmacSecurityStrength512:
       *keccak_rate = (1600 - 2 * 512) / 32;
+      security_str_set = launder32(security_str_set) | kKmacSecurityStrength512;
       break;
     default:
       return OTCRYPTO_BAD_ARGS;
   }
+  // Check if we landed in the correct case statement. Use ORs for this to
+  // avoid that multiple cases were executed.
+  HARDENED_CHECK_EQ(launder32(security_str_set), security_str);
   return OTCRYPTO_OK;
 }
 
@@ -203,25 +212,34 @@ static status_t kmac_get_keccak_rate_words(kmac_security_str_t security_str,
 OT_WARN_UNUSED_RESULT
 static status_t kmac_get_key_len_bytes(size_t key_len,
                                        kmac_key_len_t *key_len_enum) {
-  switch (key_len) {
+  size_t key_len_set = launder32(0);
+  switch (launder32(key_len)) {
     case 128 / 8:
       *key_len_enum = kKmacKeyLength128;
+      key_len_set = launder32(key_len_set) | (128 / 8);
       break;
     case 192 / 8:
       *key_len_enum = kKmacKeyLength192;
+      key_len_set = launder32(key_len_set) | (192 / 8);
       break;
     case 256 / 8:
       *key_len_enum = kKmacKeyLength256;
+      key_len_set = launder32(key_len_set) | (256 / 8);
       break;
     case 384 / 8:
       *key_len_enum = kKmacKeyLength384;
+      key_len_set = launder32(key_len_set) | (384 / 8);
       break;
     case 512 / 8:
       *key_len_enum = kKmacKeyLength512;
+      key_len_set = launder32(key_len_set) | (512 / 8);
       break;
     default:
       return OTCRYPTO_BAD_ARGS;
   }
+  // Check if we landed in the correct case statement. Use ORs for this to
+  // avoid that multiple cases were executed.
+  HARDENED_CHECK_EQ(launder32(key_len_set), key_len);
   return OTCRYPTO_OK;
 }
 
@@ -626,12 +644,16 @@ static status_t kmac_process_msg_blocks(kmac_operation_t operation,
     uint32_t next_word = read_32(&message[i]);
     abs_mmio_write32(kKmacBaseAddr + KMAC_MSG_FIFO_REG_OFFSET, next_word);
   }
+  // Check that the loops ran for the correct number of iterations.
+  HARDENED_CHECK_LT(message_len, i + sizeof(uint32_t));
 
   // For the last few bytes, we need to write one byte at a time again.
   for (; i < message_len; i++) {
     HARDENED_TRY(wait_status_bit(KMAC_STATUS_FIFO_FULL_BIT, 0));
     abs_mmio_write8(kKmacBaseAddr + KMAC_MSG_FIFO_REG_OFFSET, message[i]);
   }
+  // Check that the loops ran for the correct number of iterations.
+  HARDENED_CHECK_EQ(i, message_len);
 
   // If operation=KMAC, then we need to write `right_encode(digest->len)`
   if (operation == kKmacOperationKmac) {

@@ -41,6 +41,7 @@
 #include "sw/device/silicon_creator/lib/manifest.h"
 #include "sw/device/silicon_creator/lib/manifest_def.h"
 #include "sw/device/silicon_creator/lib/ownership/isfb.h"
+#include "sw/device/silicon_creator/lib/ownership/owner_block.h"
 #include "sw/device/silicon_creator/lib/ownership/owner_verify.h"
 #include "sw/device/silicon_creator/lib/ownership/ownership.h"
 #include "sw/device/silicon_creator/lib/ownership/ownership_activate.h"
@@ -173,7 +174,7 @@ static rom_error_t rom_ext_init(boot_data_t *boot_data) {
 }
 
 void rom_ext_sram_exec(owner_sram_exec_mode_t mode) {
-  switch (mode) {
+  switch (launder32(mode)) {
     case kOwnerSramExecModeEnabled:
       // In enabled mode, we do not lock the register so owner code can disable
       // SRAM exec at some later time.
@@ -235,7 +236,7 @@ static rom_error_t rom_ext_boot(boot_data_t *boot_data, boot_log_t *boot_log,
   owner_block_measurement(owner_block_key_page(key), &owner_measurement);
 
   keymgr_binding_value_t sealing_binding;
-  if (boot_data->ownership_state == kOwnershipStateLockedOwner) {
+  if (launder32(boot_data->ownership_state) == kOwnershipStateLockedOwner) {
     HARDENED_CHECK_EQ(boot_data->ownership_state, kOwnershipStateLockedOwner);
     // If we're in LockedOwner, initialize the sealing binding with the
     // diversification constant associated with key applicaiton key that
@@ -250,6 +251,10 @@ static rom_error_t rom_ext_boot(boot_data_t *boot_data, boot_log_t *boot_log,
     // sealing keys, so set the binding constant to a nonsense value.
     memset(&sealing_binding, 0x55, sizeof(sealing_binding));
   }
+
+  // Prepare dice chain builder for CDI_1.
+  HARDENED_RETURN_IF_ERROR(dice_chain_init());
+  HARDENED_RETURN_IF_ERROR(dice_chain_rom_ext_check());
 
   // Generate CDI_1 attestation keys and certificate.
   HARDENED_RETURN_IF_ERROR(dice_chain_attestation_owner(
@@ -387,11 +392,15 @@ static rom_error_t rom_ext_try_next_stage(boot_data_t *boot_data,
   rom_error_t slot[2] = {0, 0};
   for (size_t i = 0; i < ARRAYSIZE(manifests.ordered); ++i) {
     uint32_t flash_exec = 0;
+    char slot_id =
+        (manifests.ordered[i] == rom_ext_boot_policy_manifest_a_get()) ? 'A'
+                                                                       : 'B';
     error =
-        rom_ext_verify(manifests.ordered[i], boot_data, &flash_exec, &keyring,
-                       &verify_key, &owner_config, &isfb_check_count);
+        rom_ext_verify(manifests.ordered[i], slot_id, boot_data, &flash_exec,
+                       &keyring, &verify_key, &owner_config, &isfb_check_count);
     slot[i] = error;
     if (error != kErrorOk) {
+      dbg_printf("verifyfail: Slot%c;%x\r\n", slot_id, error);
       continue;
     }
     HARDENED_CHECK_EQ(flash_exec, kSigverifyFlashExec);
@@ -484,9 +493,26 @@ static rom_error_t rom_ext_advance_secver(boot_data_t *boot_data,
   return kErrorOk;
 }
 
+// This weak function allows downstream ROM_EXT builds to override whether or
+// not boot_svc runs after a low-power wakeup.  This is a mitigation for a
+// late-added confiuration item to the owner configuration.
+OT_WEAK
+hardened_bool_t rom_ext_allow_boot_svc_after_wakeup(void) {
+  return owner_config.boot_svc_after_wakeup;
+}
+
+// This weak function allows downstream ROM_EXT builds to provide
+// sku-specific initialization.
+OT_WEAK
+void rom_ext_sku_init(void) {}
+
 static rom_error_t rom_ext_start(boot_data_t *boot_data, boot_log_t *boot_log) {
   HARDENED_RETURN_IF_ERROR(rom_ext_init(boot_data));
   const manifest_t *self = rom_ext_manifest();
+
+  // Security version self-check
+  HARDENED_CHECK_GE(self->security_version,
+                    boot_data->min_security_version_rom_ext);
 
   lifecycle_claim(kMultiBitBool8True);
   lifecycle_set_status(kLifecycleStatusWordRomExtVersion, self->version_minor);
@@ -519,12 +545,17 @@ static rom_error_t rom_ext_start(boot_data_t *boot_data, boot_log_t *boot_log) {
   // Maybe advance the security version.
   HARDENED_RETURN_IF_ERROR(rom_ext_advance_secver(boot_data, self));
 
-  // Prepare dice chain builder for CDI_1.
-  HARDENED_RETURN_IF_ERROR(dice_chain_init());
-  HARDENED_RETURN_IF_ERROR(dice_chain_rom_ext_check());
+  rom_ext_sku_init();
+
+  // Fix the boot data if needed
+  rom_error_t boot_data_validity = boot_data_redundancy_check();
+  if (boot_data_validity != kErrorOk) {
+    // Ignore the result to prevent unnecessary bootloop.
+    OT_DISCARD(boot_data_write(boot_data));
+  }
 
   // Initialize the boot_log in retention RAM.
-  const chip_info_t *rom_chip_info = (const chip_info_t *)_chip_info_start;
+  const build_info_t *rom_chip_info = (const build_info_t *)_chip_info_start;
   boot_log_check_or_init(boot_log, rom_ext_current_slot(), rom_chip_info);
   boot_log->rom_ext_major = self->version_major;
   boot_log->rom_ext_minor = self->version_minor;
@@ -533,6 +564,9 @@ static rom_error_t rom_ext_start(boot_data_t *boot_data, boot_log_t *boot_log) {
   // it here so the "SetNextBl0" can do a one-time override of the RAM copy
   // of `boot_data`.
   boot_log->primary_bl0_slot = boot_data->primary_bl0_slot;
+  boot_log->events =
+      bitfield_bit32_write(boot_log->events, BOOT_LOG_EVENT_REDUNDANCY,
+                           boot_data_validity != kErrorOk);
 
   // Protect the flash pages where the ROM_EXT is located.
   rom_ext_flash_protect_self(boot_log->rom_ext_slot);
@@ -540,6 +574,9 @@ static rom_error_t rom_ext_start(boot_data_t *boot_data, boot_log_t *boot_log) {
   // Initialize the chip ownership state.
   rom_error_t error;
   error = ownership_init(boot_data, &owner_config, &keyring);
+  dbg_printf("owner_page: %u-%C/%u-%C\r\n", owner_page[0].config_version,
+             owner_page_valid[0], owner_page[1].config_version,
+             owner_page_valid[1]);
   if (error == kErrorWriteBootdataThenReboot) {
     return error;
   }
@@ -564,8 +601,13 @@ static rom_error_t rom_ext_start(boot_data_t *boot_data, boot_log_t *boot_log) {
       reset_reasons & (1 << kRstmgrReasonLowPowerExit) ? kHardenedBoolTrue
                                                        : kHardenedBoolFalse;
 
-  // We don't want to execute boot_svc requests if this is a low-power wakeup.
-  if (waking_from_low_power != kHardenedBoolTrue) {
+  // Determine if we want to execute boot_svc requests if this is a low-power
+  // wakeup.
+  hardened_bool_t want_boot_svc = waking_from_low_power == kHardenedBoolTrue
+                                      ? rom_ext_allow_boot_svc_after_wakeup()
+                                      : kHardenedBoolTrue;
+
+  if (want_boot_svc == kHardenedBoolTrue) {
     boot_svc_msg_t *boot_svc_msg = &retention_sram_get()->creator.boot_svc_msg;
     error =
         boot_svc_handler(boot_svc_msg, boot_data, boot_log, lc_state, &keyring,
@@ -636,7 +678,7 @@ void rom_ext_main(void) {
   boot_log_t *boot_log = &retention_sram_get()->creator.boot_log;
 
   rom_error_t error = rom_ext_start(&boot_data, boot_log);
-  if (error == kErrorWriteBootdataThenReboot) {
+  if (launder32(error) == kErrorWriteBootdataThenReboot) {
     HARDENED_CHECK_EQ(error, kErrorWriteBootdataThenReboot);
     error = boot_data_write(&boot_data);
   }
